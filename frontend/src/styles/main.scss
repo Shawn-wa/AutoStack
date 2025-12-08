@@ -1,0 +1,248 @@
+// CSS 变量 - 深色科技主题
+:root {
+  // 主色调 - 赛博蓝
+  --color-primary: #00d4ff;
+  --color-primary-dark: #00a8cc;
+  --color-primary-light: #66e5ff;
+  
+  // 强调色 - 霓虹绿
+  --color-accent: #00ff88;
+  --color-accent-dark: #00cc6a;
+  
+  // 警告/错误
+  --color-warning: #ffaa00;
+  --color-danger: #ff4466;
+  --color-success: #00ff88;
+  
+  // 背景色 - 深空色系
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1a2234;
+  --bg-card: #151d2e;
+  --bg-hover: #1e293b;
+  
+  // 文字颜色
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  // 边框
+  --border-color: #2d3a4f;
+  --border-glow: rgba(0, 212, 255, 0.3);
+  
+  // 阴影
+  --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.15);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  
+  // 字体
+  --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  
+  // 圆角
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  
+  // 过渡
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+}
+
+// 重置样式
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  
+  // 网格背景
+  background-image: 
+    linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+  
+  &:hover {
+    color: var(--color-primary-light);
+  }
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  outline: none;
+}
+
+// 通用组件样式
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  
+  &-primary {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    color: var(--bg-primary);
+    box-shadow: 0 2px 12px rgba(0, 212, 255, 0.3);
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+    }
+  }
+  
+  &-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    
+    &:hover {
+      background: var(--bg-hover);
+      border-color: var(--color-primary);
+    }
+  }
+  
+  &-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    
+    &:hover {
+      color: var(--color-primary);
+      background: rgba(0, 212, 255, 0.1);
+    }
+  }
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  transition: all var(--transition-normal);
+  
+  &:hover {
+    border-color: var(--border-glow);
+    box-shadow: var(--shadow-glow);
+  }
+}
+
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all var(--transition-fast);
+  
+  &::placeholder {
+    color: var(--text-muted);
+  }
+  
+  &:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+  }
+}
+
+// 状态标签
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 20px;
+  
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  
+  &-running {
+    background: rgba(0, 255, 136, 0.1);
+    color: var(--color-success);
+    
+    &::before {
+      background: var(--color-success);
+      box-shadow: 0 0 8px var(--color-success);
+    }
+  }
+  
+  &-stopped {
+    background: rgba(255, 68, 102, 0.1);
+    color: var(--color-danger);
+    
+    &::before {
+      background: var(--color-danger);
+    }
+  }
+  
+  &-pending {
+    background: rgba(255, 170, 0, 0.1);
+    color: var(--color-warning);
+    
+    &::before {
+      background: var(--color-warning);
+      animation: pulse 1.5s infinite;
+    }
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+  
+  &:hover {
+    background: var(--text-muted);
+  }
+}
+

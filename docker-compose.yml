@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: autostack-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=As2024#xK9mPv7Rn
+      - MYSQL_DATABASE=autostack
+      - MYSQL_CHARSET=utf8mb4
+      - MYSQL_COLLATION=utf8mb4_unicode_ci
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - autostack-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: autostack-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_PORT=8080
+      - SERVER_MODE=release
+      - DATABASE_DRIVER=mysql
+      - DATABASE_DSN=root:As2024#xK9mPv7Rn@tcp(mysql:3306)/autostack?charset=utf8mb4&parseTime=True&loc=Local
+      - JWT_SECRET=autostack-jwt-secret-Kx8Pm2Rv
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - autostack-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: autostack-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - autostack-network
+    restart: unless-stopped
+
+networks:
+  autostack-network:
+    driver: bridge
