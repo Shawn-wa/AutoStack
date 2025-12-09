@@ -1,17 +1,45 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from '@/modules/auth/stores'
+import { ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const sidebarCollapsed = ref(false)
 
-const menuItems = [
+// 基础菜单项
+const baseMenuItems = [
   { path: '/', name: 'Dashboard', icon: '◇', label: '控制台' },
   { path: '/projects', name: 'Projects', icon: '▦', label: '项目管理' },
   { path: '/deployments', name: 'Deployments', icon: '▶', label: '部署管理' },
   { path: '/templates', name: 'Templates', icon: '❖', label: '模板市场' },
 ]
+
+// 管理员菜单项
+const adminMenuItems = [
+  { path: '/users', name: 'UserManagement', icon: '👤', label: '用户管理' },
+]
+
+// 计算显示的菜单项
+const menuItems = computed(() => {
+  if (userStore.isAdmin) {
+    return [...baseMenuItems, ...adminMenuItems]
+  }
+  return baseMenuItems
+})
+
+// 用户名首字母
+const userInitial = computed(() => {
+  return userStore.username?.charAt(0)?.toUpperCase() || 'U'
+})
+
+// 用户角色显示
+const userRoleDisplay = computed(() => {
+  return userStore.user?.role === 'admin' ? '管理员' : '用户'
+})
 
 const isActive = (path: string) => route.path === path
 
@@ -21,6 +49,24 @@ const navigateTo = (path: string) => {
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+// 登出
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要退出登录吗？',
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    userStore.logout()
+  } catch {
+    // 用户取消
+  }
 }
 </script>
 
@@ -53,12 +99,23 @@ const toggleSidebar = () => {
       
       <div class="sidebar-footer">
         <div class="user-info" v-show="!sidebarCollapsed">
-          <div class="user-avatar">A</div>
+          <div class="user-avatar">{{ userInitial }}</div>
           <div class="user-details">
-            <div class="user-name">Admin</div>
-            <div class="user-role">管理员</div>
+            <div class="user-name">{{ userStore.username }}</div>
+            <div class="user-role">{{ userRoleDisplay }}</div>
           </div>
+          <button class="logout-btn" @click="handleLogout" title="退出登录">
+            ⏻
+          </button>
         </div>
+        <button 
+          v-show="sidebarCollapsed" 
+          class="logout-btn-collapsed" 
+          @click="handleLogout" 
+          title="退出登录"
+        >
+          ⏻
+        </button>
       </div>
     </aside>
     
@@ -69,7 +126,8 @@ const toggleSidebar = () => {
           <h1>{{ route.meta.title || 'AutoStack' }}</h1>
         </div>
         <div class="header-actions">
-          <button class="btn btn-primary">
+          <span class="user-greeting">欢迎，{{ userStore.username }}</span>
+          <button class="btn btn-primary" @click="navigateTo('/projects')">
             <span>+</span> 新建项目
           </button>
         </div>
@@ -218,20 +276,62 @@ const toggleSidebar = () => {
   justify-content: center;
   font-weight: 600;
   color: var(--bg-primary);
+  flex-shrink: 0;
 }
 
 .user-details {
   flex: 1;
+  min-width: 0;
 }
 
 .user-name {
   font-size: 14px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-role {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.logout-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 16px;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  
+  &:hover {
+    background: rgba(255, 77, 79, 0.1);
+    color: #ff4d4f;
+  }
+}
+
+.logout-btn-collapsed {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 18px;
+  transition: all var(--transition-fast);
+  
+  &:hover {
+    background: rgba(255, 77, 79, 0.1);
+    color: #ff4d4f;
+  }
 }
 
 .main-content {
@@ -262,8 +362,18 @@ const toggleSidebar = () => {
   font-weight: 600;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-greeting {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 .content-wrapper {
   padding: 32px;
 }
 </style>
-
