@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/modules/auth/stores'
+import { useThemeStore } from '@/stores/theme'
 import { ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 const sidebarCollapsed = ref(false)
 
 // 基础菜单项
@@ -126,6 +127,9 @@ const handleLogout = async () => {
           <h1>{{ route.meta.title || 'AutoStack' }}</h1>
         </div>
         <div class="header-actions">
+          <button class="theme-toggle" @click="themeStore.toggleTheme" :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'">
+            {{ themeStore.isDark ? '☀️' : '🌙' }}
+          </button>
           <span class="user-greeting">欢迎，{{ userStore.username }}</span>
           <button class="btn btn-primary" @click="navigateTo('/projects')">
             <span>+</span> 新建项目
@@ -366,6 +370,23 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.theme-toggle {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: 50%;
+  font-size: 18px;
+  transition: all var(--transition-fast);
+  
+  &:hover {
+    background: var(--bg-hover);
+    transform: rotate(15deg);
+  }
 }
 
 .user-greeting {

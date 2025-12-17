@@ -9,6 +9,11 @@
 *.dylib
 /backend/bin/
 /backend/tmp/
+/backend/autostack
+
+# 数据库文件
+*.db
+/backend/autostack.db
 
 # 测试
 *.test
