@@ -1,0 +1,390 @@
+package order
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"autostack/pkg/response"
+)
+
+var orderService = NewService()
+
+// ListPlatforms 获取支持的平台列表
+func ListPlatforms(c *gin.Context) {
+	platforms := orderService.GetAllPlatformsInfo()
+	response.Success(c, http.StatusOK, "获取成功", platforms)
+}
+
+// ListAuths 获取授权列表
+func ListAuths(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	auths, total, err := orderService.ListAuths(userID, page, pageSize)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取授权列表失败")
+		return
+	}
+
+	list := make([]AuthResponse, len(auths))
+	for i, auth := range auths {
+		list[i] = AuthResponse{
+			ID:         auth.ID,
+			Platform:   auth.Platform,
+			ShopName:   auth.ShopName,
+			Status:     auth.Status,
+			LastSyncAt: auth.LastSyncAt,
+			CreatedAt:  auth.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:  auth.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", AuthListResponse{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+// CreateAuth 创建授权
+func CreateAuth(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	var req CreateAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+
+	auth, err := orderService.CreateAuth(userID, &req)
+	if err != nil {
+		if err == ErrPlatformNotFound {
+			response.Error(c, http.StatusBadRequest, "不支持的平台")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "创建授权失败")
+		return
+	}
+
+	response.Success(c, http.StatusCreated, "创建成功", AuthResponse{
+		ID:         auth.ID,
+		Platform:   auth.Platform,
+		ShopName:   auth.ShopName,
+		Status:     auth.Status,
+		LastSyncAt: auth.LastSyncAt,
+		CreatedAt:  auth.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:  auth.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// UpdateAuth 更新授权
+func UpdateAuth(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	var req UpdateAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+
+	auth, err := orderService.UpdateAuth(uint(id), userID, &req)
+	if err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "更新授权失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "更新成功", AuthResponse{
+		ID:         auth.ID,
+		Platform:   auth.Platform,
+		ShopName:   auth.ShopName,
+		Status:     auth.Status,
+		LastSyncAt: auth.LastSyncAt,
+		CreatedAt:  auth.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:  auth.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// DeleteAuth 删除授权
+func DeleteAuth(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	if err := orderService.DeleteAuth(uint(id), userID); err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "删除授权失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "删除成功", nil)
+}
+
+// TestAuth 测试授权连接
+func TestAuth(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	if err := orderService.TestAuth(uint(id), userID); err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "连接成功", nil)
+}
+
+// SyncOrders 同步订单
+func SyncOrders(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	var req SyncOrdersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 默认同步最近7天
+		req.Since = time.Now().AddDate(0, 0, -7).Format(time.RFC3339)
+		req.To = time.Now().Format(time.RFC3339)
+	}
+
+	since, err := time.Parse(time.RFC3339, req.Since)
+	if err != nil {
+		since = time.Now().AddDate(0, 0, -7)
+	}
+
+	to, err := time.Parse(time.RFC3339, req.To)
+	if err != nil {
+		to = time.Now()
+	}
+
+	result, err := orderService.SyncOrders(uint(id), userID, since, to)
+	if err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "同步订单失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "同步成功", result)
+}
+
+// ListOrders 获取订单列表
+func ListOrders(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	var req OrderListRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+
+	orders, total, err := orderService.ListOrders(userID, &req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取订单列表失败")
+		return
+	}
+
+	list := make([]OrderResponse, len(orders))
+	for i, ord := range orders {
+		items := make([]OrderItemResponse, len(ord.Items))
+		for j, item := range ord.Items {
+			items[j] = OrderItemResponse{
+				ID:          item.ID,
+				PlatformSku: item.PlatformSku,
+				Sku:         item.Sku,
+				Name:        item.Name,
+				Quantity:    item.Quantity,
+				Price:       item.Price,
+				Currency:    item.Currency,
+			}
+		}
+
+		list[i] = OrderResponse{
+			ID:              ord.ID,
+			Platform:        ord.Platform,
+			PlatformOrderNo: ord.PlatformOrderNo,
+			Status:          ord.Status,
+			PlatformStatus:  ord.PlatformStatus,
+			TotalAmount:     ord.TotalAmount,
+			Currency:        ord.Currency,
+			RecipientName:   ord.RecipientName,
+			RecipientPhone:  ord.RecipientPhone,
+			Country:         ord.Country,
+			Province:        ord.Province,
+			City:            ord.City,
+			ZipCode:         ord.ZipCode,
+			Address:         ord.Address,
+			OrderTime:       ord.OrderTime,
+			ShipTime:        ord.ShipTime,
+			Items:           items,
+			CreatedAt:       ord.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:       ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	page := req.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", OrderListResponse{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+// GetOrder 获取订单详情
+func GetOrder(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	ord, err := orderService.GetOrderByID(uint(id), userID)
+	if err != nil {
+		if err == ErrOrderNotFound {
+			response.Error(c, http.StatusNotFound, "订单不存在")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "获取订单失败")
+		return
+	}
+
+	items := make([]OrderItemResponse, len(ord.Items))
+	for j, item := range ord.Items {
+		items[j] = OrderItemResponse{
+			ID:          item.ID,
+			PlatformSku: item.PlatformSku,
+			Sku:         item.Sku,
+			Name:        item.Name,
+			Quantity:    item.Quantity,
+			Price:       item.Price,
+			Currency:    item.Currency,
+		}
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", OrderResponse{
+		ID:              ord.ID,
+		Platform:        ord.Platform,
+		PlatformOrderNo: ord.PlatformOrderNo,
+		Status:          ord.Status,
+		PlatformStatus:  ord.PlatformStatus,
+		TotalAmount:     ord.TotalAmount,
+		Currency:        ord.Currency,
+		RecipientName:   ord.RecipientName,
+		RecipientPhone:  ord.RecipientPhone,
+		Country:         ord.Country,
+		Province:        ord.Province,
+		City:            ord.City,
+		ZipCode:         ord.ZipCode,
+		Address:         ord.Address,
+		OrderTime:       ord.OrderTime,
+		ShipTime:        ord.ShipTime,
+		Items:           items,
+		CreatedAt:       ord.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:       ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// getUserID 获取当前用户ID
+func getUserID(c *gin.Context) uint {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		return 0
+	}
+
+	switch v := userID.(type) {
+	case float64:
+		return uint(v)
+	case uint:
+		return v
+	case int:
+		return uint(v)
+	default:
+		return 0
+	}
+}

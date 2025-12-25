@@ -1,0 +1,163 @@
+import request from '@/commonBase/api/request'
+
+// 凭证字段定义
+export interface CredentialField {
+  key: string
+  label: string
+  type: string
+  required: boolean
+}
+
+// 平台信息
+export interface PlatformInfo {
+  name: string
+  label: string
+  fields: CredentialField[]
+}
+
+// 平台授权
+export interface PlatformAuth {
+  id: number
+  platform: string
+  shop_name: string
+  status: number
+  last_sync_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// 创建授权参数
+export interface CreateAuthParams {
+  platform: string
+  shop_name: string
+  credentials: Record<string, string>
+}
+
+// 更新授权参数
+export interface UpdateAuthParams {
+  shop_name?: string
+  credentials?: Record<string, string>
+  status?: number
+}
+
+// 授权列表响应
+export interface AuthListResult {
+  list: PlatformAuth[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// 同步订单参数
+export interface SyncOrdersParams {
+  since?: string
+  to?: string
+}
+
+// 同步订单结果
+export interface SyncOrdersResult {
+  total: number
+  created: number
+  updated: number
+}
+
+// 订单商品
+export interface OrderItem {
+  id: number
+  platform_sku: string
+  sku: string
+  name: string
+  quantity: number
+  price: number
+  currency: string
+}
+
+// 订单
+export interface Order {
+  id: number
+  platform: string
+  platform_order_no: string
+  status: string
+  platform_status: string
+  total_amount: number
+  currency: string
+  recipient_name: string
+  recipient_phone: string
+  country: string
+  province: string
+  city: string
+  zip_code: string
+  address: string
+  order_time: string | null
+  ship_time: string | null
+  items: OrderItem[]
+  created_at: string
+  updated_at: string
+}
+
+// 订单列表参数
+export interface OrderListParams {
+  page?: number
+  page_size?: number
+  platform?: string
+  auth_id?: number
+  status?: string
+  keyword?: string
+  start_time?: string
+  end_time?: string
+}
+
+// 订单列表响应
+export interface OrderListResult {
+  list: Order[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// 获取支持的平台列表
+export function getPlatforms() {
+  return request.get<any, { data: PlatformInfo[] }>('/order/platforms')
+}
+
+// 获取授权列表
+export function getAuths(page: number = 1, pageSize: number = 10) {
+  return request.get<any, { data: AuthListResult }>('/order/auths', {
+    params: { page, page_size: pageSize }
+  })
+}
+
+// 创建授权
+export function createAuth(data: CreateAuthParams) {
+  return request.post<any, { data: PlatformAuth }>('/order/auths', data)
+}
+
+// 更新授权
+export function updateAuth(id: number, data: UpdateAuthParams) {
+  return request.put<any, { data: PlatformAuth }>(`/order/auths/${id}`, data)
+}
+
+// 删除授权
+export function deleteAuth(id: number) {
+  return request.delete<any, { data: null }>(`/order/auths/${id}`)
+}
+
+// 测试授权连接
+export function testAuth(id: number) {
+  return request.post<any, { data: null }>(`/order/auths/${id}/test`)
+}
+
+// 同步订单
+export function syncOrders(id: number, data?: SyncOrdersParams) {
+  return request.post<any, { data: SyncOrdersResult }>(`/order/auths/${id}/sync`, data || {})
+}
+
+// 获取订单列表
+export function getOrders(params: OrderListParams = {}) {
+  return request.get<any, { data: OrderListResult }>('/order/orders', { params })
+}
+
+// 获取订单详情
+export function getOrder(id: number) {
+  return request.get<any, { data: Order }>(`/order/orders/${id}`)
+}

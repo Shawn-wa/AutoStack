@@ -11,3 +11,6 @@ jwt:
   secret: "your-secret-key-change-in-production"
   expire_hour: 24
 
+crypto:
+  secret_key: "kGi9gkEYeaK5uSyI73YOCcy4Py+eaOty"  # 必须32字节，用于加密API凭证
+

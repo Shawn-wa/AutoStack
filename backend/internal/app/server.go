@@ -11,6 +11,8 @@ import (
 	"autostack/internal/config"
 	"autostack/internal/modules/auth"
 	"autostack/internal/modules/deployment"
+	"autostack/internal/modules/order"
+	_ "autostack/internal/modules/order/platforms" // 注册平台适配器
 	"autostack/internal/modules/project"
 	"autostack/internal/modules/template"
 	"autostack/internal/modules/user"
@@ -33,7 +35,12 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	// 自动迁移表结构
-	if err := database.AutoMigrate(&user.User{}); err != nil {
+	if err := database.AutoMigrate(
+		&user.User{},
+		&order.PlatformAuth{},
+		&order.Order{},
+		&order.OrderItem{},
+	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
 
@@ -44,6 +51,11 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 	// 初始化认证服务
 	auth.InitService(cfg.JWT.Secret, cfg.JWT.ExpireHour)
+
+	// 初始化加密模块
+	if err := order.InitCrypto(cfg.Crypto.SecretKey); err != nil {
+		return nil, fmt.Errorf("初始化加密模块失败: %w", err)
+	}
 
 	server := &Server{
 		config: cfg,
@@ -119,6 +131,25 @@ func (s *Server) setupRoutes() {
 				templates.GET("", template.ListTemplates)
 				templates.POST("", template.CreateTemplate)
 				templates.GET("/:id", template.GetTemplate)
+			}
+
+			// 订单管理模块
+			orderGroup := authorized.Group("/order")
+			{
+				// 平台列表
+				orderGroup.GET("/platforms", order.ListPlatforms)
+
+				// 平台授权管理
+				orderGroup.GET("/auths", order.ListAuths)
+				orderGroup.POST("/auths", order.CreateAuth)
+				orderGroup.PUT("/auths/:id", order.UpdateAuth)
+				orderGroup.DELETE("/auths/:id", order.DeleteAuth)
+				orderGroup.POST("/auths/:id/test", order.TestAuth)
+				orderGroup.POST("/auths/:id/sync", order.SyncOrders)
+
+				// 订单管理
+				orderGroup.GET("/orders", order.ListOrders)
+				orderGroup.GET("/orders/:id", order.GetOrder)
 			}
 		}
 	}

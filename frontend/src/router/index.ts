@@ -37,6 +37,18 @@ const routes: RouteRecordRaw[] = [
         name: 'UserManagement',
         component: () => import('@/modules/user/pages/UserManagement.vue'),
         meta: { title: '用户管理', requiresAdmin: true }
+      },
+      {
+        path: 'order/auths',
+        name: 'PlatformAuths',
+        component: () => import('@/modules/order/pages/PlatformAuths.vue'),
+        meta: { title: '平台授权' }
+      },
+      {
+        path: 'order/orders',
+        name: 'Orders',
+        component: () => import('@/modules/order/pages/Orders.vue'),
+        meta: { title: '订单列表' }
       }
     ]
   },

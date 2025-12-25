@@ -9,6 +9,12 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
+	Crypto   CryptoConfig   `mapstructure:"crypto"`
+}
+
+// CryptoConfig 加密配置
+type CryptoConfig struct {
+	SecretKey string `mapstructure:"secret_key"`
 }
 
 // ServerConfig 服务器配置
@@ -43,6 +49,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("database.dsn", "autostack.db")
 	viper.SetDefault("jwt.secret", "autostack-secret-key")
 	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("crypto.secret_key", "autostack-crypto-secret-key32!")
 
 	// 读取配置文件（可选）
 	if err := viper.ReadInConfig(); err != nil {
@@ -58,4 +65,3 @@ func Load() (*Config, error) {
 
 	return &cfg, nil
 }
-

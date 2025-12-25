@@ -19,6 +19,12 @@ const baseMenuItems = [
   { path: '/templates', name: 'Templates', icon: '❖', label: '模板市场' },
 ]
 
+// 订单管理菜单项
+const orderMenuItems = [
+  { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权' },
+  { path: '/order/orders', name: 'Orders', icon: '📋', label: '订单列表' },
+]
+
 // 管理员菜单项
 const adminMenuItems = [
   { path: '/users', name: 'UserManagement', icon: '👤', label: '用户管理' },
@@ -26,10 +32,11 @@ const adminMenuItems = [
 
 // 计算显示的菜单项
 const menuItems = computed(() => {
+  let items = [...baseMenuItems, ...orderMenuItems]
   if (userStore.isAdmin) {
-    return [...baseMenuItems, ...adminMenuItems]
+    items = [...items, ...adminMenuItems]
   }
-  return baseMenuItems
+  return items
 })
 
 // 用户名首字母

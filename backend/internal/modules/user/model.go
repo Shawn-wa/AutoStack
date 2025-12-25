@@ -45,6 +45,17 @@ const (
 	PermTemplateUpdate = "template:update"
 	PermTemplateDelete = "template:delete"
 	PermTemplateList   = "template:list"
+
+	// 平台授权权限
+	PermPlatformAuthCreate = "platform_auth:create"
+	PermPlatformAuthUpdate = "platform_auth:update"
+	PermPlatformAuthDelete = "platform_auth:delete"
+	PermPlatformAuthList   = "platform_auth:list"
+	PermPlatformAuthSync   = "platform_auth:sync"
+
+	// 订单管理权限
+	PermOrderList   = "order:list"
+	PermOrderDetail = "order:detail"
 )
 
 // PermissionDef 权限定义
@@ -78,6 +89,15 @@ var AllPermissions = []PermissionDef{
 	{Code: PermTemplateUpdate, Name: "更新模板", Module: "template"},
 	{Code: PermTemplateDelete, Name: "删除模板", Module: "template"},
 	{Code: PermTemplateList, Name: "查看模板列表", Module: "template"},
+	// 平台授权
+	{Code: PermPlatformAuthCreate, Name: "添加平台授权", Module: "platform_auth"},
+	{Code: PermPlatformAuthUpdate, Name: "更新平台授权", Module: "platform_auth"},
+	{Code: PermPlatformAuthDelete, Name: "删除平台授权", Module: "platform_auth"},
+	{Code: PermPlatformAuthList, Name: "查看平台授权", Module: "platform_auth"},
+	{Code: PermPlatformAuthSync, Name: "同步订单", Module: "platform_auth"},
+	// 订单管理
+	{Code: PermOrderList, Name: "查看订单列表", Module: "order"},
+	{Code: PermOrderDetail, Name: "查看订单详情", Module: "order"},
 }
 
 // UserManagePermissions 用户管理权限列表（仅super_admin可授予）
