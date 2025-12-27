@@ -3,22 +3,31 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /build
 
-# 安装依赖
-RUN apk add --no-cache gcc musl-dev
+# 设置Alpine国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+# 设置Go代理为国内镜像
+ENV GOPROXY=https://goproxy.cn,direct
 
 # 复制 go.mod
-COPY go.mod ./
+COPY go.mod go.sum ./
+
+# 下载依赖
+RUN go mod download
 
 # 复制源代码
 COPY . .
 
-# 下载依赖并构建
-RUN go mod tidy && CGO_ENABLED=1 GOOS=linux go build -a -ldflags '-linkmode external -extldflags "-static"' -o autostack ./cmd/server
+# 构建（使用MySQL时不需要CGO）
+RUN CGO_ENABLED=0 GOOS=linux go build -o autostack ./cmd/server
 
 # 运行阶段
 FROM alpine:3.19
 
 WORKDIR /app
+
+# 设置Alpine国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # 安装必要的运行时依赖
 RUN apk add --no-cache ca-certificates tzdata wget
@@ -38,4 +47,3 @@ EXPOSE 8080
 
 # 启动服务
 CMD ["./autostack"]
-

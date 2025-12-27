@@ -77,25 +77,33 @@ type OrderListRequest struct {
 
 // OrderResponse 订单响应
 type OrderResponse struct {
-	ID              uint                `json:"id"`
-	Platform        string              `json:"platform"`
-	PlatformOrderNo string              `json:"platform_order_no"`
-	Status          string              `json:"status"`
-	PlatformStatus  string              `json:"platform_status"`
-	TotalAmount     float64             `json:"total_amount"`
-	Currency        string              `json:"currency"`
-	RecipientName   string              `json:"recipient_name"`
-	RecipientPhone  string              `json:"recipient_phone"`
-	Country         string              `json:"country"`
-	Province        string              `json:"province"`
-	City            string              `json:"city"`
-	ZipCode         string              `json:"zip_code"`
-	Address         string              `json:"address"`
-	OrderTime       *time.Time          `json:"order_time"`
-	ShipTime        *time.Time          `json:"ship_time"`
-	Items           []OrderItemResponse `json:"items,omitempty"`
-	CreatedAt       string              `json:"created_at"`
-	UpdatedAt       string              `json:"updated_at"`
+	ID              uint       `json:"id"`
+	Platform        string     `json:"platform"`
+	PlatformOrderNo string     `json:"platform_order_no"`
+	Status          string     `json:"status"`
+	PlatformStatus  string     `json:"platform_status"`
+	TotalAmount     float64    `json:"total_amount"`
+	Currency        string     `json:"currency"`
+	RecipientName   string     `json:"recipient_name"`
+	RecipientPhone  string     `json:"recipient_phone"`
+	Country         string     `json:"country"`
+	Province        string     `json:"province"`
+	City            string     `json:"city"`
+	ZipCode         string     `json:"zip_code"`
+	Address         string     `json:"address"`
+	OrderTime       *time.Time `json:"order_time"`
+	ShipTime        *time.Time `json:"ship_time"`
+	// 佣金信息
+	SaleCommission       float64             `json:"sale_commission"`
+	AccrualsForSale      float64             `json:"accruals_for_sale"`
+	DeliveryCharge       float64             `json:"delivery_charge"`
+	ReturnDeliveryCharge float64             `json:"return_delivery_charge"`
+	CommissionAmount     float64             `json:"commission_amount"`
+	CommissionCurrency   string              `json:"commission_currency"`
+	CommissionSyncedAt   *time.Time          `json:"commission_synced_at"`
+	Items                []OrderItemResponse `json:"items,omitempty"`
+	CreatedAt            string              `json:"created_at"`
+	UpdatedAt            string              `json:"updated_at"`
 }
 
 // OrderItemResponse 订单商品响应
@@ -115,4 +123,16 @@ type OrderListResponse struct {
 	Total    int64           `json:"total"`
 	Page     int             `json:"page"`
 	PageSize int             `json:"page_size"`
+}
+
+// SyncCommissionRequest 佣金同步请求
+type SyncCommissionRequest struct {
+	Since string `json:"since"` // 开始时间 ISO8601
+	To    string `json:"to"`    // 结束时间 ISO8601
+}
+
+// SyncCommissionResponse 佣金同步响应
+type SyncCommissionResponse struct {
+	Total   int `json:"total"`   // 处理的交易数
+	Updated int `json:"updated"` // 更新的订单数
 }

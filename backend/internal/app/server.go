@@ -40,6 +40,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&order.PlatformAuth{},
 		&order.Order{},
 		&order.OrderItem{},
+		&order.OrdersRequestLog{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -146,10 +147,12 @@ func (s *Server) setupRoutes() {
 				orderGroup.DELETE("/auths/:id", order.DeleteAuth)
 				orderGroup.POST("/auths/:id/test", order.TestAuth)
 				orderGroup.POST("/auths/:id/sync", order.SyncOrders)
+				orderGroup.POST("/auths/:id/sync-commission", order.SyncCommission)
 
 				// 订单管理
 				orderGroup.GET("/orders", order.ListOrders)
 				orderGroup.GET("/orders/:id", order.GetOrder)
+				orderGroup.POST("/orders/:id/sync-commission", order.SyncOrderCommission)
 			}
 		}
 	}

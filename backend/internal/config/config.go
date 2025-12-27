@@ -51,6 +51,14 @@ func Load() (*Config, error) {
 	viper.SetDefault("jwt.expire_hour", 24)
 	viper.SetDefault("crypto.secret_key", "autostack-crypto-secret-key32!")
 
+	// 绑定环境变量
+	viper.BindEnv("server.port", "SERVER_PORT")
+	viper.BindEnv("server.mode", "SERVER_MODE")
+	viper.BindEnv("database.driver", "DATABASE_DRIVER")
+	viper.BindEnv("database.dsn", "DATABASE_DSN")
+	viper.BindEnv("jwt.secret", "JWT_SECRET")
+	viper.BindEnv("crypto.secret_key", "CRYPTO_SECRET_KEY")
+
 	// 读取配置文件（可选）
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

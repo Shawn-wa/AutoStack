@@ -3,6 +3,8 @@ package order
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -173,6 +175,10 @@ func (s *Service) TestAuth(id uint, userID uint) error {
 		return ErrInvalidCredentials
 	}
 
+	// 尝试使用带日志的方法
+	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
+		return adapterWithLog.TestConnectionWithLog(credentials, auth.ID)
+	}
 	return adapter.TestConnection(credentials)
 }
 
@@ -196,11 +202,19 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOr
 		return nil, ErrInvalidCredentials
 	}
 
-	// 调用适配器同步订单
-	orders, err := adapter.SyncOrders(credentials, since, to)
+	// 调用适配器同步订单（优先使用带日志的方法）
+	var orders []*Order
+	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
+		orders, err = adapterWithLog.SyncOrdersWithLog(credentials, since, to, auth.ID)
+	} else {
+		orders, err = adapter.SyncOrders(credentials, since, to)
+	}
 	if err != nil {
+		log.Printf("[SyncOrders] 同步失败: %v", err)
 		return nil, err
 	}
+
+	log.Printf("[SyncOrders] 从平台获取到 %d 条订单", len(orders))
 
 	result := &SyncOrdersResponse{}
 
@@ -216,6 +230,7 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOr
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 创建新订单
 			if err := db.Create(ord).Error; err != nil {
+				log.Printf("[SyncOrders] 创建订单失败: %v, 订单号: %s", err, ord.PlatformOrderNo)
 				continue
 			}
 			result.Created++
@@ -239,7 +254,91 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOr
 	now := time.Now()
 	db.Model(auth).Update("last_sync_at", &now)
 
+	// 同步佣金信息（方案A：订单同步时同步佣金）
+	go func() {
+		// 异步获取佣金，避免阻塞订单同步
+		commissions, err := adapter.GetCommissions(credentials, since, to)
+		if err != nil {
+			// 佣金获取失败不影响订单同步结果，仅记录日志
+			return
+		}
+
+		nowSync := time.Now()
+		for postingNumber, commData := range commissions {
+			db.Model(&Order{}).Where("platform_order_no = ?", postingNumber).Updates(map[string]interface{}{
+				"sale_commission":        commData.SaleCommission,
+				"accruals_for_sale":      commData.AccrualsForSale,
+				"delivery_charge":        commData.DeliveryCharge,
+				"return_delivery_charge": commData.ReturnDeliveryCharge,
+				"commission_amount":      commData.CommissionAmount,
+				"commission_currency":    commData.CommissionCurrency,
+				"commission_synced_at":   &nowSync,
+			})
+		}
+	}()
+
 	return result, nil
+}
+
+// SyncOrderCommission 同步单个订单的佣金
+func (s *Service) SyncOrderCommission(userID, orderID uint) (*Order, error) {
+	db := database.GetDB()
+
+	// 获取订单信息
+	var ord Order
+	if err := db.Where("id = ? AND user_id = ?", orderID, userID).First(&ord).Error; err != nil {
+		return nil, ErrOrderNotFound
+	}
+
+	// 获取授权信息
+	var auth PlatformAuth
+	if err := db.Where("id = ? AND user_id = ?", ord.PlatformAuthID, userID).First(&auth).Error; err != nil {
+		return nil, ErrAuthNotFound
+	}
+
+	// 获取适配器
+	adapter := GetAdapter(auth.Platform)
+	if adapter == nil {
+		return nil, ErrPlatformNotFound
+	}
+
+	// 解密凭证
+	credentials, err := Decrypt(auth.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("凭证解密失败: %w", err)
+	}
+
+	// 使用订单时间范围获取佣金（订单时间前后各7天）
+	orderTime := time.Now()
+	if ord.OrderTime != nil {
+		orderTime = *ord.OrderTime
+	}
+	since := orderTime.AddDate(0, 0, -7)
+	to := orderTime.AddDate(0, 0, 7)
+
+	commissions, err := adapter.GetCommissions(credentials, since, to)
+	if err != nil {
+		return nil, fmt.Errorf("获取佣金失败: %w", err)
+	}
+
+	// 查找该订单的佣金数据
+	if commData, exists := commissions[ord.PlatformOrderNo]; exists {
+		now := time.Now()
+		db.Model(&ord).Updates(map[string]interface{}{
+			"sale_commission":        commData.SaleCommission,
+			"accruals_for_sale":      commData.AccrualsForSale,
+			"delivery_charge":        commData.DeliveryCharge,
+			"return_delivery_charge": commData.ReturnDeliveryCharge,
+			"commission_amount":      commData.CommissionAmount,
+			"commission_currency":    commData.CommissionCurrency,
+			"commission_synced_at":   &now,
+		})
+
+		// 重新加载更新后的订单
+		db.Where("id = ?", orderID).Preload("Items").First(&ord)
+	}
+
+	return &ord, nil
 }
 
 // ListOrders 获取订单列表
@@ -308,4 +407,67 @@ func (s *Service) GetOrderByID(id uint, userID uint) (*Order, error) {
 	}
 
 	return &ord, nil
+}
+
+// SyncCommission 同步佣金信息（方案B：独立同步接口）
+func (s *Service) SyncCommission(userID, authID uint, since, to time.Time) (*SyncCommissionResponse, error) {
+	db := database.GetDB()
+
+	auth, err := s.GetAuthByID(authID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	adapter := GetAdapter(auth.Platform)
+	if adapter == nil {
+		return nil, fmt.Errorf("平台 %s 适配器未找到", auth.Platform)
+	}
+
+	// 解密凭证
+	credentials, err := Decrypt(auth.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("凭证解密失败: %w", err)
+	}
+
+	// 获取佣金数据（优先使用带日志的方法）
+	var commissions map[string]*CommissionData
+	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
+		commissions, err = adapterWithLog.GetCommissionsWithLog(credentials, since, to, auth.ID)
+	} else {
+		commissions, err = adapter.GetCommissions(credentials, since, to)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("获取佣金数据失败: %w", err)
+	}
+
+	result := &SyncCommissionResponse{
+		Total: len(commissions),
+	}
+
+	// 批量更新订单佣金
+	now := time.Now()
+	for postingNumber, commData := range commissions {
+		updateResult := db.Model(&Order{}).
+			Where("platform_order_no = ? AND platform_auth_id = ?", postingNumber, authID).
+			Updates(map[string]interface{}{
+				"sale_commission":        commData.SaleCommission,
+				"accruals_for_sale":      commData.AccrualsForSale,
+				"delivery_charge":        commData.DeliveryCharge,
+				"return_delivery_charge": commData.ReturnDeliveryCharge,
+				"commission_amount":      commData.CommissionAmount,
+				"commission_currency":    commData.CommissionCurrency,
+				"commission_synced_at":   &now,
+			})
+		if updateResult.RowsAffected > 0 {
+			result.Updated++
+		}
+	}
+
+	return result, nil
+}
+
+// SaveRequestLog 保存请求日志
+func SaveRequestLog(logEntry *OrdersRequestLog) error {
+	db := database.GetDB()
+	return db.Create(logEntry).Error
 }

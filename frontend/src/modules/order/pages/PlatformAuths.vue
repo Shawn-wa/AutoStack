@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Connection } from '@element-plus/icons-vue'
+import { Plus, Refresh, Connection, Coin } from '@element-plus/icons-vue'
 import {
   getPlatforms,
   getAuths,
@@ -10,6 +10,7 @@ import {
   deleteAuth,
   testAuth,
   syncOrders,
+  syncCommission,
   type PlatformInfo,
   type PlatformAuth,
   type CreateAuthParams
@@ -54,6 +55,12 @@ const syncDialogVisible = ref(false)
 const syncAuthId = ref(0)
 const syncLoading = ref(false)
 const syncDays = ref(7)
+
+// 佣金同步对话框
+const commissionDialogVisible = ref(false)
+const commissionAuthId = ref(0)
+const commissionLoading = ref(false)
+const commissionDays = ref(30)
 
 // 获取当前选中平台的凭证字段
 const currentPlatformFields = computed(() => {
@@ -260,6 +267,32 @@ const handleSync = async () => {
   }
 }
 
+// 打开佣金同步对话框
+const handleOpenCommissionSync = (row: PlatformAuth) => {
+  commissionAuthId.value = row.id
+  commissionDays.value = 30
+  commissionDialogVisible.value = true
+}
+
+// 同步佣金
+const handleSyncCommission = async () => {
+  commissionLoading.value = true
+  try {
+    const now = new Date()
+    const since = new Date(now.getTime() - commissionDays.value * 24 * 60 * 60 * 1000)
+    const res = await syncCommission(commissionAuthId.value, {
+      since: since.toISOString(),
+      to: now.toISOString()
+    })
+    ElMessage.success(`佣金同步完成：共处理 ${res.data.total} 条交易，更新 ${res.data.updated} 个订单`)
+    commissionDialogVisible.value = false
+  } catch (error: any) {
+    console.error('同步佣金失败', error)
+  } finally {
+    commissionLoading.value = false
+  }
+}
+
 // 获取平台显示名称
 const getPlatformLabel = (name: string) => {
   const platform = platforms.value.find(p => p.name === name)
@@ -339,13 +372,16 @@ onMounted(() => {
             {{ formatDateTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="350" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" :icon="Connection" @click="handleTest(row)">
               测试
             </el-button>
             <el-button type="success" link size="small" :icon="Refresh" @click="handleOpenSync(row)">
-              同步
+              同步订单
+            </el-button>
+            <el-button type="warning" link size="small" :icon="Coin" @click="handleOpenCommissionSync(row)">
+              同步佣金
             </el-button>
             <el-button type="primary" link size="small" @click="handleEdit(row)">
               编辑
@@ -475,6 +511,41 @@ onMounted(() => {
         <el-button @click="syncDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="syncLoading" @click="handleSync">
           开始同步
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 佣金同步对话框 -->
+    <el-dialog
+      v-model="commissionDialogVisible"
+      title="同步佣金"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        title="佣金同步说明"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        将从Ozon平台获取财务交易数据，更新订单的佣金信息。
+      </el-alert>
+      <el-form label-width="100px">
+        <el-form-item label="同步范围">
+          <el-select v-model="commissionDays" style="width: 100%">
+            <el-option label="最近 7 天" :value="7" />
+            <el-option label="最近 15 天" :value="15" />
+            <el-option label="最近 30 天" :value="30" />
+            <el-option label="最近 60 天" :value="60" />
+            <el-option label="最近 90 天" :value="90" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="commissionDialogVisible = false">取消</el-button>
+        <el-button type="warning" :loading="commissionLoading" @click="handleSyncCommission">
+          开始同步佣金
         </el-button>
       </template>
     </el-dialog>

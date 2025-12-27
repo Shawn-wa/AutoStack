@@ -2,15 +2,40 @@ package platforms
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"time"
 
 	"autostack/internal/modules/order"
 )
+
+// 创建自定义HTTP客户端，用于访问外部API
+func newHTTPClient() *http.Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	return &http.Client{
+		Timeout:   60 * time.Second,
+		Transport: transport,
+	}
+}
 
 const (
 	ozonAPIBaseURL = "https://api-seller.ozon.ru"
@@ -18,8 +43,9 @@ const (
 
 // OzonCredentials Ozon凭证结构
 type OzonCredentials struct {
-	ClientID string `json:"client_id"`
-	APIKey   string `json:"api_key"`
+	ClientID           string `json:"client_id"`
+	APIKey             string `json:"api_key"`
+	SettlementCurrency string `json:"settlement_currency"` // 结算货币，默认CNY
 }
 
 // OzonAdapter Ozon平台适配器
@@ -40,6 +66,7 @@ func (a *OzonAdapter) GetCredentialFields() []order.CredentialField {
 	return []order.CredentialField{
 		{Key: "client_id", Label: "Client ID", Type: "text", Required: true},
 		{Key: "api_key", Label: "API Key", Type: "password", Required: true},
+		{Key: "settlement_currency", Label: "结算货币", Type: "text", Required: false},
 	}
 }
 
@@ -57,21 +84,28 @@ func (a *OzonAdapter) parseCredentials(credentials string) (*OzonCredentials, er
 
 // TestConnection 测试连接
 func (a *OzonAdapter) TestConnection(credentials string) error {
+	return a.TestConnectionWithLog(credentials, 0)
+}
+
+// TestConnectionWithLog 测试连接（带日志记录）
+func (a *OzonAdapter) TestConnectionWithLog(credentials string, platformAuthID uint) error {
 	creds, err := a.parseCredentials(credentials)
 	if err != nil {
 		return err
 	}
 
 	// 调用一个简单的 API 来验证凭证
-	// 使用获取卖家信息的接口
-	req, err := http.NewRequest("POST", ozonAPIBaseURL+"/v3/posting/fbs/list", bytes.NewBuffer([]byte(`{
+	requestURL := ozonAPIBaseURL + "/v3/posting/fbs/list"
+	requestBody := `{
 		"filter": {
-			"since": "`+time.Now().Add(-24*time.Hour).Format(time.RFC3339)+`",
-			"to": "`+time.Now().Format(time.RFC3339)+`"
+			"since": "` + time.Now().Add(-24*time.Hour).Format(time.RFC3339) + `",
+			"to": "` + time.Now().Format(time.RFC3339) + `"
 		},
 		"limit": 1,
 		"offset": 0
-	}`)))
+	}`
+
+	req, err := http.NewRequest("POST", requestURL, bytes.NewBuffer([]byte(requestBody)))
 	if err != nil {
 		return err
 	}
@@ -80,23 +114,55 @@ func (a *OzonAdapter) TestConnection(credentials string) error {
 	req.Header.Set("Client-Id", creds.ClientID)
 	req.Header.Set("Api-Key", creds.APIKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	startTime := time.Now()
+	client := newHTTPClient()
 	resp, err := client.Do(req)
+	duration := time.Since(startTime).Milliseconds()
+
+	// 记录请求日志
+	logEntry := &order.OrdersRequestLog{
+		PlatformAuthID: platformAuthID,
+		Platform:       order.PlatformOzon,
+		RequestType:    order.RequestTypeTestConnect,
+		RequestURL:     requestURL,
+		RequestMethod:  "POST",
+		RequestHeaders: a.maskHeaders(creds.ClientID),
+		RequestBody:    requestBody,
+		Duration:       duration,
+		CreatedAt:      time.Now(),
+	}
+
 	if err != nil {
+		logEntry.ErrorMessage = err.Error()
+		logEntry.ResponseStatus = 0
+		order.SaveRequestLog(logEntry)
 		return fmt.Errorf("连接失败: %w", err)
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+	logEntry.ResponseStatus = resp.StatusCode
+	logEntry.ResponseBody = string(body)
+
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		logEntry.ErrorMessage = "授权失败"
+		order.SaveRequestLog(logEntry)
 		return errors.New("授权失败：Client ID 或 API Key 无效")
 	}
 
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
+		logEntry.ErrorMessage = fmt.Sprintf("API请求失败: %d", resp.StatusCode)
+		order.SaveRequestLog(logEntry)
 		return fmt.Errorf("API请求失败: %d - %s", resp.StatusCode, string(body))
 	}
 
+	order.SaveRequestLog(logEntry)
 	return nil
+}
+
+// maskHeaders 脱敏请求头
+func (a *OzonAdapter) maskHeaders(clientID string) string {
+	return fmt.Sprintf(`{"Client-Id": "%s", "Api-Key": "***"}`, clientID)
 }
 
 // OzonOrderListRequest Ozon订单列表请求
@@ -190,8 +256,73 @@ type OzonFinancialProduct struct {
 	CurrencyCode string  `json:"currency_code"`
 }
 
+// OzonFinanceRequest Finance API请求
+type OzonFinanceRequest struct {
+	Filter   OzonFinanceFilter `json:"filter"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
+}
+
+// OzonFinanceFilter Finance过滤条件
+type OzonFinanceFilter struct {
+	Date            OzonDateRange `json:"date"`
+	OperationType   []string      `json:"operation_type,omitempty"`
+	PostingNumber   string        `json:"posting_number,omitempty"`
+	TransactionType string        `json:"transaction_type"`
+}
+
+// OzonDateRange 日期范围
+type OzonDateRange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// OzonFinanceResponse Finance API响应
+type OzonFinanceResponse struct {
+	Result struct {
+		Operations []OzonFinanceOperation `json:"operations"`
+		PageCount  int                    `json:"page_count"`
+		RowCount   int                    `json:"row_count"`
+	} `json:"result"`
+}
+
+// OzonFinanceOperation 财务操作记录
+type OzonFinanceOperation struct {
+	OperationID          int64                `json:"operation_id"`
+	OperationType        string               `json:"operation_type"`
+	OperationDate        string               `json:"operation_date"`
+	OperationTypeName    string               `json:"operation_type_name"`
+	SaleCommission       float64              `json:"sale_commission"`
+	AccrualsForSale      float64              `json:"accruals_for_sale"`
+	DeliveryCharge       float64              `json:"delivery_charge"`
+	ReturnDeliveryCharge float64              `json:"return_delivery_charge"`
+	Amount               float64              `json:"amount"`
+	Type                 string               `json:"type"`
+	Posting              OzonFinancePosting   `json:"posting"`
+	Services             []OzonFinanceService `json:"services"`
+}
+
+// OzonFinanceService 财务服务项
+type OzonFinanceService struct {
+	Name  string  `json:"name"`
+	Price float64 `json:"price"`
+}
+
+// OzonFinancePosting 财务关联的发货单
+type OzonFinancePosting struct {
+	PostingNumber  string `json:"posting_number"`
+	DeliverySchema string `json:"delivery_schema"`
+	OrderDate      string `json:"order_date"`
+	WarehouseID    int64  `json:"warehouse_id"`
+}
+
 // SyncOrders 同步订单
 func (a *OzonAdapter) SyncOrders(credentials string, since, to time.Time) ([]*order.Order, error) {
+	return a.SyncOrdersWithLog(credentials, since, to, 0)
+}
+
+// SyncOrdersWithLog 同步订单（带日志记录）
+func (a *OzonAdapter) SyncOrdersWithLog(credentials string, since, to time.Time, platformAuthID uint) ([]*order.Order, error) {
 	creds, err := a.parseCredentials(credentials)
 	if err != nil {
 		return nil, err
@@ -200,6 +331,7 @@ func (a *OzonAdapter) SyncOrders(credentials string, since, to time.Time) ([]*or
 	var allOrders []*order.Order
 	offset := 0
 	limit := 100
+	requestURL := ozonAPIBaseURL + "/v3/posting/fbs/list"
 
 	for {
 		reqBody := OzonOrderListRequest{
@@ -221,7 +353,7 @@ func (a *OzonAdapter) SyncOrders(credentials string, since, to time.Time) ([]*or
 			return nil, err
 		}
 
-		req, err := http.NewRequest("POST", ozonAPIBaseURL+"/v3/posting/fbs/list", bytes.NewBuffer(bodyBytes))
+		req, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(bodyBytes))
 		if err != nil {
 			return nil, err
 		}
@@ -230,34 +362,68 @@ func (a *OzonAdapter) SyncOrders(credentials string, since, to time.Time) ([]*or
 		req.Header.Set("Client-Id", creds.ClientID)
 		req.Header.Set("Api-Key", creds.APIKey)
 
-		client := &http.Client{Timeout: 60 * time.Second}
+		startTime := time.Now()
+		client := newHTTPClient()
 		resp, err := client.Do(req)
+		duration := time.Since(startTime).Milliseconds()
+
+		// 准备日志条目
+		logEntry := &order.OrdersRequestLog{
+			PlatformAuthID: platformAuthID,
+			Platform:       order.PlatformOzon,
+			RequestType:    order.RequestTypeOrderList,
+			RequestURL:     requestURL,
+			RequestMethod:  "POST",
+			RequestHeaders: a.maskHeaders(creds.ClientID),
+			RequestBody:    string(bodyBytes),
+			Duration:       duration,
+			CreatedAt:      time.Now(),
+		}
+
 		if err != nil {
+			logEntry.ErrorMessage = err.Error()
+			logEntry.ResponseStatus = 0
+			order.SaveRequestLog(logEntry)
 			return nil, fmt.Errorf("请求失败: %w", err)
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
+		logEntry.ResponseStatus = resp.StatusCode
+		logEntry.ResponseBody = string(body)
+
 		if err != nil {
+			logEntry.ErrorMessage = err.Error()
+			order.SaveRequestLog(logEntry)
 			return nil, fmt.Errorf("读取响应失败: %w", err)
 		}
 
 		if resp.StatusCode != 200 {
+			logEntry.ErrorMessage = fmt.Sprintf("API请求失败: %d", resp.StatusCode)
+			order.SaveRequestLog(logEntry)
 			return nil, fmt.Errorf("API请求失败: %d - %s", resp.StatusCode, string(body))
 		}
+
+		// 保存成功的请求日志
+		order.SaveRequestLog(logEntry)
 
 		var listResp OzonOrderListResponse
 		if err := json.Unmarshal(body, &listResp); err != nil {
 			return nil, fmt.Errorf("解析响应失败: %w", err)
 		}
 
+		// 调试日志
+		log.Printf("[OZON] 同步订单: offset=%d, 获取到 %d 条订单", offset, len(listResp.Result.Postings))
+
 		if len(listResp.Result.Postings) == 0 {
 			break
 		}
 
 		for _, posting := range listResp.Result.Postings {
-			ord := a.convertToOrder(posting, string(body))
+			// 只序列化当前订单的数据
+			postingData, _ := json.Marshal(posting)
+			ord := a.convertToOrder(posting, string(postingData))
 			allOrders = append(allOrders, ord)
 		}
 
@@ -349,6 +515,142 @@ func (a *OzonAdapter) mapStatus(platformStatus string) string {
 		return status
 	}
 	return order.OrderStatusPending
+}
+
+// GetCommissions 获取佣金信息
+func (a *OzonAdapter) GetCommissions(credentials string, since, to time.Time) (map[string]*order.CommissionData, error) {
+	return a.GetCommissionsWithLog(credentials, since, to, 0)
+}
+
+// GetCommissionsWithLog 获取佣金信息（带日志记录）
+func (a *OzonAdapter) GetCommissionsWithLog(credentials string, since, to time.Time, platformAuthID uint) (map[string]*order.CommissionData, error) {
+	creds, err := a.parseCredentials(credentials)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取结算货币，默认RUB（Ozon财务数据以卢布为单位）
+	settlementCurrency := creds.SettlementCurrency
+	if settlementCurrency == "" {
+		settlementCurrency = "RUB"
+	}
+
+	result := make(map[string]*order.CommissionData)
+	page := 1
+	pageSize := 1000
+	requestURL := ozonAPIBaseURL + "/v3/finance/transaction/list"
+
+	for {
+		reqBody := OzonFinanceRequest{
+			Filter: OzonFinanceFilter{
+				Date: OzonDateRange{
+					From: since.Format(time.RFC3339),
+					To:   to.Format(time.RFC3339),
+				},
+				TransactionType: "all",
+			},
+			Page:     page,
+			PageSize: pageSize,
+		}
+
+		bodyBytes, err := json.Marshal(reqBody)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(bodyBytes))
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Client-Id", creds.ClientID)
+		req.Header.Set("Api-Key", creds.APIKey)
+
+		startTime := time.Now()
+		client := newHTTPClient()
+		resp, err := client.Do(req)
+		duration := time.Since(startTime).Milliseconds()
+
+		// 准备日志条目
+		logEntry := &order.OrdersRequestLog{
+			PlatformAuthID: platformAuthID,
+			Platform:       order.PlatformOzon,
+			RequestType:    order.RequestTypeFinance,
+			RequestURL:     requestURL,
+			RequestMethod:  "POST",
+			RequestHeaders: a.maskHeaders(creds.ClientID),
+			RequestBody:    string(bodyBytes),
+			Duration:       duration,
+			CreatedAt:      time.Now(),
+		}
+
+		if err != nil {
+			logEntry.ErrorMessage = err.Error()
+			logEntry.ResponseStatus = 0
+			order.SaveRequestLog(logEntry)
+			return nil, fmt.Errorf("请求失败: %w", err)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		logEntry.ResponseStatus = resp.StatusCode
+		logEntry.ResponseBody = string(body)
+
+		if err != nil {
+			logEntry.ErrorMessage = err.Error()
+			order.SaveRequestLog(logEntry)
+			return nil, fmt.Errorf("读取响应失败: %w", err)
+		}
+
+		if resp.StatusCode != 200 {
+			logEntry.ErrorMessage = fmt.Sprintf("API请求失败: %d", resp.StatusCode)
+			order.SaveRequestLog(logEntry)
+			return nil, fmt.Errorf("API请求失败: %d - %s", resp.StatusCode, string(body))
+		}
+
+		// 保存成功的请求日志
+		order.SaveRequestLog(logEntry)
+
+		var financeResp OzonFinanceResponse
+		if err := json.Unmarshal(body, &financeResp); err != nil {
+			return nil, fmt.Errorf("解析响应失败: %w", err)
+		}
+
+		if len(financeResp.Result.Operations) == 0 {
+			break
+		}
+
+		// 按 posting_number 聚合佣金数据
+		for _, op := range financeResp.Result.Operations {
+			postingNumber := op.Posting.PostingNumber
+			if postingNumber == "" {
+				continue
+			}
+
+			if _, exists := result[postingNumber]; !exists {
+				result[postingNumber] = &order.CommissionData{
+					CommissionCurrency: settlementCurrency,
+				}
+			}
+
+			// 累加各项费用
+			result[postingNumber].SaleCommission += op.SaleCommission
+			result[postingNumber].AccrualsForSale += op.AccrualsForSale
+			result[postingNumber].DeliveryCharge += op.DeliveryCharge
+			result[postingNumber].ReturnDeliveryCharge += op.ReturnDeliveryCharge
+			result[postingNumber].CommissionAmount += op.Amount
+		}
+
+		// 检查是否还有更多页
+		if page >= financeResp.Result.PageCount {
+			break
+		}
+		page++
+	}
+
+	return result, nil
 }
 
 func init() {

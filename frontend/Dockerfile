@@ -3,6 +3,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# 设置Alpine国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+# 设置npm国内镜像源
+RUN npm config set registry https://registry.npmmirror.com
+
 # 复制 package.json
 COPY package*.json ./
 
@@ -18,6 +24,9 @@ RUN npm run build
 # 运行阶段
 FROM nginx:alpine
 
+# 设置Alpine国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
 # 复制 nginx 配置
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
@@ -28,4 +37,3 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
-

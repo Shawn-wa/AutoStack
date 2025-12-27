@@ -90,6 +90,14 @@ export interface Order {
   address: string
   order_time: string | null
   ship_time: string | null
+  // 佣金信息
+  sale_commission: number
+  accruals_for_sale: number
+  delivery_charge: number
+  return_delivery_charge: number
+  commission_amount: number
+  commission_currency: string
+  commission_synced_at: string | null
   items: OrderItem[]
   created_at: string
   updated_at: string
@@ -160,4 +168,26 @@ export function getOrders(params: OrderListParams = {}) {
 // 获取订单详情
 export function getOrder(id: number) {
   return request.get<any, { data: Order }>(`/order/orders/${id}`)
+}
+
+// 同步佣金参数
+export interface SyncCommissionParams {
+  since?: string
+  to?: string
+}
+
+// 同步佣金结果
+export interface SyncCommissionResult {
+  total: number
+  updated: number
+}
+
+// 同步佣金
+export function syncCommission(id: number, data?: SyncCommissionParams) {
+  return request.post<any, { data: SyncCommissionResult }>(`/order/auths/${id}/sync-commission`, data || {})
+}
+
+// 同步单个订单的佣金
+export function syncOrderCommission(orderId: number) {
+  return request.post<any, { data: Order }>(`/order/orders/${orderId}/sync-commission`)
 }

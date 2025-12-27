@@ -271,25 +271,32 @@ func ListOrders(c *gin.Context) {
 		}
 
 		list[i] = OrderResponse{
-			ID:              ord.ID,
-			Platform:        ord.Platform,
-			PlatformOrderNo: ord.PlatformOrderNo,
-			Status:          ord.Status,
-			PlatformStatus:  ord.PlatformStatus,
-			TotalAmount:     ord.TotalAmount,
-			Currency:        ord.Currency,
-			RecipientName:   ord.RecipientName,
-			RecipientPhone:  ord.RecipientPhone,
-			Country:         ord.Country,
-			Province:        ord.Province,
-			City:            ord.City,
-			ZipCode:         ord.ZipCode,
-			Address:         ord.Address,
-			OrderTime:       ord.OrderTime,
-			ShipTime:        ord.ShipTime,
-			Items:           items,
-			CreatedAt:       ord.CreatedAt.Format("2006-01-02 15:04:05"),
-			UpdatedAt:       ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+			ID:                   ord.ID,
+			Platform:             ord.Platform,
+			PlatformOrderNo:      ord.PlatformOrderNo,
+			Status:               ord.Status,
+			PlatformStatus:       ord.PlatformStatus,
+			TotalAmount:          ord.TotalAmount,
+			Currency:             ord.Currency,
+			RecipientName:        ord.RecipientName,
+			RecipientPhone:       ord.RecipientPhone,
+			Country:              ord.Country,
+			Province:             ord.Province,
+			City:                 ord.City,
+			ZipCode:              ord.ZipCode,
+			Address:              ord.Address,
+			OrderTime:            ord.OrderTime,
+			ShipTime:             ord.ShipTime,
+			SaleCommission:       ord.SaleCommission,
+			AccrualsForSale:      ord.AccrualsForSale,
+			DeliveryCharge:       ord.DeliveryCharge,
+			ReturnDeliveryCharge: ord.ReturnDeliveryCharge,
+			CommissionAmount:     ord.CommissionAmount,
+			CommissionCurrency:   ord.CommissionCurrency,
+			CommissionSyncedAt:   ord.CommissionSyncedAt,
+			Items:                items,
+			CreatedAt:            ord.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:            ord.UpdatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
@@ -348,25 +355,160 @@ func GetOrder(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "获取成功", OrderResponse{
-		ID:              ord.ID,
-		Platform:        ord.Platform,
-		PlatformOrderNo: ord.PlatformOrderNo,
-		Status:          ord.Status,
-		PlatformStatus:  ord.PlatformStatus,
-		TotalAmount:     ord.TotalAmount,
-		Currency:        ord.Currency,
-		RecipientName:   ord.RecipientName,
-		RecipientPhone:  ord.RecipientPhone,
-		Country:         ord.Country,
-		Province:        ord.Province,
-		City:            ord.City,
-		ZipCode:         ord.ZipCode,
-		Address:         ord.Address,
-		OrderTime:       ord.OrderTime,
-		ShipTime:        ord.ShipTime,
-		Items:           items,
-		CreatedAt:       ord.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt:       ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:                   ord.ID,
+		Platform:             ord.Platform,
+		PlatformOrderNo:      ord.PlatformOrderNo,
+		Status:               ord.Status,
+		PlatformStatus:       ord.PlatformStatus,
+		TotalAmount:          ord.TotalAmount,
+		Currency:             ord.Currency,
+		RecipientName:        ord.RecipientName,
+		RecipientPhone:       ord.RecipientPhone,
+		Country:              ord.Country,
+		Province:             ord.Province,
+		City:                 ord.City,
+		ZipCode:              ord.ZipCode,
+		Address:              ord.Address,
+		OrderTime:            ord.OrderTime,
+		ShipTime:             ord.ShipTime,
+		SaleCommission:       ord.SaleCommission,
+		AccrualsForSale:      ord.AccrualsForSale,
+		DeliveryCharge:       ord.DeliveryCharge,
+		ReturnDeliveryCharge: ord.ReturnDeliveryCharge,
+		CommissionAmount:     ord.CommissionAmount,
+		CommissionCurrency:   ord.CommissionCurrency,
+		CommissionSyncedAt:   ord.CommissionSyncedAt,
+		Items:                items,
+		CreatedAt:            ord.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:            ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// SyncCommission 同步佣金
+func SyncCommission(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	var req SyncCommissionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 默认同步最近30天
+		req.Since = time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
+		req.To = time.Now().Format(time.RFC3339)
+	}
+
+	since, err := time.Parse(time.RFC3339, req.Since)
+	if err != nil {
+		since = time.Now().AddDate(0, 0, -30)
+	}
+
+	to, err := time.Parse(time.RFC3339, req.To)
+	if err != nil {
+		to = time.Now()
+	}
+
+	result, err := orderService.SyncCommission(userID, uint(id), since, to)
+	if err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		if err == ErrPlatformNotFound {
+			response.Error(c, http.StatusBadRequest, "不支持的平台")
+			return
+		}
+		if err == ErrInvalidCredentials {
+			response.Error(c, http.StatusBadRequest, "凭证无效，请重新配置")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "同步佣金失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "同步成功", result)
+}
+
+// SyncOrderCommission 同步单个订单的佣金
+func SyncOrderCommission(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的订单ID")
+		return
+	}
+
+	ord, err := orderService.SyncOrderCommission(userID, uint(id))
+	if err != nil {
+		if err == ErrOrderNotFound {
+			response.Error(c, http.StatusNotFound, "订单不存在")
+			return
+		}
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		if err == ErrPlatformNotFound {
+			response.Error(c, http.StatusBadRequest, "不支持的平台")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "同步佣金失败: "+err.Error())
+		return
+	}
+
+	// 转换为响应格式
+	items := make([]OrderItemResponse, len(ord.Items))
+	for i, item := range ord.Items {
+		items[i] = OrderItemResponse{
+			ID:          item.ID,
+			PlatformSku: item.PlatformSku,
+			Sku:         item.Sku,
+			Name:        item.Name,
+			Quantity:    item.Quantity,
+			Price:       item.Price,
+			Currency:    item.Currency,
+		}
+	}
+
+	response.Success(c, http.StatusOK, "同步成功", OrderResponse{
+		ID:                   ord.ID,
+		Platform:             ord.Platform,
+		PlatformOrderNo:      ord.PlatformOrderNo,
+		Status:               ord.Status,
+		PlatformStatus:       ord.PlatformStatus,
+		TotalAmount:          ord.TotalAmount,
+		Currency:             ord.Currency,
+		RecipientName:        ord.RecipientName,
+		RecipientPhone:       ord.RecipientPhone,
+		Country:              ord.Country,
+		Province:             ord.Province,
+		City:                 ord.City,
+		ZipCode:              ord.ZipCode,
+		Address:              ord.Address,
+		OrderTime:            ord.OrderTime,
+		ShipTime:             ord.ShipTime,
+		SaleCommission:       ord.SaleCommission,
+		AccrualsForSale:      ord.AccrualsForSale,
+		DeliveryCharge:       ord.DeliveryCharge,
+		ReturnDeliveryCharge: ord.ReturnDeliveryCharge,
+		CommissionAmount:     ord.CommissionAmount,
+		CommissionCurrency:   ord.CommissionCurrency,
+		CommissionSyncedAt:   ord.CommissionSyncedAt,
+		Items:                items,
+		CreatedAt:            ord.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:            ord.UpdatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 

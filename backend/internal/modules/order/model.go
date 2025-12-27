@@ -54,28 +54,36 @@ func (PlatformAuth) TableName() string {
 
 // Order 订单模型
 type Order struct {
-	ID              uint        `gorm:"primaryKey" json:"id"`
-	UserID          uint        `gorm:"index;not null" json:"user_id"`
-	PlatformAuthID  uint        `gorm:"index;not null" json:"platform_auth_id"`
-	Platform        string      `gorm:"size:50;not null;index" json:"platform"`
-	PlatformOrderNo string      `gorm:"size:100;not null;uniqueIndex" json:"platform_order_no"`
-	Status          string      `gorm:"size:50;not null;index" json:"status"`
-	PlatformStatus  string      `gorm:"size:50" json:"platform_status"`
-	TotalAmount     float64     `gorm:"type:decimal(10,2)" json:"total_amount"`
-	Currency        string      `gorm:"size:10" json:"currency"`
-	RecipientName   string      `gorm:"size:100" json:"recipient_name"`
-	RecipientPhone  string      `gorm:"size:50" json:"recipient_phone"`
-	Country         string      `gorm:"size:100" json:"country"`
-	Province        string      `gorm:"size:100" json:"province"`
-	City            string      `gorm:"size:100" json:"city"`
-	ZipCode         string      `gorm:"size:20" json:"zip_code"`
-	Address         string      `gorm:"size:500" json:"address"`
-	OrderTime       *time.Time  `json:"order_time"`
-	ShipTime        *time.Time  `json:"ship_time"`
-	RawData         string      `gorm:"type:text" json:"-"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
-	Items           []OrderItem `gorm:"foreignKey:OrderID" json:"items,omitempty"`
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	UserID          uint       `gorm:"index;not null" json:"user_id"`
+	PlatformAuthID  uint       `gorm:"index;not null" json:"platform_auth_id"`
+	Platform        string     `gorm:"size:50;not null;index" json:"platform"`
+	PlatformOrderNo string     `gorm:"size:100;not null;uniqueIndex" json:"platform_order_no"`
+	Status          string     `gorm:"size:50;not null;index" json:"status"`
+	PlatformStatus  string     `gorm:"size:50" json:"platform_status"`
+	TotalAmount     float64    `gorm:"type:decimal(10,2)" json:"total_amount"`
+	Currency        string     `gorm:"size:10" json:"currency"`
+	RecipientName   string     `gorm:"size:100" json:"recipient_name"`
+	RecipientPhone  string     `gorm:"size:50" json:"recipient_phone"`
+	Country         string     `gorm:"size:100" json:"country"`
+	Province        string     `gorm:"size:100" json:"province"`
+	City            string     `gorm:"size:100" json:"city"`
+	ZipCode         string     `gorm:"size:20" json:"zip_code"`
+	Address         string     `gorm:"size:500" json:"address"`
+	OrderTime       *time.Time `json:"order_time"`
+	ShipTime        *time.Time `json:"ship_time"`
+	// 佣金相关字段
+	SaleCommission       float64     `gorm:"type:decimal(10,2);default:0" json:"sale_commission"`
+	AccrualsForSale      float64     `gorm:"type:decimal(10,2);default:0" json:"accruals_for_sale"`
+	DeliveryCharge       float64     `gorm:"type:decimal(10,2);default:0" json:"delivery_charge"`
+	ReturnDeliveryCharge float64     `gorm:"type:decimal(10,2);default:0" json:"return_delivery_charge"`
+	CommissionAmount     float64     `gorm:"type:decimal(10,2);default:0" json:"commission_amount"`
+	CommissionCurrency   string      `gorm:"size:10" json:"commission_currency"`
+	CommissionSyncedAt   *time.Time  `json:"commission_synced_at"`
+	RawData              string      `gorm:"type:longtext" json:"-"`
+	CreatedAt            time.Time   `json:"created_at"`
+	UpdatedAt            time.Time   `json:"updated_at"`
+	Items                []OrderItem `gorm:"foreignKey:OrderID" json:"items,omitempty"`
 }
 
 // TableName 指定表名
@@ -98,4 +106,43 @@ type OrderItem struct {
 // TableName 指定表名
 func (OrderItem) TableName() string {
 	return "order_items"
+}
+
+// CommissionData 佣金数据
+type CommissionData struct {
+	SaleCommission       float64
+	AccrualsForSale      float64
+	DeliveryCharge       float64
+	ReturnDeliveryCharge float64
+	CommissionAmount     float64
+	CommissionCurrency   string // 佣金货币（结算货币）
+}
+
+// 请求日志接口类型常量
+const (
+	RequestTypeOrderList   = "OrderList"   // 订单列表
+	RequestTypeFinance     = "Finance"     // 财务/佣金
+	RequestTypeTestConnect = "TestConnect" // 测试连接
+)
+
+// OrdersRequestLog 订单请求日志模型
+type OrdersRequestLog struct {
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	PlatformAuthID uint      `gorm:"index;not null" json:"platform_auth_id"`
+	Platform       string    `gorm:"size:50;not null;index" json:"platform"`
+	RequestType    string    `gorm:"size:50;not null;index" json:"request_type"` // OrderList, Finance, TestConnect
+	RequestURL     string    `gorm:"size:500;not null" json:"request_url"`
+	RequestMethod  string    `gorm:"size:10;not null" json:"request_method"` // GET, POST
+	RequestHeaders string    `gorm:"type:text" json:"-"`                     // 请求头（脱敏后）
+	RequestBody    string    `gorm:"type:longtext" json:"request_body"`      // 请求入参
+	ResponseStatus int       `gorm:"not null" json:"response_status"`        // HTTP状态码
+	ResponseBody   string    `gorm:"type:longtext" json:"response_body"`     // 响应出参
+	Duration       int64     `gorm:"not null" json:"duration"`               // 请求耗时(毫秒)
+	ErrorMessage   string    `gorm:"size:1000" json:"error_message"`         // 错误信息
+	CreatedAt      time.Time `gorm:"index" json:"created_at"`
+}
+
+// TableName 指定表名
+func (OrdersRequestLog) TableName() string {
+	return "orders_request_log"
 }

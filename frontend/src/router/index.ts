@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Orders',
         component: () => import('@/modules/order/pages/Orders.vue'),
         meta: { title: '订单列表' }
+      },
+      {
+        path: 'order/orders/:id',
+        name: 'OrderDetail',
+        component: () => import('@/modules/order/pages/OrderDetail.vue'),
+        meta: { title: '订单详情' }
       }
     ]
   },

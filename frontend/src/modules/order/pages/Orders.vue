@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Search, View } from '@element-plus/icons-vue'
 import {
   getOrders,
-  getOrder,
   getPlatforms,
   getAuths,
   type Order,
@@ -11,6 +11,8 @@ import {
   type PlatformAuth
 } from '@/modules/order/api'
 import { formatDateTime } from '@/utils/format'
+
+const router = useRouter()
 
 const loading = ref(false)
 const tableData = ref<Order[]>([])
@@ -33,10 +35,6 @@ const platforms = ref<PlatformInfo[]>([])
 // 授权列表
 const auths = ref<PlatformAuth[]>([])
 
-// 详情抽屉
-const detailDrawerVisible = ref(false)
-const detailLoading = ref(false)
-const currentOrder = ref<Order | null>(null)
 
 // 状态选项
 const statusOptions = [
@@ -125,17 +123,8 @@ const handleSizeChange = (size: number) => {
 }
 
 // 查看详情
-const handleViewDetail = async (row: Order) => {
-  detailDrawerVisible.value = true
-  detailLoading.value = true
-  try {
-    const res = await getOrder(row.id)
-    currentOrder.value = res.data
-  } catch (error) {
-    console.error('获取订单详情失败', error)
-  } finally {
-    detailLoading.value = false
-  }
+const handleViewDetail = (row: Order) => {
+  router.push({ name: 'OrderDetail', params: { id: row.id } })
 }
 
 // 获取平台显示名称
@@ -274,6 +263,14 @@ onMounted(() => {
             {{ row.currency }} {{ row.total_amount?.toFixed(2) }}
           </template>
         </el-table-column>
+        <el-table-column prop="sale_commission" label="佣金" width="120">
+          <template #default="{ row }">
+            <span v-if="row.sale_commission" style="color: var(--el-color-warning)">
+              {{ row.commission_currency || row.currency }} {{ row.sale_commission?.toFixed(2) }}
+            </span>
+            <span v-else style="color: var(--text-secondary)">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="recipient_name" label="收件人" width="120" />
         <el-table-column prop="country" label="国家/地区" width="120" />
         <el-table-column label="商品数" width="80">
@@ -308,63 +305,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 详情抽屉 -->
-    <el-drawer
-      v-model="detailDrawerVisible"
-      title="订单详情"
-      size="500px"
-    >
-      <div v-loading="detailLoading">
-        <template v-if="currentOrder">
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="订单号">{{ currentOrder.platform_order_no }}</el-descriptions-item>
-            <el-descriptions-item label="平台">
-              <el-tag type="primary" size="small">{{ getPlatformLabel(currentOrder.platform) }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="getStatusTagType(currentOrder.status)" size="small">
-                {{ getStatusText(currentOrder.status) }}
-              </el-tag>
-              <span style="margin-left: 8px; color: var(--text-secondary); font-size: 12px">
-                ({{ currentOrder.platform_status }})
-              </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="订单金额">
-              {{ currentOrder.currency }} {{ currentOrder.total_amount?.toFixed(2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="下单时间">
-              {{ currentOrder.order_time ? formatDateTime(currentOrder.order_time) : '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="发货时间">
-              {{ currentOrder.ship_time ? formatDateTime(currentOrder.ship_time) : '-' }}
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <el-divider>收件人信息</el-divider>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="收件人">{{ currentOrder.recipient_name }}</el-descriptions-item>
-            <el-descriptions-item label="电话">{{ currentOrder.recipient_phone || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="国家">{{ currentOrder.country }}</el-descriptions-item>
-            <el-descriptions-item label="省/州">{{ currentOrder.province || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="城市">{{ currentOrder.city || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="邮编">{{ currentOrder.zip_code || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="详细地址">{{ currentOrder.address || '-' }}</el-descriptions-item>
-          </el-descriptions>
-
-          <el-divider>商品信息</el-divider>
-          <el-table :data="currentOrder.items" border size="small">
-            <el-table-column prop="name" label="商品名称" min-width="150" show-overflow-tooltip />
-            <el-table-column prop="platform_sku" label="SKU" width="120" />
-            <el-table-column prop="quantity" label="数量" width="60" />
-            <el-table-column label="单价" width="100">
-              <template #default="{ row }">
-                {{ row.currency }} {{ row.price?.toFixed(2) }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </template>
-      </div>
-    </el-drawer>
   </div>
 </template>
 

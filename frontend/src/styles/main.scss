@@ -188,7 +188,7 @@ html.dark {
 // =============================================
 // Element Plus 组件样式增强
 // =============================================
-.el-button--primary {
+.el-button--primary:not(.is-link) {
   background: linear-gradient(135deg, var(--el-color-primary), var(--el-color-primary-dark-2)) !important;
   border: none !important;
   box-shadow: 0 2px 12px rgba(64, 158, 255, 0.3);
@@ -200,7 +200,15 @@ html.dark {
   }
 }
 
-[data-theme="dark"] .el-button--primary {
+// Link 类型按钮样式修复
+.el-button.is-link {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 4px 8px;
+}
+
+[data-theme="dark"] .el-button--primary:not(.is-link) {
   box-shadow: 0 2px 12px rgba(0, 212, 255, 0.3);
   
   &:hover,

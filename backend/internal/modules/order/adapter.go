@@ -16,6 +16,19 @@ type PlatformAdapter interface {
 	TestConnection(credentials string) error
 	// SyncOrders 同步订单
 	SyncOrders(credentials string, since, to time.Time) ([]*Order, error)
+	// GetCommissions 获取佣金信息
+	GetCommissions(credentials string, since, to time.Time) (map[string]*CommissionData, error)
+}
+
+// PlatformAdapterWithLog 带日志记录的平台适配器接口（可选实现）
+type PlatformAdapterWithLog interface {
+	PlatformAdapter
+	// TestConnectionWithLog 测试连接（带日志记录）
+	TestConnectionWithLog(credentials string, platformAuthID uint) error
+	// SyncOrdersWithLog 同步订单（带日志记录）
+	SyncOrdersWithLog(credentials string, since, to time.Time, platformAuthID uint) ([]*Order, error)
+	// GetCommissionsWithLog 获取佣金信息（带日志记录）
+	GetCommissionsWithLog(credentials string, since, to time.Time, platformAuthID uint) (map[string]*CommissionData, error)
 }
 
 // 注册的适配器
