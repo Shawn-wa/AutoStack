@@ -51,6 +51,7 @@ const editForm = ref<{
   status: 1
 })
 const editLoading = ref(false)
+const editMaskedCredentials = ref<Record<string, string>>({})
 
 // 同步对话框
 const syncDialogVisible = ref(false)
@@ -194,7 +195,9 @@ const handleEdit = (row: PlatformAuth) => {
     credentials: {},
     status: row.status
   }
-  // 初始化凭证字段（编辑时不显示原有值）
+  // 保存脱敏凭证用于 placeholder 显示
+  editMaskedCredentials.value = row.masked_credentials || {}
+  // 初始化凭证字段为空（只有用户填写时才更新）
   const platform = platforms.value.find(p => p.name === row.platform)
   if (platform) {
     platform.fields.forEach(field => {
@@ -514,7 +517,7 @@ onMounted(() => {
           <el-input
             v-model="editForm.credentials[field.key]"
             :type="field.type === 'password' ? 'password' : 'text'"
-            :placeholder="`留空则不更新`"
+            :placeholder="editMaskedCredentials[field.key] || '留空则不更新'"
             :show-password="field.type === 'password'"
             :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
           />

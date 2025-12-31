@@ -33,13 +33,14 @@ type UpdateAuthRequest struct {
 
 // AuthResponse 授权响应
 type AuthResponse struct {
-	ID         uint       `json:"id"`
-	Platform   string     `json:"platform"`
-	ShopName   string     `json:"shop_name"`
-	Status     int        `json:"status"`
-	LastSyncAt *time.Time `json:"last_sync_at"`
-	CreatedAt  string     `json:"created_at"`
-	UpdatedAt  string     `json:"updated_at"`
+	ID                uint              `json:"id"`
+	Platform          string            `json:"platform"`
+	ShopName          string            `json:"shop_name"`
+	Status            int               `json:"status"`
+	MaskedCredentials map[string]string `json:"masked_credentials,omitempty"`
+	LastSyncAt        *time.Time        `json:"last_sync_at"`
+	CreatedAt         string            `json:"created_at"`
+	UpdatedAt         string            `json:"updated_at"`
 }
 
 // AuthListResponse 授权列表响应

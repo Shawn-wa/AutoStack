@@ -256,42 +256,42 @@ onMounted(() => {
           </div>
           
           <el-table :data="[order]" border class="commission-table" :cell-style="{ whiteSpace: 'nowrap' }" :header-cell-style="{ whiteSpace: 'nowrap' }">
-            <el-table-column label="销售收入" align="right" min-width="140">
+            <el-table-column label="销售收入" align="right" min-width="80">
               <template #default>
                 <span class="fee-positive">+{{ Math.abs(order.accruals_for_sale || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="销售佣金" align="right" min-width="140">
+            <el-table-column label="销售佣金" align="right" min-width="80">
               <template #default>
                 <span class="fee-negative">{{ (order.sale_commission || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="加工配送费" align="right" min-width="140">
+            <el-table-column label="加工配送费" align="right" min-width="80">
               <template #default>
                 <span class="fee-negative">{{ (order.processing_and_delivery || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="服务费" align="right" min-width="130">
+            <el-table-column label="服务费" align="right" min-width="80">
               <template #default>
                 <span class="fee-negative">{{ (order.services_amount || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="退款取消" align="right" min-width="130">
+            <el-table-column label="退款取消" align="right" min-width="80">
               <template #default>
                 <span class="fee-negative">{{ (order.refunds_and_cancellations || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="平台补偿" align="right" min-width="140">
+            <el-table-column label="平台补偿" align="right" min-width="80">
               <template #default>
                 <span class="fee-positive">+{{ Math.abs(order.compensation_amount || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="其他" align="right" min-width="120">
+            <el-table-column label="其他" align="right" min-width="80">
               <template #default>
                 <span>{{ (order.others_amount || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="订单利润额" align="right" min-width="150">
+            <el-table-column label="订单利润额" align="right" min-width="80">
               <template #default>
                 <span class="fee-profit" :class="profitAmount >= 0 ? 'positive' : 'negative'">
                   {{ profitAmount.toFixed(2) }}&nbsp;{{ commissionCurrency }}
@@ -474,7 +474,7 @@ onMounted(() => {
 
 .commission-table {
   margin-top: 8px;
-  width: fit-content;
+  width: auto;
   max-width: 100%;
 
   :deep(.el-table__header th) {

@@ -21,6 +21,7 @@ export interface PlatformAuth {
   platform: string
   shop_name: string
   status: number
+  masked_credentials?: Record<string, string>
   last_sync_at: string | null
   created_at: string
   updated_at: string

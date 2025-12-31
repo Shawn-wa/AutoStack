@@ -43,6 +43,8 @@ services:
       - DATABASE_DSN=root:As2024#xK9mPv7Rn@tcp(mysql:3306)/autostack?charset=utf8mb4&parseTime=True&loc=Local
       - JWT_SECRET=autostack-jwt-secret-Kx8Pm2Rv
       - CRYPTO_SECRET_KEY=kGi9gkEYeaK5uSyI73YOCcy4Py+eaOty
+    volumes:
+      - ./backend/bin/autostack:/app/autostack
     depends_on:
       mysql:
         condition: service_healthy
@@ -63,6 +65,8 @@ services:
     container_name: autostack-frontend
     ports:
       - "3000:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html
     depends_on:
       - backend
     networks:

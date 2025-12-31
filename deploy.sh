@@ -24,21 +24,16 @@ docker-compose up -d mysql
 echo "⏳ 等待MySQL就绪..."
 sleep 10
 
-# 4. 启动后端和前端容器（使用旧镜像）
+# 4. 启动后端和前端容器（使用volume映射，自动加载最新构建）
 echo "🔄 启动服务容器..."
 docker-compose up -d backend frontend
 
-# 5. 复制最新的后端代码到容器
-echo "📤 更新后端代码..."
-docker cp backend/bin/autostack autostack-backend:/app/autostack
-
-# 6. 复制最新的前端代码到容器
-echo "📤 更新前端代码..."
-docker cp frontend/dist/. autostack-frontend:/usr/share/nginx/html/
-
-# 7. 重启服务
-echo "🔄 重启服务..."
+# 5. 重启后端服务加载新二进制
+echo "🔄 重启后端..."
 docker restart autostack-backend
+
+# 6. 重载nginx配置
+echo "🔄 重载前端..."
 docker exec autostack-frontend nginx -s reload
 
 echo ""

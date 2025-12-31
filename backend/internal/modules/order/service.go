@@ -102,6 +102,37 @@ func (s *Service) ListAuths(userID uint, page, pageSize int) ([]PlatformAuth, in
 	return auths, total, nil
 }
 
+// maskValue 脱敏单个值，显示最后4位
+func maskValue(value string) string {
+	if len(value) <= 4 {
+		return "****"
+	}
+	return "****" + value[len(value)-4:]
+}
+
+// GetMaskedCredentials 获取脱敏后的凭证
+func (s *Service) GetMaskedCredentials(auth *PlatformAuth) map[string]string {
+	result := make(map[string]string)
+
+	// 解密凭证
+	decrypted, err := Decrypt(auth.Credentials)
+	if err != nil {
+		return result
+	}
+
+	var credentials map[string]string
+	if err := json.Unmarshal([]byte(decrypted), &credentials); err != nil {
+		return result
+	}
+
+	// 脱敏处理
+	for key, value := range credentials {
+		result[key] = maskValue(value)
+	}
+
+	return result
+}
+
 // UpdateAuth 更新授权
 func (s *Service) UpdateAuth(id uint, userID uint, req *UpdateAuthRequest) (*PlatformAuth, error) {
 	db := database.GetDB()

@@ -45,13 +45,14 @@ func ListAuths(c *gin.Context) {
 	list := make([]AuthResponse, len(auths))
 	for i, auth := range auths {
 		list[i] = AuthResponse{
-			ID:         auth.ID,
-			Platform:   auth.Platform,
-			ShopName:   auth.ShopName,
-			Status:     auth.Status,
-			LastSyncAt: auth.LastSyncAt,
-			CreatedAt:  auth.CreatedAt.Format("2006-01-02 15:04:05"),
-			UpdatedAt:  auth.UpdatedAt.Format("2006-01-02 15:04:05"),
+			ID:                auth.ID,
+			Platform:          auth.Platform,
+			ShopName:          auth.ShopName,
+			Status:            auth.Status,
+			MaskedCredentials: orderService.GetMaskedCredentials(&auth),
+			LastSyncAt:        auth.LastSyncAt,
+			CreatedAt:         auth.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:         auth.UpdatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
