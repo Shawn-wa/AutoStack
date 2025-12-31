@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Connection, Coin } from '@element-plus/icons-vue'
 import {
@@ -28,6 +28,8 @@ const platforms = ref<PlatformInfo[]>([])
 
 // 创建对话框
 const createDialogVisible = ref(false)
+const createFormId = ref('')  // 用于生成唯一的 name 属性，防止浏览器自动填充
+const createFormReadonly = ref(true)  // 初始为只读，防止浏览器自动填充
 const createForm = ref<CreateAuthParams>({
   platform: '',
   shop_name: '',
@@ -113,8 +115,8 @@ const handleSizeChange = (size: number) => {
   fetchAuths()
 }
 
-// 打开创建对话框
-const handleCreate = () => {
+// 重置创建表单
+const resetCreateForm = () => {
   createForm.value = {
     platform: platforms.value[0]?.name || '',
     shop_name: '',
@@ -126,7 +128,26 @@ const handleCreate = () => {
       createForm.value.credentials[field.key] = ''
     })
   }
+}
+
+// 生成唯一 ID
+const generateUniqueId = () => {
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+}
+
+// 打开创建对话框
+const handleCreate = () => {
+  createFormId.value = generateUniqueId()
+  createFormReadonly.value = true  // 初始只读，防止自动填充
+  resetCreateForm()
   createDialogVisible.value = true
+}
+
+// 创建对话框完全打开后的回调（动画完成后，浏览器自动填充已执行）
+const onCreateDialogOpened = () => {
+  // 此时浏览器自动填充已经完成，直接清空表单
+  resetCreateForm()
+  createFormReadonly.value = false
 }
 
 // 平台变化时更新凭证字段
@@ -412,8 +433,13 @@ onMounted(() => {
       title="添加平台授权"
       width="500px"
       :close-on-click-modal="false"
+      destroy-on-close
+      @opened="onCreateDialogOpened"
     >
-      <el-form :model="createForm" label-width="100px">
+      <el-form :model="createForm" label-width="100px" autocomplete="off">
+        <!-- 隐藏的诱饵输入框，用于欺骗浏览器自动填充 -->
+        <input type="text" style="display:none" autocomplete="off" />
+        <input type="password" style="display:none" autocomplete="new-password" />
         <el-form-item label="选择平台" required>
           <el-select v-model="createForm.platform" placeholder="请选择平台" style="width: 100%" @change="onPlatformChange">
             <el-option
@@ -425,11 +451,18 @@ onMounted(() => {
           </el-select>
         </el-form-item>
         <el-form-item label="店铺名称" required>
-          <el-input v-model="createForm.shop_name" placeholder="请输入店铺名称（自定义）" />
+          <el-input 
+            v-model="createForm.shop_name" 
+            placeholder="请输入店铺名称（自定义）" 
+            autocomplete="off"
+            :name="`shop_name_${createFormId}`"
+            :readonly="createFormReadonly"
+            @focus="createFormReadonly = false"
+          />
         </el-form-item>
         <el-divider>API 凭证</el-divider>
         <el-form-item 
-          v-for="field in currentPlatformFields" 
+          v-for="(field, index) in currentPlatformFields" 
           :key="field.key" 
           :label="field.label"
           :required="field.required"
@@ -439,6 +472,10 @@ onMounted(() => {
             :type="field.type === 'password' ? 'password' : 'text'"
             :placeholder="`请输入 ${field.label}`"
             :show-password="field.type === 'password'"
+            :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
+            :name="`${field.key}_${index}_${createFormId}`"
+            :readonly="createFormReadonly"
+            @focus="createFormReadonly = false"
           />
         </el-form-item>
       </el-form>
@@ -456,10 +493,11 @@ onMounted(() => {
       title="编辑授权"
       width="500px"
       :close-on-click-modal="false"
+      destroy-on-close
     >
-      <el-form :model="editForm" label-width="100px">
+      <el-form :model="editForm" label-width="100px" autocomplete="off">
         <el-form-item label="店铺名称">
-          <el-input v-model="editForm.shop_name" placeholder="请输入店铺名称" />
+          <el-input v-model="editForm.shop_name" placeholder="请输入店铺名称" autocomplete="off" />
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="editForm.status" placeholder="请选择状态" style="width: 100%">
@@ -478,6 +516,7 @@ onMounted(() => {
             :type="field.type === 'password' ? 'password' : 'text'"
             :placeholder="`留空则不更新`"
             :show-password="field.type === 'password'"
+            :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
           />
         </el-form-item>
       </el-form>

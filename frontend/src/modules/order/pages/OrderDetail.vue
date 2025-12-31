@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, CopyDocument, QuestionFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import {
   getOrder,
@@ -19,9 +19,6 @@ const loading = ref(true)
 const syncingCommission = ref(false)
 const order = ref<Order | null>(null)
 const platforms = ref<PlatformInfo[]>([])
-
-// 佣金详情展开状态
-const commissionExpanded = ref<string[]>(['commission'])
 
 // 获取订单ID
 const orderId = computed(() => Number(route.params.id))
@@ -61,6 +58,11 @@ const commissionCurrency = computed(() => {
   return order.value?.commission_currency || order.value?.currency || ''
 })
 
+// 订单利润额（直接使用后端计算的值）
+const profitAmount = computed(() => {
+  return order.value?.profit_amount || 0
+})
+
 // 获取平台列表
 const fetchPlatforms = async () => {
   try {
@@ -82,6 +84,17 @@ const fetchOrder = async () => {
     ElMessage.error('获取订单详情失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 复制订单号
+const handleCopyOrderNo = async () => {
+  if (!order.value) return
+  try {
+    await navigator.clipboard.writeText(order.value.platform_order_no)
+    ElMessage.success('订单号已复制')
+  } catch (error) {
+    ElMessage.error('复制失败')
   }
 }
 
@@ -143,13 +156,20 @@ onMounted(() => {
             </el-tag>
           </div>
           <el-descriptions :column="3" border>
-            <el-descriptions-item label="订单号">{{ order.platform_order_no }}</el-descriptions-item>
+            <el-descriptions-item label="订单号">
+              <span class="order-no-wrapper">
+                {{ order.platform_order_no }}
+                <el-icon class="copy-icon" @click="handleCopyOrderNo" title="复制订单号">
+                  <CopyDocument />
+                </el-icon>
+              </span>
+            </el-descriptions-item>
             <el-descriptions-item label="平台">
               <el-tag type="primary" size="small">{{ getPlatformLabel(order.platform) }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="平台状态">{{ order.platform_status }}</el-descriptions-item>
             <el-descriptions-item label="订单金额">
-              <span class="amount">{{ order.currency }} {{ order.total_amount?.toFixed(2) }}</span>
+              <span class="amount">{{ order.total_amount?.toFixed(2) }} {{ order.currency }}</span>
             </el-descriptions-item>
             <el-descriptions-item label="下单时间">
               {{ order.order_time ? formatDateTime(order.order_time) : '-' }}
@@ -158,6 +178,30 @@ onMounted(() => {
               {{ order.ship_time ? formatDateTime(order.ship_time) : '-' }}
             </el-descriptions-item>
           </el-descriptions>
+        </div>
+
+        <!-- 商品信息卡片 -->
+        <div class="info-card">
+          <div class="card-header">
+            <h2 class="card-title">商品信息</h2>
+            <span class="item-count">共 {{ order.items?.length || 0 }} 件商品</span>
+          </div>
+          <el-table :data="order.items" border stripe :cell-style="{ whiteSpace: 'nowrap' }">
+            <el-table-column prop="name" label="商品名称" min-width="250" show-overflow-tooltip />
+            <el-table-column prop="platform_sku" label="平台SKU" min-width="150" />
+            <el-table-column prop="sku" label="SKU" min-width="150" />
+            <el-table-column prop="quantity" label="数量" width="80" align="center" />
+            <el-table-column label="单价" min-width="120" align="right">
+              <template #default="{ row }">
+                {{ row.price?.toFixed(2) }}&nbsp;{{ row.currency }}
+              </template>
+            </el-table-column>
+            <el-table-column label="小计" min-width="120" align="right">
+              <template #default="{ row }">
+                {{ (row.price * row.quantity)?.toFixed(2) }}&nbsp;{{ row.currency }}
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
 
         <!-- 佣金信息卡片 -->
@@ -180,34 +224,81 @@ onMounted(() => {
             </div>
           </div>
           <div class="commission-summary">
-            <div class="commission-item main">
-              <span class="label">销售佣金</span>
-              <span class="value warning">{{ commissionCurrency }} {{ order.sale_commission?.toFixed(2) || '0.00' }}</span>
+            <div class="commission-item">
+              <span class="label">
+                销售收入
+                <el-tooltip content="卖家因销售商品获得的收入金额" placement="top">
+                  <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </span>
+              <span class="value success">{{ order.accruals_for_sale?.toFixed(2) || '0.00' }} {{ commissionCurrency }}</span>
             </div>
             <div class="commission-item">
-              <span class="label">总扣款金额</span>
-              <span class="value danger">{{ commissionCurrency }} {{ order.commission_amount?.toFixed(2) || '0.00' }}</span>
+              <span class="label">
+                销售佣金
+                <el-tooltip content="平台从销售中收取的佣金费用" placement="top">
+                  <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </span>
+              <span class="value warning">{{ order.sale_commission?.toFixed(2) || '0.00' }} {{ commissionCurrency }}</span>
+            </div>
+            <div class="commission-item main">
+              <span class="label">
+                订单利润额
+                <el-tooltip content="所有费用项汇总后的最终利润" placement="top">
+                  <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </span>
+              <span class="value" :class="profitAmount >= 0 ? 'success' : 'danger'">
+                {{ profitAmount.toFixed(2) }} {{ commissionCurrency }}
+              </span>
             </div>
           </div>
           
-          <el-collapse v-model="commissionExpanded">
-            <el-collapse-item title="查看详细佣金明细" name="commission">
-              <el-descriptions :column="2" border size="small">
-                <el-descriptions-item label="销售佣金">
-                  {{ commissionCurrency }} {{ order.sale_commission?.toFixed(2) || '0.00' }}
-                </el-descriptions-item>
-                <el-descriptions-item label="销售收入">
-                  {{ commissionCurrency }} {{ order.accruals_for_sale?.toFixed(2) || '0.00' }}
-                </el-descriptions-item>
-                <el-descriptions-item label="配送费">
-                  {{ commissionCurrency }} {{ order.delivery_charge?.toFixed(2) || '0.00' }}
-                </el-descriptions-item>
-                <el-descriptions-item label="退货配送费">
-                  {{ commissionCurrency }} {{ order.return_delivery_charge?.toFixed(2) || '0.00' }}
-                </el-descriptions-item>
-              </el-descriptions>
-            </el-collapse-item>
-          </el-collapse>
+          <el-table :data="[order]" border class="commission-table" :cell-style="{ whiteSpace: 'nowrap' }" :header-cell-style="{ whiteSpace: 'nowrap' }">
+            <el-table-column label="销售收入" align="right" min-width="140">
+              <template #default>
+                <span class="fee-positive">+{{ Math.abs(order.accruals_for_sale || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="销售佣金" align="right" min-width="140">
+              <template #default>
+                <span class="fee-negative">{{ (order.sale_commission || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="加工配送费" align="right" min-width="140">
+              <template #default>
+                <span class="fee-negative">{{ (order.processing_and_delivery || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="服务费" align="right" min-width="130">
+              <template #default>
+                <span class="fee-negative">{{ (order.services_amount || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="退款取消" align="right" min-width="130">
+              <template #default>
+                <span class="fee-negative">{{ (order.refunds_and_cancellations || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="平台补偿" align="right" min-width="140">
+              <template #default>
+                <span class="fee-positive">+{{ Math.abs(order.compensation_amount || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="其他" align="right" min-width="120">
+              <template #default>
+                <span>{{ (order.others_amount || 0).toFixed(2) }}&nbsp;{{ commissionCurrency }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="订单利润额" align="right" min-width="150">
+              <template #default>
+                <span class="fee-profit" :class="profitAmount >= 0 ? 'positive' : 'negative'">
+                  {{ profitAmount.toFixed(2) }}&nbsp;{{ commissionCurrency }}
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
 
         <!-- 收件人信息卡片 -->
@@ -224,30 +315,6 @@ onMounted(() => {
             <el-descriptions-item label="邮编">{{ order.zip_code || '-' }}</el-descriptions-item>
             <el-descriptions-item label="详细地址" :span="2">{{ order.address || '-' }}</el-descriptions-item>
           </el-descriptions>
-        </div>
-
-        <!-- 商品信息卡片 -->
-        <div class="info-card">
-          <div class="card-header">
-            <h2 class="card-title">商品信息</h2>
-            <span class="item-count">共 {{ order.items?.length || 0 }} 件商品</span>
-          </div>
-          <el-table :data="order.items" border stripe>
-            <el-table-column prop="name" label="商品名称" min-width="250" show-overflow-tooltip />
-            <el-table-column prop="platform_sku" label="平台SKU" width="150" />
-            <el-table-column prop="sku" label="SKU" width="150" />
-            <el-table-column prop="quantity" label="数量" width="80" align="center" />
-            <el-table-column label="单价" width="120" align="right">
-              <template #default="{ row }">
-                {{ row.currency }} {{ row.price?.toFixed(2) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="小计" width="120" align="right">
-              <template #default="{ row }">
-                {{ row.currency }} {{ (row.price * row.quantity)?.toFixed(2) }}
-              </template>
-            </el-table-column>
-          </el-table>
         </div>
       </template>
 
@@ -341,6 +408,22 @@ onMounted(() => {
   color: var(--el-color-primary);
 }
 
+.order-no-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-icon {
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--el-color-primary);
+  }
+}
+
 .commission-summary {
   display: flex;
   gap: 40px;
@@ -358,11 +441,17 @@ onMounted(() => {
   .label {
     font-size: 13px;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
   }
 
   .value {
     font-size: 20px;
     font-weight: 600;
+
+    &.success {
+      color: var(--el-color-success);
+    }
 
     &.warning {
       color: var(--el-color-warning);
@@ -374,8 +463,8 @@ onMounted(() => {
   }
 
   &.main {
-    padding-right: 40px;
-    border-right: 1px solid var(--border-color);
+    padding-left: 40px;
+    border-left: 1px solid var(--border-color);
   }
 }
 
@@ -383,9 +472,171 @@ onMounted(() => {
   margin-bottom: 0;
 }
 
-:deep(.el-collapse-item__header) {
+.commission-table {
+  margin-top: 8px;
+  width: fit-content;
+  max-width: 100%;
+
+  :deep(.el-table__header th) {
+    background: var(--el-fill-color-light);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 16px;
+    white-space: nowrap;
+  }
+
+  :deep(.el-table__body td) {
+    font-size: 14px;
+    padding: 10px 16px;
+    white-space: nowrap;
+  }
+
+  :deep(.el-table__cell) {
+    white-space: nowrap;
+  }
+}
+
+.fee-positive {
+  color: var(--el-color-success);
+  font-weight: 500;
+}
+
+.fee-negative {
+  color: var(--el-color-warning);
+  font-weight: 500;
+}
+
+.fee-profit {
+  font-weight: 600;
+  font-size: 15px;
+
+  &.positive {
+    color: var(--el-color-success);
+  }
+
+  &.negative {
+    color: var(--el-color-danger);
+  }
+}
+
+.info-icon {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 4px;
+  cursor: help;
+}
+
+.desc-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.fee-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--el-fill-color-lighter);
+  border-radius: var(--radius-sm);
+
+  &.total {
+    background: var(--el-fill-color);
+    font-weight: 600;
+    margin-top: 8px;
+    padding: 12px;
+    border-top: 1px dashed var(--border-color);
+  }
+}
+
+.fee-label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.fee-value {
+  font-weight: 500;
+  font-size: 14px;
+
+  &.positive {
+    color: var(--el-color-success);
+  }
+
+  &.negative {
+    color: var(--el-color-warning);
+  }
+}
+
+.fee-breakdown {
+  padding: 8px 0;
+}
+
+.fee-section {
+  margin-bottom: 16px;
+}
+
+.fee-section-title {
   font-size: 13px;
-  color: var(--el-color-primary);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.fee-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--el-fill-color-lighter);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+}
+
+.fee-name {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.fee-amount {
+  font-size: 14px;
+  font-weight: 500;
+
+  &.positive {
+    color: var(--el-color-success);
+  }
+
+  &.negative {
+    color: var(--el-color-warning);
+  }
+}
+
+.fee-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--el-fill-color);
+  border-radius: var(--radius-sm);
+  margin-top: 12px;
+  border-top: 2px solid var(--border-color);
+
+  .fee-name {
+    font-weight: 600;
+  }
+
+  .fee-amount {
+    font-size: 18px;
+    font-weight: 600;
+  }
 }
 </style>
 

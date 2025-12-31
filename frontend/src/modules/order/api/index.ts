@@ -93,9 +93,13 @@ export interface Order {
   // 佣金信息
   sale_commission: number
   accruals_for_sale: number
-  delivery_charge: number
-  return_delivery_charge: number
-  commission_amount: number
+  processing_and_delivery: number      // 加工和配送费
+  refunds_and_cancellations: number    // 退款和取消
+  services_amount: number              // 服务费
+  compensation_amount: number          // 补偿金额
+  money_transfer: number               // 资金转账
+  others_amount: number                // 其他费用
+  profit_amount: number                // 订单利润额
   commission_currency: string
   commission_synced_at: string | null
   items: OrderItem[]

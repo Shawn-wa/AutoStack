@@ -94,13 +94,17 @@ type OrderResponse struct {
 	OrderTime       *time.Time `json:"order_time"`
 	ShipTime        *time.Time `json:"ship_time"`
 	// 佣金信息
-	SaleCommission       float64             `json:"sale_commission"`
-	AccrualsForSale      float64             `json:"accruals_for_sale"`
-	DeliveryCharge       float64             `json:"delivery_charge"`
-	ReturnDeliveryCharge float64             `json:"return_delivery_charge"`
-	CommissionAmount     float64             `json:"commission_amount"`
-	CommissionCurrency   string              `json:"commission_currency"`
-	CommissionSyncedAt   *time.Time          `json:"commission_synced_at"`
+	AccrualsForSale         float64             `json:"accruals_for_sale"`
+	SaleCommission          float64             `json:"sale_commission"`
+	ProcessingAndDelivery   float64             `json:"processing_and_delivery"`
+	RefundsAndCancellations float64             `json:"refunds_and_cancellations"`
+	ServicesAmount          float64             `json:"services_amount"`
+	CompensationAmount      float64             `json:"compensation_amount"`
+	MoneyTransfer           float64             `json:"money_transfer"`
+	OthersAmount            float64             `json:"others_amount"`
+	ProfitAmount            float64             `json:"profit_amount"`
+	CommissionCurrency      string              `json:"commission_currency"`
+	CommissionSyncedAt      *time.Time          `json:"commission_synced_at"`
 	Items                []OrderItemResponse `json:"items,omitempty"`
 	CreatedAt            string              `json:"created_at"`
 	UpdatedAt            string              `json:"updated_at"`

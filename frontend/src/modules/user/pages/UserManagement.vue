@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { 
@@ -30,6 +30,8 @@ const permissionsData = ref<PermissionsResult | null>(null)
 
 // 创建对话框
 const createDialogVisible = ref(false)
+const createFormId = ref('')  // 用于生成唯一的 name 属性，防止浏览器自动填充
+const createFormReadonly = ref(true)  // 初始为只读，防止浏览器自动填充
 const createForm = ref<CreateUserParams>({
   username: '',
   password: '',
@@ -134,7 +136,8 @@ const handleSizeChange = (size: number) => {
 }
 
 // 打开创建对话框
-const handleCreate = () => {
+// 重置创建表单
+const resetCreateForm = () => {
   createForm.value = {
     username: '',
     password: '',
@@ -142,7 +145,26 @@ const handleCreate = () => {
     role: 'user',
     permissions: []
   }
+}
+
+// 生成唯一 ID
+const generateUniqueId = () => {
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+}
+
+// 打开创建对话框
+const handleCreate = () => {
+  createFormId.value = generateUniqueId()
+  createFormReadonly.value = true  // 初始只读，防止自动填充
+  resetCreateForm()
   createDialogVisible.value = true
+}
+
+// 创建对话框完全打开后的回调（动画完成后，浏览器自动填充已执行）
+const onCreateDialogOpened = () => {
+  // 此时浏览器自动填充已经完成，直接清空表单
+  resetCreateForm()
+  createFormReadonly.value = false
 }
 
 // 保存创建
@@ -386,13 +408,34 @@ onMounted(() => {
       title="创建用户"
       width="600px"
       :close-on-click-modal="false"
+      destroy-on-close
+      @opened="onCreateDialogOpened"
     >
-      <el-form :model="createForm" label-width="80px">
+      <el-form :model="createForm" label-width="80px" autocomplete="off">
+        <!-- 隐藏的诱饵输入框，用于欺骗浏览器自动填充 -->
+        <input type="text" style="display:none" autocomplete="off" />
+        <input type="password" style="display:none" autocomplete="new-password" />
         <el-form-item label="用户名" required>
-          <el-input v-model="createForm.username" placeholder="请输入用户名（3-20位）" />
+          <el-input 
+            v-model="createForm.username" 
+            placeholder="请输入用户名（3-20位）" 
+            autocomplete="off"
+            :name="`create_username_${createFormId}`"
+            :readonly="createFormReadonly"
+            @focus="createFormReadonly = false"
+          />
         </el-form-item>
         <el-form-item label="密码" required>
-          <el-input v-model="createForm.password" type="password" placeholder="请输入密码（至少6位）" show-password />
+          <el-input 
+            v-model="createForm.password" 
+            type="password" 
+            placeholder="请输入密码（至少6位）" 
+            show-password 
+            autocomplete="new-password"
+            :name="`create_password_${createFormId}`"
+            :readonly="createFormReadonly"
+            @focus="createFormReadonly = false"
+          />
         </el-form-item>
         <el-form-item label="邮箱" required>
           <el-input v-model="createForm.email" placeholder="请输入邮箱" />
@@ -441,8 +484,9 @@ onMounted(() => {
       title="编辑用户"
       width="600px"
       :close-on-click-modal="false"
+      destroy-on-close
     >
-      <el-form :model="editForm" label-width="80px">
+      <el-form :model="editForm" label-width="80px" autocomplete="off">
         <el-form-item label="用户名">
           <el-input v-model="editForm.username" disabled />
         </el-form-item>

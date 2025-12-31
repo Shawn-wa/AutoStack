@@ -27,8 +27,17 @@ type PlatformAdapterWithLog interface {
 	TestConnectionWithLog(credentials string, platformAuthID uint) error
 	// SyncOrdersWithLog 同步订单（带日志记录）
 	SyncOrdersWithLog(credentials string, since, to time.Time, platformAuthID uint) ([]*Order, error)
-	// GetCommissionsWithLog 获取佣金信息（带日志记录）
+	// GetCommissionsWithLog 获取佣金信息List（带日志记录）
 	GetCommissionsWithLog(credentials string, since, to time.Time, platformAuthID uint) (map[string]*CommissionData, error)
+	// GetSingleOrderCommission 获取单个订单的佣金信息
+	GetSingleOrderCommission(credentials string, postingNumber string, platformAuthID uint) (*CommissionData, error)
+}
+
+// PlatformAdapterWithOrders 支持按订单号列表获取佣金的适配器接口
+type PlatformAdapterWithOrders interface {
+	PlatformAdapter
+	// GetCommissionsForOrders 获取指定订单的佣金信息
+	GetCommissionsForOrders(credentials string, postingNumbers []string, platformAuthID uint) (map[string]*CommissionData, error)
 }
 
 // 注册的适配器

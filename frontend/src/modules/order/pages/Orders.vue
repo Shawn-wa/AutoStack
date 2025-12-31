@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, View } from '@element-plus/icons-vue'
+import { Search, View, CopyDocument } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import {
   getOrders,
   getPlatforms,
@@ -120,6 +121,17 @@ const handleSizeChange = (size: number) => {
   pageSize.value = size
   currentPage.value = 1
   fetchOrders()
+}
+
+// 复制订单号
+const handleCopyOrderNo = async (orderNo: string, event: Event) => {
+  event.stopPropagation()
+  try {
+    await navigator.clipboard.writeText(orderNo)
+    ElMessage.success('订单号已复制')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
 }
 
 // 查看详情
@@ -242,28 +254,38 @@ onMounted(() => {
         :data="tableData"
         style="width: 100%"
         stripe
+        border
       >
-        <el-table-column prop="platform_order_no" label="订单号" width="180" />
-        <el-table-column prop="platform" label="平台" width="100">
+        <el-table-column prop="platform_order_no" label="订单号" min-width="180">
+          <template #default="{ row }">
+            <span class="order-no-wrapper">
+              {{ row.platform_order_no }}
+              <el-icon class="copy-icon" @click="handleCopyOrderNo(row.platform_order_no, $event)" title="复制订单号">
+                <CopyDocument />
+              </el-icon>
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="platform" label="平台" min-width="80">
           <template #default="{ row }">
             <el-tag type="primary" size="small">
               {{ getPlatformLabel(row.platform) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="status" label="状态" min-width="90">
           <template #default="{ row }">
             <el-tag :type="getStatusTagType(row.status)" size="small">
               {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="total_amount" label="金额" width="120">
+        <el-table-column prop="total_amount" label="金额" min-width="110">
           <template #default="{ row }">
             {{ row.currency }} {{ row.total_amount?.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="sale_commission" label="佣金" width="120">
+        <el-table-column prop="sale_commission" label="佣金" min-width="110">
           <template #default="{ row }">
             <span v-if="row.sale_commission" style="color: var(--el-color-warning)">
               {{ row.commission_currency || row.currency }} {{ row.sale_commission?.toFixed(2) }}
@@ -271,19 +293,19 @@ onMounted(() => {
             <span v-else style="color: var(--text-secondary)">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="recipient_name" label="收件人" width="120" />
-        <el-table-column prop="country" label="国家/地区" width="120" />
-        <el-table-column label="商品数" width="80">
+        <el-table-column prop="recipient_name" label="收件人" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="country" label="国家/地区" min-width="100" show-overflow-tooltip />
+        <el-table-column label="商品数" min-width="70" align="center">
           <template #default="{ row }">
             {{ row.items?.length || 0 }}
           </template>
         </el-table-column>
-        <el-table-column prop="order_time" label="下单时间" width="180">
+        <el-table-column prop="order_time" label="下单时间" min-width="160">
           <template #default="{ row }">
             {{ row.order_time ? formatDateTime(row.order_time) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="80" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" :icon="View" @click="handleViewDetail(row)">
               详情
@@ -363,5 +385,22 @@ onMounted(() => {
 
 :deep(.el-descriptions) {
   margin-bottom: 0;
+}
+
+.order-no-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-icon {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--el-color-primary);
+  }
 }
 </style>

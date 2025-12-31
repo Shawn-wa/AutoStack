@@ -254,27 +254,51 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOr
 	now := time.Now()
 	db.Model(auth).Update("last_sync_at", &now)
 
-	// 同步佣金信息（方案A：订单同步时同步佣金）
+	// 同步佣金信息（异步执行，避免阻塞订单同步）
 	go func() {
-		// 异步获取佣金，避免阻塞订单同步
-		commissions, err := adapter.GetCommissions(credentials, since, to)
+		// 收集本次同步的订单号
+		postingNumbers := make([]string, 0, len(orders))
+		for _, ord := range orders {
+			postingNumbers = append(postingNumbers, ord.PlatformOrderNo)
+		}
+
+		if len(postingNumbers) == 0 {
+			return
+		}
+
+		// 优先使用 GetCommissionsForOrders 接口（逐个订单获取）
+		var commissions map[string]*CommissionData
+		var err error
+
+		if adapterWithOrders, ok := adapter.(PlatformAdapterWithOrders); ok {
+			commissions, err = adapterWithOrders.GetCommissionsForOrders(credentials, postingNumbers, auth.ID)
+		} else {
+			// 兼容旧接口
+			commissions, err = adapter.GetCommissions(credentials, since, to)
+		}
+
 		if err != nil {
-			// 佣金获取失败不影响订单同步结果，仅记录日志
+			log.Printf("[SyncOrders] 佣金同步失败: %v", err)
 			return
 		}
 
 		nowSync := time.Now()
 		for postingNumber, commData := range commissions {
 			db.Model(&Order{}).Where("platform_order_no = ?", postingNumber).Updates(map[string]interface{}{
-				"sale_commission":        commData.SaleCommission,
-				"accruals_for_sale":      commData.AccrualsForSale,
-				"delivery_charge":        commData.DeliveryCharge,
-				"return_delivery_charge": commData.ReturnDeliveryCharge,
-				"commission_amount":      commData.CommissionAmount,
-				"commission_currency":    commData.CommissionCurrency,
-				"commission_synced_at":   &nowSync,
+				"accruals_for_sale":         commData.AccrualsForSale,
+				"sale_commission":           commData.SaleCommission,
+				"processing_and_delivery":   commData.ProcessingAndDelivery,
+				"refunds_and_cancellations": commData.RefundsAndCancellations,
+				"services_amount":           commData.ServicesAmount,
+				"compensation_amount":       commData.CompensationAmount,
+				"money_transfer":            commData.MoneyTransfer,
+				"others_amount":             commData.OthersAmount,
+				"profit_amount":             commData.ProfitAmount,
+				"commission_currency":       commData.CommissionCurrency,
+				"commission_synced_at":      &nowSync,
 			})
 		}
+		log.Printf("[SyncOrders] 佣金同步完成: 更新 %d 条订单", len(commissions))
 	}()
 
 	return result, nil
@@ -308,35 +332,38 @@ func (s *Service) SyncOrderCommission(userID, orderID uint) (*Order, error) {
 		return nil, fmt.Errorf("凭证解密失败: %w", err)
 	}
 
-	// 使用订单时间范围获取佣金（订单时间前后各7天）
-	orderTime := time.Now()
-	if ord.OrderTime != nil {
-		orderTime = *ord.OrderTime
-	}
-	since := orderTime.AddDate(0, 0, -7)
-	to := orderTime.AddDate(0, 0, 7)
+	var commData *CommissionData
 
-	commissions, err := adapter.GetCommissions(credentials, since, to)
-	if err != nil {
-		return nil, fmt.Errorf("获取佣金失败: %w", err)
+	// 使用单订单佣金接口（v3/finance/transaction/totals）
+	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
+		commData, err = adapterWithLog.GetSingleOrderCommission(credentials, ord.PlatformOrderNo, auth.ID)
+		if err != nil {
+			log.Printf("[SyncOrderCommission] 获取单订单佣金失败: %v", err)
+			// 失败时不回退，直接返回空
+			return &ord, nil
+		}
 	}
 
-	// 查找该订单的佣金数据
-	if commData, exists := commissions[ord.PlatformOrderNo]; exists {
+	// 更新订单佣金数据
+	if commData != nil {
 		now := time.Now()
 		db.Model(&ord).Updates(map[string]interface{}{
-			"sale_commission":        commData.SaleCommission,
-			"accruals_for_sale":      commData.AccrualsForSale,
-			"delivery_charge":        commData.DeliveryCharge,
-			"return_delivery_charge": commData.ReturnDeliveryCharge,
-			"commission_amount":      commData.CommissionAmount,
-			"commission_currency":    commData.CommissionCurrency,
-			"commission_synced_at":   &now,
+			"accruals_for_sale":         commData.AccrualsForSale,
+			"sale_commission":           commData.SaleCommission,
+			"processing_and_delivery":   commData.ProcessingAndDelivery,
+			"refunds_and_cancellations": commData.RefundsAndCancellations,
+			"services_amount":           commData.ServicesAmount,
+			"compensation_amount":       commData.CompensationAmount,
+			"money_transfer":            commData.MoneyTransfer,
+			"others_amount":             commData.OthersAmount,
+			"profit_amount":             commData.ProfitAmount,
+			"commission_currency":       commData.CommissionCurrency,
+			"commission_synced_at":      &now,
 		})
-
-		// 重新加载更新后的订单
-		db.Where("id = ?", orderID).Preload("Items").First(&ord)
 	}
+
+	// 重新加载更新后的订单
+	db.Where("id = ?", orderID).Preload("Items").First(&ord)
 
 	return &ord, nil
 }
@@ -409,7 +436,7 @@ func (s *Service) GetOrderByID(id uint, userID uint) (*Order, error) {
 	return &ord, nil
 }
 
-// SyncCommission 同步佣金信息（方案B：独立同步接口）
+// SyncCommission 同步佣金信息（使用 transaction/totals 逐个订单获取）
 func (s *Service) SyncCommission(userID, authID uint, since, to time.Time) (*SyncCommissionResponse, error) {
 	db := database.GetDB()
 
@@ -429,19 +456,45 @@ func (s *Service) SyncCommission(userID, authID uint, since, to time.Time) (*Syn
 		return nil, fmt.Errorf("凭证解密失败: %w", err)
 	}
 
-	// 获取佣金数据（优先使用带日志的方法）
+	// 先从数据库获取该时间范围内的订单列表
+	var orders []Order
+	query := db.Model(&Order{}).
+		Where("platform_auth_id = ?", authID).
+		Where("order_time >= ? AND order_time <= ?", since, to)
+	if err := query.Find(&orders).Error; err != nil {
+		return nil, fmt.Errorf("查询订单失败: %w", err)
+	}
+
+	// 提取订单号列表
+	postingNumbers := make([]string, 0, len(orders))
+	for _, ord := range orders {
+		postingNumbers = append(postingNumbers, ord.PlatformOrderNo)
+	}
+
+	log.Printf("[SyncCommission] 找到 %d 个订单需要同步佣金", len(postingNumbers))
+
+	if len(postingNumbers) == 0 {
+		return &SyncCommissionResponse{Total: 0, Updated: 0}, nil
+	}
+
+	// 使用新的 GetCommissionsForOrders 方法逐个获取佣金
 	var commissions map[string]*CommissionData
-	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
-		commissions, err = adapterWithLog.GetCommissionsWithLog(credentials, since, to, auth.ID)
+	if adapterWithOrders, ok := adapter.(PlatformAdapterWithOrders); ok {
+		commissions, err = adapterWithOrders.GetCommissionsForOrders(credentials, postingNumbers, auth.ID)
 	} else {
-		commissions, err = adapter.GetCommissions(credentials, since, to)
+		// 兼容旧接口
+		if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
+			commissions, err = adapterWithLog.GetCommissionsWithLog(credentials, since, to, auth.ID)
+		} else {
+			commissions, err = adapter.GetCommissions(credentials, since, to)
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("获取佣金数据失败: %w", err)
 	}
 
 	result := &SyncCommissionResponse{
-		Total: len(commissions),
+		Total: len(postingNumbers),
 	}
 
 	// 批量更新订单佣金
@@ -450,13 +503,17 @@ func (s *Service) SyncCommission(userID, authID uint, since, to time.Time) (*Syn
 		updateResult := db.Model(&Order{}).
 			Where("platform_order_no = ? AND platform_auth_id = ?", postingNumber, authID).
 			Updates(map[string]interface{}{
-				"sale_commission":        commData.SaleCommission,
-				"accruals_for_sale":      commData.AccrualsForSale,
-				"delivery_charge":        commData.DeliveryCharge,
-				"return_delivery_charge": commData.ReturnDeliveryCharge,
-				"commission_amount":      commData.CommissionAmount,
-				"commission_currency":    commData.CommissionCurrency,
-				"commission_synced_at":   &now,
+				"accruals_for_sale":         commData.AccrualsForSale,
+				"sale_commission":           commData.SaleCommission,
+				"processing_and_delivery":   commData.ProcessingAndDelivery,
+				"refunds_and_cancellations": commData.RefundsAndCancellations,
+				"services_amount":           commData.ServicesAmount,
+				"compensation_amount":       commData.CompensationAmount,
+				"money_transfer":            commData.MoneyTransfer,
+				"others_amount":             commData.OthersAmount,
+				"profit_amount":             commData.ProfitAmount,
+				"commission_currency":       commData.CommissionCurrency,
+				"commission_synced_at":      &now,
 			})
 		if updateResult.RowsAffected > 0 {
 			result.Updated++

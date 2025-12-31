@@ -72,14 +72,19 @@ type Order struct {
 	Address         string     `gorm:"size:500" json:"address"`
 	OrderTime       *time.Time `json:"order_time"`
 	ShipTime        *time.Time `json:"ship_time"`
-	// 佣金相关字段
-	SaleCommission       float64     `gorm:"type:decimal(10,2);default:0" json:"sale_commission"`
-	AccrualsForSale      float64     `gorm:"type:decimal(10,2);default:0" json:"accruals_for_sale"`
-	DeliveryCharge       float64     `gorm:"type:decimal(10,2);default:0" json:"delivery_charge"`
-	ReturnDeliveryCharge float64     `gorm:"type:decimal(10,2);default:0" json:"return_delivery_charge"`
-	CommissionAmount     float64     `gorm:"type:decimal(10,2);default:0" json:"commission_amount"`
-	CommissionCurrency   string      `gorm:"size:10" json:"commission_currency"`
-	CommissionSyncedAt   *time.Time  `json:"commission_synced_at"`
+	// 佣金相关字段（来自 Ozon finance/transaction/totals API）
+	// 参考文档: https://docs.ozon.ru/api/seller/#operation/FinanceAPI_FinanceTransactionTotalV3
+	AccrualsForSale         float64    `gorm:"type:decimal(10,2);default:0;comment:销售收入-卖家因销售商品获得的收入金额" json:"accruals_for_sale"`
+	SaleCommission          float64    `gorm:"type:decimal(10,2);default:0;comment:销售佣金-平台从销售中收取的佣金费用" json:"sale_commission"`
+	ProcessingAndDelivery   float64    `gorm:"type:decimal(10,2);default:0;comment:加工和配送-商品处理和配送的费用" json:"processing_and_delivery"`
+	RefundsAndCancellations float64    `gorm:"type:decimal(10,2);default:0;comment:退款和取消-退款及取消订单相关费用" json:"refunds_and_cancellations"`
+	ServicesAmount          float64    `gorm:"type:decimal(10,2);default:0;comment:服务费-平台服务费用" json:"services_amount"`
+	CompensationAmount      float64    `gorm:"type:decimal(10,2);default:0;comment:补偿金额-平台补偿给卖家的金额" json:"compensation_amount"`
+	MoneyTransfer           float64    `gorm:"type:decimal(10,2);default:0;comment:资金转账-资金转账相关" json:"money_transfer"`
+	OthersAmount            float64    `gorm:"type:decimal(10,2);default:0;comment:其他金额-其他杂项费用" json:"others_amount"`
+	ProfitAmount            float64    `gorm:"type:decimal(10,2);default:0;comment:订单利润额-所有费用项汇总后的最终利润" json:"profit_amount"`
+	CommissionCurrency      string     `gorm:"size:10;comment:佣金货币-费用结算使用的货币类型" json:"commission_currency"`
+	CommissionSyncedAt      *time.Time `gorm:"comment:佣金同步时间-最后一次从平台同步佣金数据的时间" json:"commission_synced_at"`
 	RawData              string      `gorm:"type:longtext" json:"-"`
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`
@@ -110,12 +115,16 @@ func (OrderItem) TableName() string {
 
 // CommissionData 佣金数据
 type CommissionData struct {
-	SaleCommission       float64
-	AccrualsForSale      float64
-	DeliveryCharge       float64
-	ReturnDeliveryCharge float64
-	CommissionAmount     float64
-	CommissionCurrency   string // 佣金货币（结算货币）
+	AccrualsForSale         float64 // 销售收入
+	SaleCommission          float64 // 销售佣金
+	ProcessingAndDelivery   float64 // 加工和配送费
+	RefundsAndCancellations float64 // 退款和取消
+	ServicesAmount          float64 // 服务费
+	CompensationAmount      float64 // 补偿金额
+	MoneyTransfer           float64 // 资金转账
+	OthersAmount            float64 // 其他金额
+	ProfitAmount            float64 // 订单利润额
+	CommissionCurrency      string  // 佣金货币（结算货币）
 }
 
 // 请求日志接口类型常量
