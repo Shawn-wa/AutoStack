@@ -16,6 +16,7 @@ import (
 	"autostack/internal/modules/project"
 	"autostack/internal/modules/template"
 	"autostack/internal/modules/user"
+	"autostack/internal/scheduler"
 )
 
 // Server API服务器
@@ -104,6 +105,11 @@ func (s *Server) setupRoutes() {
 				admin.GET("/users/:id", user.GetUser)
 				admin.PUT("/users/:id", user.UpdateUser)
 				admin.DELETE("/users/:id", user.DeleteUser)
+				// 手动触发同步任务
+				admin.POST("/trigger-sync", func(c *gin.Context) {
+					scheduler.TriggerSync()
+					c.JSON(200, gin.H{"message": "同步任务已触发，请查看日志"})
+				})
 			}
 
 			// 项目管理
@@ -160,7 +166,15 @@ func (s *Server) setupRoutes() {
 
 // Run 启动服务器
 func (s *Server) Run() error {
+	// 启动定时任务调度器
+	scheduler.Start()
+
 	addr := fmt.Sprintf(":%s", s.config.Server.Port)
 	fmt.Printf("🚀 AutoStack 服务启动于 http://localhost%s\n", addr)
 	return s.router.Run(addr)
+}
+
+// Stop 停止服务器
+func (s *Server) Stop() {
+	scheduler.Stop()
 }

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+defineOptions({ name: 'Dashboard' })
+
 const stats = ref([
   { label: '运行中项目', value: 12, icon: '▶', color: 'success' },
   { label: '部署总数', value: 48, icon: '◉', color: 'primary' },

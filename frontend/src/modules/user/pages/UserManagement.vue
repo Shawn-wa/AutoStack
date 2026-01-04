@@ -2,6 +2,9 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+
+defineOptions({ name: 'UserManagement' })
+
 import { 
   getUsers, 
   getPermissions,

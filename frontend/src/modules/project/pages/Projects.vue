@@ -3,6 +3,8 @@ import { ref, reactive, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Edit, Delete, Refresh } from '@element-plus/icons-vue'
 
+defineOptions({ name: 'Projects' })
+
 // 项目数据接口
 interface Project {
   id: number

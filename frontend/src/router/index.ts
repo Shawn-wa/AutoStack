@@ -1,8 +1,22 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, useRoute, useRouter } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { storage } from '@/utils/storage'
 
 const routes: RouteRecordRaw[] = [
+  {
+    // 用于刷新页面的中转路由
+    path: '/redirect/:path(.*)',
+    name: 'Redirect',
+    component: {
+      setup() {
+        const route = useRoute()
+        const router = useRouter()
+        const path = '/' + (route.params.path as string)
+        router.replace(path)
+        return () => null
+      }
+    }
+  },
   {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),

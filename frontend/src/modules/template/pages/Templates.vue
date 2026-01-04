@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+defineOptions({ name: 'Templates' })
+
 const templates = ref([
   {
     id: 1,

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+defineOptions({ name: 'Deployments' })
+
 const deployments = ref([
   {
     id: 1,

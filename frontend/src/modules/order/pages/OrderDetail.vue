@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+
+defineOptions({ name: 'OrderDetail' })
 import { ArrowLeft, Refresh, CopyDocument, QuestionFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import {
@@ -98,9 +100,14 @@ const handleCopyOrderNo = async () => {
   }
 }
 
-// 返回列表
+// 返回列表（使用浏览器历史返回，保留筛选条件）
 const handleBack = () => {
-  router.push({ name: 'Orders' })
+  // 如果有历史记录则返回，否则跳转到订单列表
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push({ name: 'Orders' })
+  }
 }
 
 // 刷新

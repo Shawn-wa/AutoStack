@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+
+defineOptions({ name: 'Orders' })
 import { Search, View, CopyDocument } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import {
@@ -14,12 +16,13 @@ import {
 import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
+const route = useRoute()
 
 const loading = ref(false)
 const tableData = ref<Order[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(20)
 
 // 筛选条件
 const filters = ref({
@@ -30,6 +33,34 @@ const filters = ref({
   start_time: '',
   end_time: ''
 })
+
+// 从 URL query 初始化筛选条件
+const initFiltersFromQuery = () => {
+  const query = route.query
+  if (query.platform) filters.value.platform = query.platform as string
+  if (query.auth_id) filters.value.auth_id = Number(query.auth_id)
+  if (query.status) filters.value.status = query.status as string
+  if (query.keyword) filters.value.keyword = query.keyword as string
+  if (query.start_time) filters.value.start_time = query.start_time as string
+  if (query.end_time) filters.value.end_time = query.end_time as string
+  if (query.page) currentPage.value = Number(query.page)
+  if (query.page_size) pageSize.value = Number(query.page_size)
+}
+
+// 更新 URL query（不触发导航）
+const updateQueryParams = () => {
+  const query: Record<string, string> = {}
+  if (filters.value.platform) query.platform = filters.value.platform
+  if (filters.value.auth_id) query.auth_id = String(filters.value.auth_id)
+  if (filters.value.status) query.status = filters.value.status
+  if (filters.value.keyword) query.keyword = filters.value.keyword
+  if (filters.value.start_time) query.start_time = filters.value.start_time
+  if (filters.value.end_time) query.end_time = filters.value.end_time
+  if (currentPage.value > 1) query.page = String(currentPage.value)
+  if (pageSize.value !== 20) query.page_size = String(pageSize.value)
+  
+  router.replace({ query })
+}
 
 // 平台列表
 const platforms = ref<PlatformInfo[]>([])
@@ -93,6 +124,7 @@ const fetchOrders = async () => {
 // 搜索
 const handleSearch = () => {
   currentPage.value = 1
+  updateQueryParams()
   fetchOrders()
 }
 
@@ -107,12 +139,14 @@ const handleReset = () => {
     end_time: ''
   }
   currentPage.value = 1
+  router.replace({ query: {} })
   fetchOrders()
 }
 
 // 分页变化
 const handlePageChange = (page: number) => {
   currentPage.value = page
+  updateQueryParams()
   fetchOrders()
 }
 
@@ -120,6 +154,7 @@ const handlePageChange = (page: number) => {
 const handleSizeChange = (size: number) => {
   pageSize.value = size
   currentPage.value = 1
+  updateQueryParams()
   fetchOrders()
 }
 
@@ -170,6 +205,8 @@ const getStatusText = (status: string) => {
 }
 
 onMounted(() => {
+  // 从 URL query 恢复筛选条件
+  initFiltersFromQuery()
   fetchPlatforms()
   fetchAuths()
   fetchOrders()
@@ -259,7 +296,7 @@ onMounted(() => {
         <el-table-column prop="platform_order_no" label="订单号" min-width="180">
           <template #default="{ row }">
             <span class="order-no-wrapper">
-              {{ row.platform_order_no }}
+              <span class="order-no-link" @click="handleViewDetail(row)">{{ row.platform_order_no }}</span>
               <el-icon class="copy-icon" @click="handleCopyOrderNo(row.platform_order_no, $event)" title="复制订单号">
                 <CopyDocument />
               </el-icon>
@@ -303,6 +340,11 @@ onMounted(() => {
         <el-table-column prop="order_time" label="下单时间" min-width="160">
           <template #default="{ row }">
             {{ row.order_time ? formatDateTime(row.order_time) : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="updated_at" label="更新时间" min-width="160">
+          <template #default="{ row }">
+            {{ row.updated_at ? formatDateTime(row.updated_at) : '-' }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right" align="center">
@@ -391,6 +433,17 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.order-no-link {
+  color: var(--el-color-primary);
+  cursor: pointer;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--el-color-primary-light-3);
+    text-decoration: underline;
+  }
 }
 
 .copy-icon {

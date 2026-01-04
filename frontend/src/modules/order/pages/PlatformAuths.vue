@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
+
+defineOptions({ name: 'PlatformAuths' })
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Connection, Coin } from '@element-plus/icons-vue'
 import {
