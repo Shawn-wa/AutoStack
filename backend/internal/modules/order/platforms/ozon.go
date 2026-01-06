@@ -183,6 +183,54 @@ func (a *OzonAdapter) GetSingleOrderCommission(credentials string, postingNumber
 	}, nil
 }
 
+// GetCashFlowStatements 获取现金流报表
+func (a *OzonAdapter) GetCashFlowStatements(credentials string, since, to time.Time, platformAuthID uint) ([]order.CashFlowStatement, error) {
+	client, err := a.createClient(credentials, platformAuthID)
+	if err != nil {
+		return nil, err
+	}
+
+	financeAPI := ozon.NewFinanceAPI(client)
+	cashFlows, err := financeAPI.GetAllCashFlowStatements(since, to)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []order.CashFlowStatement
+	for _, cf := range cashFlows {
+		statement := a.convertToCashFlowStatement(&cf)
+		result = append(result, *statement)
+	}
+
+	return result, nil
+}
+
+// convertToCashFlowStatement 转换为统一现金流报表格式
+func (a *OzonAdapter) convertToCashFlowStatement(cf *ozon.CashFlowItem) *order.CashFlowStatement {
+	statement := &order.CashFlowStatement{
+		CurrencyCode:                cf.CurrencyCode,
+		OrdersAmount:                cf.OrdersAmount,
+		ReturnsAmount:               cf.ReturnsAmount,
+		CommissionAmount:            cf.CommissionAmount,
+		ServicesAmount:              cf.ServicesAmount,
+		ItemDeliveryAndReturnAmount: cf.ItemDeliveryAndReturnAmount,
+	}
+
+	// 解析周期时间
+	if cf.Period.Begin != "" {
+		if t, err := time.Parse(time.RFC3339, cf.Period.Begin); err == nil {
+			statement.PeriodBegin = &t
+		}
+	}
+	if cf.Period.End != "" {
+		if t, err := time.Parse(time.RFC3339, cf.Period.End); err == nil {
+			statement.PeriodEnd = &t
+		}
+	}
+
+	return statement
+}
+
 // ========== 辅助方法 ==========
 
 // createClient 创建OZON API客户端

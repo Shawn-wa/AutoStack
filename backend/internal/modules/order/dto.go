@@ -141,3 +141,66 @@ type SyncCommissionResponse struct {
 	Total   int `json:"total"`   // 处理的交易数
 	Updated int `json:"updated"` // 更新的订单数
 }
+
+// ========== 现金流报表相关 ==========
+
+// SyncCashFlowRequest 现金流同步请求
+type SyncCashFlowRequest struct {
+	Since string `json:"since"` // 开始时间 ISO8601
+	To    string `json:"to"`    // 结束时间 ISO8601
+}
+
+// CashFlowResponse 现金流报表响应
+type CashFlowResponse struct {
+	ID                          uint       `json:"id"`
+	PlatformAuthID              uint       `json:"platform_auth_id"`
+	Platform                    string     `json:"platform"`
+	PeriodBegin                 *time.Time `json:"period_begin"`
+	PeriodEnd                   *time.Time `json:"period_end"`
+	CurrencyCode                string     `json:"currency_code"`
+	OrdersAmount                float64    `json:"orders_amount"`
+	ReturnsAmount               float64    `json:"returns_amount"`
+	CommissionAmount            float64    `json:"commission_amount"`
+	ServicesAmount              float64    `json:"services_amount"`
+	ItemDeliveryAndReturnAmount float64    `json:"item_delivery_and_return_amount"`
+	SyncedAt                    string     `json:"synced_at"`
+}
+
+// CashFlowListResponse 现金流报表列表响应
+type CashFlowListResponse struct {
+	List     []CashFlowResponse `json:"list"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
+}
+
+// ========== 统计相关 ==========
+
+// DashboardStatsResponse 仪表盘统计响应
+type DashboardStatsResponse struct {
+	// 订单统计
+	TotalOrders      int64   `json:"total_orders"`       // 总订单数
+	DeliveredOrders  int64   `json:"delivered_orders"`   // 已签收订单数
+	PendingOrders    int64   `json:"pending_orders"`     // 待处理订单数
+	TodayOrders      int64   `json:"today_orders"`       // 今日订单数
+	TotalOrderAmount float64 `json:"total_order_amount"` // 订单总金额
+	// 佣金统计
+	TotalProfit        float64 `json:"total_profit"`         // 总利润
+	TotalCommission    float64 `json:"total_commission"`     // 总佣金
+	TotalServiceFee    float64 `json:"total_service_fee"`    // 总服务费
+	// 授权统计
+	TotalAuths  int64 `json:"total_auths"`  // 总授权数
+	ActiveAuths int64 `json:"active_auths"` // 活跃授权数
+	// 货币
+	Currency string `json:"currency"`
+}
+
+// RecentOrderResponse 最近订单响应
+type RecentOrderResponse struct {
+	ID              uint       `json:"id"`
+	PlatformOrderNo string     `json:"platform_order_no"`
+	Status          string     `json:"status"`
+	TotalAmount     float64    `json:"total_amount"`
+	Currency        string     `json:"currency"`
+	OrderTime       *time.Time `json:"order_time"`
+}

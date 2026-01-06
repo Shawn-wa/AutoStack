@@ -60,5 +60,6 @@ const (
 	RequestTypeTestConnect = "TestConnect"
 	RequestTypeOrderList   = "OrderList"
 	RequestTypeFinance     = "Finance"
+	RequestTypeCashFlow    = "CashFlow"
 )
 

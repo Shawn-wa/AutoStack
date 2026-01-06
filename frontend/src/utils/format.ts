@@ -63,3 +63,17 @@ export function truncate(text: string, length: number, suffix = '...'): string {
   if (!text || text.length <= length) return text
   return text.slice(0, length) + suffix
 }
+
+/**
+ * 格式化货币
+ */
+export function formatCurrency(amount: number, currency?: string): string {
+  if (amount === null || amount === undefined) return '-'
+  
+  const formatted = amount.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+  
+  return currency ? `${formatted} ${currency}` : formatted
+}

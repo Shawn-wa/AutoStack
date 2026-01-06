@@ -272,22 +272,22 @@ func ListOrders(c *gin.Context) {
 		}
 
 		list[i] = OrderResponse{
-			ID:                   ord.ID,
-			Platform:             ord.Platform,
-			PlatformOrderNo:      ord.PlatformOrderNo,
-			Status:               ord.Status,
-			PlatformStatus:       ord.PlatformStatus,
-			TotalAmount:          ord.TotalAmount,
-			Currency:             ord.Currency,
-			RecipientName:        ord.RecipientName,
-			RecipientPhone:       ord.RecipientPhone,
-			Country:              ord.Country,
-			Province:             ord.Province,
-			City:                 ord.City,
-			ZipCode:              ord.ZipCode,
-			Address:              ord.Address,
-			OrderTime:            ord.OrderTime,
-			ShipTime:             ord.ShipTime,
+			ID:                      ord.ID,
+			Platform:                ord.Platform,
+			PlatformOrderNo:         ord.PlatformOrderNo,
+			Status:                  ord.Status,
+			PlatformStatus:          ord.PlatformStatus,
+			TotalAmount:             ord.TotalAmount,
+			Currency:                ord.Currency,
+			RecipientName:           ord.RecipientName,
+			RecipientPhone:          ord.RecipientPhone,
+			Country:                 ord.Country,
+			Province:                ord.Province,
+			City:                    ord.City,
+			ZipCode:                 ord.ZipCode,
+			Address:                 ord.Address,
+			OrderTime:               ord.OrderTime,
+			ShipTime:                ord.ShipTime,
 			AccrualsForSale:         ord.AccrualsForSale,
 			SaleCommission:          ord.SaleCommission,
 			ProcessingAndDelivery:   ord.ProcessingAndDelivery,
@@ -360,22 +360,22 @@ func GetOrder(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "获取成功", OrderResponse{
-		ID:                   ord.ID,
-		Platform:             ord.Platform,
-		PlatformOrderNo:      ord.PlatformOrderNo,
-		Status:               ord.Status,
-		PlatformStatus:       ord.PlatformStatus,
-		TotalAmount:          ord.TotalAmount,
-		Currency:             ord.Currency,
-		RecipientName:        ord.RecipientName,
-		RecipientPhone:       ord.RecipientPhone,
-		Country:              ord.Country,
-		Province:             ord.Province,
-		City:                 ord.City,
-		ZipCode:              ord.ZipCode,
-		Address:              ord.Address,
-		OrderTime:            ord.OrderTime,
-		ShipTime:             ord.ShipTime,
+		ID:                      ord.ID,
+		Platform:                ord.Platform,
+		PlatformOrderNo:         ord.PlatformOrderNo,
+		Status:                  ord.Status,
+		PlatformStatus:          ord.PlatformStatus,
+		TotalAmount:             ord.TotalAmount,
+		Currency:                ord.Currency,
+		RecipientName:           ord.RecipientName,
+		RecipientPhone:          ord.RecipientPhone,
+		Country:                 ord.Country,
+		Province:                ord.Province,
+		City:                    ord.City,
+		ZipCode:                 ord.ZipCode,
+		Address:                 ord.Address,
+		OrderTime:               ord.OrderTime,
+		ShipTime:                ord.ShipTime,
 		AccrualsForSale:         ord.AccrualsForSale,
 		SaleCommission:          ord.SaleCommission,
 		ProcessingAndDelivery:   ord.ProcessingAndDelivery,
@@ -492,22 +492,22 @@ func SyncOrderCommission(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "同步成功", OrderResponse{
-		ID:                   ord.ID,
-		Platform:             ord.Platform,
-		PlatformOrderNo:      ord.PlatformOrderNo,
-		Status:               ord.Status,
-		PlatformStatus:       ord.PlatformStatus,
-		TotalAmount:          ord.TotalAmount,
-		Currency:             ord.Currency,
-		RecipientName:        ord.RecipientName,
-		RecipientPhone:       ord.RecipientPhone,
-		Country:              ord.Country,
-		Province:             ord.Province,
-		City:                 ord.City,
-		ZipCode:              ord.ZipCode,
-		Address:              ord.Address,
-		OrderTime:            ord.OrderTime,
-		ShipTime:             ord.ShipTime,
+		ID:                      ord.ID,
+		Platform:                ord.Platform,
+		PlatformOrderNo:         ord.PlatformOrderNo,
+		Status:                  ord.Status,
+		PlatformStatus:          ord.PlatformStatus,
+		TotalAmount:             ord.TotalAmount,
+		Currency:                ord.Currency,
+		RecipientName:           ord.RecipientName,
+		RecipientPhone:          ord.RecipientPhone,
+		Country:                 ord.Country,
+		Province:                ord.Province,
+		City:                    ord.City,
+		ZipCode:                 ord.ZipCode,
+		Address:                 ord.Address,
+		OrderTime:               ord.OrderTime,
+		ShipTime:                ord.ShipTime,
 		AccrualsForSale:         ord.AccrualsForSale,
 		SaleCommission:          ord.SaleCommission,
 		ProcessingAndDelivery:   ord.ProcessingAndDelivery,
@@ -542,4 +542,176 @@ func getUserID(c *gin.Context) uint {
 	default:
 		return 0
 	}
+}
+
+// ========== 现金流报表相关 ==========
+
+// SyncCashFlow 同步现金流报表
+func SyncCashFlow(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	var req SyncCashFlowRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 默认同步最近90天
+		req.Since = time.Now().AddDate(0, 0, -90).Format(time.RFC3339)
+		req.To = time.Now().Format(time.RFC3339)
+	}
+
+	since, err := time.Parse(time.RFC3339, req.Since)
+	if err != nil {
+		since = time.Now().AddDate(0, 0, -90)
+	}
+
+	to, err := time.Parse(time.RFC3339, req.To)
+	if err != nil {
+		to = time.Now()
+	}
+
+	result, err := orderService.SyncCashFlowStatements(uint(id), userID, since, to)
+	if err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "同步现金流报表失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "同步成功", result)
+}
+
+// ListCashFlow 获取现金流报表列表
+func ListCashFlow(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	authID, _ := strconv.Atoi(c.DefaultQuery("auth_id", "0"))
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	statements, total, err := orderService.ListCashFlowStatements(userID, uint(authID), page, pageSize)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取现金流报表失败")
+		return
+	}
+
+	list := make([]CashFlowResponse, len(statements))
+	for i, s := range statements {
+		list[i] = CashFlowResponse{
+			ID:                          s.ID,
+			PlatformAuthID:              s.PlatformAuthID,
+			Platform:                    s.Platform,
+			PeriodBegin:                 s.PeriodBegin,
+			PeriodEnd:                   s.PeriodEnd,
+			CurrencyCode:                s.CurrencyCode,
+			OrdersAmount:                s.OrdersAmount,
+			ReturnsAmount:               s.ReturnsAmount,
+			CommissionAmount:            s.CommissionAmount,
+			ServicesAmount:              s.ServicesAmount,
+			ItemDeliveryAndReturnAmount: s.ItemDeliveryAndReturnAmount,
+			SyncedAt:                    s.SyncedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", CashFlowListResponse{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+// GetCashFlow 获取现金流报表详情
+func GetCashFlow(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	statement, err := orderService.GetCashFlowStatement(uint(id), userID)
+	if err != nil {
+		response.Error(c, http.StatusNotFound, "现金流报表不存在")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", CashFlowResponse{
+		ID:                          statement.ID,
+		PlatformAuthID:              statement.PlatformAuthID,
+		Platform:                    statement.Platform,
+		PeriodBegin:                 statement.PeriodBegin,
+		PeriodEnd:                   statement.PeriodEnd,
+		CurrencyCode:                statement.CurrencyCode,
+		OrdersAmount:                statement.OrdersAmount,
+		ReturnsAmount:               statement.ReturnsAmount,
+		CommissionAmount:            statement.CommissionAmount,
+		ServicesAmount:              statement.ServicesAmount,
+		ItemDeliveryAndReturnAmount: statement.ItemDeliveryAndReturnAmount,
+		SyncedAt:                    statement.SyncedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// GetDashboardStats 获取仪表盘统计数据
+func GetDashboardStats(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	stats, err := orderService.GetDashboardStats(userID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取统计数据失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", stats)
+}
+
+// GetRecentOrders 获取最近订单
+func GetRecentOrders(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+
+	orders, err := orderService.GetRecentOrders(userID, limit)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取最近订单失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", orders)
 }

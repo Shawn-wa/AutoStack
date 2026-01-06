@@ -16,16 +16,14 @@ const sidebarCollapsed = ref(false)
 
 // 基础菜单项
 const baseMenuItems = [
-  { path: '/', name: 'Dashboard', icon: '◇', label: '控制台' },
-  { path: '/projects', name: 'Projects', icon: '▦', label: '项目管理' },
-  { path: '/deployments', name: 'Deployments', icon: '▶', label: '部署管理' },
-  { path: '/templates', name: 'Templates', icon: '❖', label: '模板市场' },
+  { path: '/', name: 'Dashboard', icon: '🏠', label: '首页' },
 ]
 
 // 订单管理菜单项
 const orderMenuItems = [
   { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权' },
   { path: '/order/orders', name: 'Orders', icon: '📋', label: '订单列表' },
+  { path: '/order/cashflow', name: 'CashFlow', icon: '💰', label: '报表' },
 ]
 
 // 管理员菜单项
@@ -44,13 +42,11 @@ const menuItems = computed(() => {
 
 // 路由名称到标题的映射
 const routeTitleMap: Record<string, string> = {
-  'Dashboard': '控制台',
-  'Projects': '项目管理',
-  'Deployments': '部署管理',
-  'Templates': '模板市场',
+  'Dashboard': '首页',
   'PlatformAuths': '平台授权',
   'Orders': '订单列表',
   'OrderDetail': '订单详情',
+  'CashFlow': '报表',
   'UserManagement': '用户管理',
 }
 

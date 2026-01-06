@@ -42,6 +42,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&order.Order{},
 		&order.OrderItem{},
 		&order.OrdersRequestLog{},
+		&order.CashFlowStatement{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -143,6 +144,10 @@ func (s *Server) setupRoutes() {
 			// 订单管理模块
 			orderGroup := authorized.Group("/order")
 			{
+				// 仪表盘统计
+				orderGroup.GET("/dashboard/stats", order.GetDashboardStats)
+				orderGroup.GET("/dashboard/recent-orders", order.GetRecentOrders)
+
 				// 平台列表
 				orderGroup.GET("/platforms", order.ListPlatforms)
 
@@ -154,11 +159,16 @@ func (s *Server) setupRoutes() {
 				orderGroup.POST("/auths/:id/test", order.TestAuth)
 				orderGroup.POST("/auths/:id/sync", order.SyncOrders)
 				orderGroup.POST("/auths/:id/sync-commission", order.SyncCommission)
+				orderGroup.POST("/auths/:id/sync-cashflow", order.SyncCashFlow)
 
 				// 订单管理
 				orderGroup.GET("/orders", order.ListOrders)
 				orderGroup.GET("/orders/:id", order.GetOrder)
 				orderGroup.POST("/orders/:id/sync-commission", order.SyncOrderCommission)
+
+				// 现金流报表
+				orderGroup.GET("/cashflow", order.ListCashFlow)
+				orderGroup.GET("/cashflow/:id", order.GetCashFlow)
 			}
 		}
 	}

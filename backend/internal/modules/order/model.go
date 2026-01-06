@@ -132,6 +132,7 @@ const (
 	RequestTypeOrderList   = "OrderList"   // 订单列表
 	RequestTypeFinance     = "Finance"     // 财务/佣金
 	RequestTypeTestConnect = "TestConnect" // 测试连接
+	RequestTypeCashFlow    = "CashFlow"    // 现金流报表
 )
 
 // OrdersRequestLog 订单请求日志模型
@@ -154,4 +155,30 @@ type OrdersRequestLog struct {
 // TableName 指定表名
 func (OrdersRequestLog) TableName() string {
 	return "orders_request_log"
+}
+
+// CashFlowStatement 现金流报表模型
+// 参考文档: https://docs.ozon.ru/api/seller/#operation/FinanceAPI_FinanceCashFlowStatementList
+type CashFlowStatement struct {
+	ID             uint       `gorm:"primaryKey" json:"id"`
+	UserID         uint       `gorm:"index;not null" json:"user_id"`
+	PlatformAuthID uint       `gorm:"index;not null" json:"platform_auth_id"`
+	Platform       string     `gorm:"size:50;not null;index" json:"platform"`
+	PeriodBegin    *time.Time `gorm:"uniqueIndex:idx_auth_period;comment:周期开始时间" json:"period_begin"`
+	PeriodEnd      *time.Time `gorm:"comment:周期结束时间" json:"period_end"`
+	CurrencyCode   string     `gorm:"size:10;comment:货币代码" json:"currency_code"`
+	// 金额字段（根据实际 API 响应）
+	OrdersAmount                float64   `gorm:"type:decimal(12,2);default:0;comment:订单金额" json:"orders_amount"`
+	ReturnsAmount               float64   `gorm:"type:decimal(12,2);default:0;comment:退货金额" json:"returns_amount"`
+	CommissionAmount            float64   `gorm:"type:decimal(12,2);default:0;comment:佣金金额" json:"commission_amount"`
+	ServicesAmount              float64   `gorm:"type:decimal(12,2);default:0;comment:服务费" json:"services_amount"`
+	ItemDeliveryAndReturnAmount float64   `gorm:"type:decimal(12,2);default:0;comment:配送和退货金额" json:"item_delivery_and_return_amount"`
+	SyncedAt                    time.Time `gorm:"comment:同步时间" json:"synced_at"`
+	CreatedAt                   time.Time `json:"created_at"`
+	UpdatedAt                   time.Time `json:"updated_at"`
+}
+
+// TableName 指定表名
+func (CashFlowStatement) TableName() string {
+	return "cash_flow_statements"
 }

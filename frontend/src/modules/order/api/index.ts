@@ -196,3 +196,99 @@ export function syncCommission(id: number, data?: SyncCommissionParams) {
 export function syncOrderCommission(orderId: number) {
   return request.post<any, { data: Order }>(`/order/orders/${orderId}/sync-commission`)
 }
+
+// ========== 现金流报表相关 ==========
+
+// 现金流报表
+export interface CashFlowStatement {
+  id: number
+  platform_auth_id: number
+  platform: string
+  period_begin: string | null
+  period_end: string | null
+  currency_code: string
+  orders_amount: number
+  returns_amount: number
+  commission_amount: number
+  services_amount: number
+  item_delivery_and_return_amount: number
+  synced_at: string
+}
+
+// 现金流报表列表参数
+export interface CashFlowListParams {
+  page?: number
+  page_size?: number
+  auth_id?: number
+}
+
+// 现金流报表列表响应
+export interface CashFlowListResult {
+  list: CashFlowStatement[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// 同步现金流参数
+export interface SyncCashFlowParams {
+  since?: string
+  to?: string
+}
+
+// 同步现金流结果
+export interface SyncCashFlowResult {
+  total: number
+  created: number
+  updated: number
+  skipped: number
+}
+
+// 获取现金流报表列表
+export function getCashFlowList(params: CashFlowListParams = {}) {
+  return request.get<any, { data: CashFlowListResult }>('/order/cashflow', { params })
+}
+
+// 同步现金流报表
+export function syncCashFlow(authId: number, data?: SyncCashFlowParams) {
+  return request.post<any, { data: SyncCashFlowResult }>(`/order/auths/${authId}/sync-cashflow`, data || {})
+}
+
+// ========== 仪表盘统计相关 ==========
+
+// 仪表盘统计数据
+export interface DashboardStats {
+  total_orders: number
+  delivered_orders: number
+  pending_orders: number
+  today_orders: number
+  total_order_amount: number
+  total_profit: number
+  total_commission: number
+  total_service_fee: number
+  total_auths: number
+  active_auths: number
+  currency: string
+}
+
+// 最近订单
+export interface RecentOrder {
+  id: number
+  platform_order_no: string
+  status: string
+  total_amount: number
+  currency: string
+  order_time: string | null
+}
+
+// 获取仪表盘统计数据
+export function getDashboardStats() {
+  return request.get<any, { data: DashboardStats }>('/order/dashboard/stats')
+}
+
+// 获取最近订单
+export function getRecentOrders(limit: number = 10) {
+  return request.get<any, { data: RecentOrder[] }>('/order/dashboard/recent-orders', {
+    params: { limit }
+  })
+}

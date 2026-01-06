@@ -176,3 +176,42 @@ type FinanceTotalsItem struct {
 	OthersAmount            float64 `json:"others_amount"`              // 其他金额：其他杂项费用
 }
 
+// ========== 现金流报表相关 ==========
+
+// CashFlowStatementRequest 现金流报表请求
+// API: POST /v1/finance/cash-flow-statement/list
+type CashFlowStatementRequest struct {
+	Date     DateRange `json:"date"`
+	Page     int       `json:"page"`
+	PageSize int       `json:"page_size"`
+}
+
+// CashFlowStatementResponse 现金流报表响应
+type CashFlowStatementResponse struct {
+	Result CashFlowResult `json:"result"`
+}
+
+// CashFlowResult 现金流结果
+type CashFlowResult struct {
+	CashFlows []CashFlowItem `json:"cash_flows"`
+	PageCount int            `json:"page_count"`
+}
+
+// CashFlowItem 现金流条目（根据实际 API 响应）
+type CashFlowItem struct {
+	Period                      CashFlowPeriod `json:"period"`                          // 报告周期
+	OrdersAmount                float64        `json:"orders_amount"`                   // 订单金额
+	ReturnsAmount               float64        `json:"returns_amount"`                  // 退货金额
+	CommissionAmount            float64        `json:"commission_amount"`               // 佣金金额
+	ServicesAmount              float64        `json:"services_amount"`                 // 服务费
+	ItemDeliveryAndReturnAmount float64        `json:"item_delivery_and_return_amount"` // 配送和退货金额
+	CurrencyCode                string         `json:"currency_code"`                   // 货币代码
+}
+
+// CashFlowPeriod 报告周期
+type CashFlowPeriod struct {
+	ID    int64  `json:"id"`
+	Begin string `json:"begin"`
+	End   string `json:"end"`
+}
+

@@ -158,3 +158,60 @@ func (api *FinanceAPI) GetSingleOrderCommission(postingNumber, currency string) 
 
 	return commData, nil
 }
+
+// GetCashFlowStatementList 获取现金流报表列表
+// API: POST /v1/finance/cash-flow-statement/list
+func (api *FinanceAPI) GetCashFlowStatementList(since, to time.Time, page, pageSize int) (*CashFlowStatementResponse, error) {
+	// 构造日期范围：开始日期的 00:00:00 到结束日期的 23:59:59
+	sinceDate := time.Date(since.Year(), since.Month(), since.Day(), 0, 0, 0, 0, time.UTC)
+	toDate := time.Date(to.Year(), to.Month(), to.Day(), 23, 59, 59, 999000000, time.UTC)
+	
+	req := CashFlowStatementRequest{
+		Date: DateRange{
+			From: sinceDate.Format(time.RFC3339Nano),
+			To:   toDate.Format(time.RFC3339Nano),
+		},
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	resp, err := api.client.DoRequest("POST", "/v1/finance/cash-flow-statement/list", req, platform.RequestTypeCashFlow)
+	if err != nil {
+		return nil, err
+	}
+
+	var result CashFlowStatementResponse
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	return &result, nil
+}
+
+// GetAllCashFlowStatements 获取所有现金流报表（分页获取全部）
+func (api *FinanceAPI) GetAllCashFlowStatements(since, to time.Time) ([]CashFlowItem, error) {
+	var allItems []CashFlowItem
+	page := 1
+	pageSize := 100
+
+	for {
+		resp, err := api.GetCashFlowStatementList(since, to, page, pageSize)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Result.CashFlows) == 0 {
+			break
+		}
+
+		allItems = append(allItems, resp.Result.CashFlows...)
+
+		// 检查是否还有更多页
+		if page >= resp.Result.PageCount {
+			break
+		}
+		page++
+	}
+
+	return allItems, nil
+}

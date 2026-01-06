@@ -11,7 +11,7 @@ export interface TabItem {
 export const useTabsStore = defineStore('tabs', () => {
   // 已打开的标签列表
   const tabs = ref<TabItem[]>([
-    { name: 'Dashboard', title: '控制台', path: '/', closable: false }
+    { name: 'Dashboard', title: '首页', path: '/', closable: false }
   ])
   
   // 当前激活的标签

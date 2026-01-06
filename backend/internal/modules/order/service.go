@@ -559,3 +559,219 @@ func SaveRequestLog(logEntry *OrdersRequestLog) error {
 	db := database.GetDB()
 	return db.Create(logEntry).Error
 }
+
+// CashFlowSyncResult 现金流同步结果
+type CashFlowSyncResult struct {
+	Total   int `json:"total"`
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	Skipped int `json:"skipped"`
+}
+
+// SyncCashFlowStatements 同步现金流报表
+func (s *Service) SyncCashFlowStatements(authID, userID uint, since, to time.Time) (*CashFlowSyncResult, error) {
+	db := database.GetDB()
+	result := &CashFlowSyncResult{}
+
+	// 获取授权信息
+	var auth PlatformAuth
+	if err := db.First(&auth, authID).Error; err != nil {
+		return nil, fmt.Errorf("获取授权信息失败: %w", err)
+	}
+
+	if auth.UserID != userID {
+		return nil, fmt.Errorf("无权访问该授权")
+	}
+
+	// 获取平台适配器
+	baseAdapter := GetAdapter(auth.Platform)
+	if baseAdapter == nil {
+		return nil, ErrPlatformNotFound
+	}
+
+	// 检查是否支持现金流接口
+	adapter, ok := baseAdapter.(PlatformAdapterWithCashFlow)
+	if !ok {
+		return nil, fmt.Errorf("平台 %s 不支持现金流报表", auth.Platform)
+	}
+
+	// 解密凭证
+	credentials, err := Decrypt(auth.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("解密凭证失败: %w", err)
+	}
+
+	// 获取现金流报表
+	cashFlows, err := adapter.GetCashFlowStatements(credentials, since, to, authID)
+	if err != nil {
+		return nil, fmt.Errorf("获取现金流报表失败: %w", err)
+	}
+
+	result.Total = len(cashFlows)
+
+	// 保存到数据库
+	for _, cf := range cashFlows {
+		if cf.PeriodBegin == nil {
+			result.Skipped++
+			continue
+		}
+
+		// 检查是否已存在（使用 platform_auth_id + period_begin 作为唯一标识）
+		var existing CashFlowStatement
+		err := db.Where("platform_auth_id = ? AND period_begin = ?", authID, cf.PeriodBegin).First(&existing).Error
+
+		if err == nil {
+			// 更新现有记录
+			existing.OrdersAmount = cf.OrdersAmount
+			existing.ReturnsAmount = cf.ReturnsAmount
+			existing.CommissionAmount = cf.CommissionAmount
+			existing.ServicesAmount = cf.ServicesAmount
+			existing.ItemDeliveryAndReturnAmount = cf.ItemDeliveryAndReturnAmount
+			existing.CurrencyCode = cf.CurrencyCode
+			existing.PeriodEnd = cf.PeriodEnd
+			existing.SyncedAt = time.Now()
+			if err := db.Save(&existing).Error; err != nil {
+				continue
+			}
+			result.Updated++
+		} else {
+			// 创建新记录
+			cf.UserID = userID
+			cf.PlatformAuthID = authID
+			cf.Platform = auth.Platform
+			cf.SyncedAt = time.Now()
+			if err := db.Create(&cf).Error; err != nil {
+				continue
+			}
+			result.Created++
+		}
+	}
+
+	return result, nil
+}
+
+// ListCashFlowStatements 查询现金流报表列表
+func (s *Service) ListCashFlowStatements(userID uint, authID uint, page, pageSize int) ([]CashFlowStatement, int64, error) {
+	db := database.GetDB()
+	var statements []CashFlowStatement
+	var total int64
+
+	query := db.Model(&CashFlowStatement{}).Where("user_id = ?", userID)
+	if authID > 0 {
+		query = query.Where("platform_auth_id = ?", authID)
+	}
+
+	// 统计总数
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	if err := query.Order("period_end DESC").Offset(offset).Limit(pageSize).Find(&statements).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return statements, total, nil
+}
+
+// GetCashFlowStatement 获取现金流报表详情
+func (s *Service) GetCashFlowStatement(id, userID uint) (*CashFlowStatement, error) {
+	db := database.GetDB()
+	var statement CashFlowStatement
+
+	if err := db.Where("id = ? AND user_id = ?", id, userID).First(&statement).Error; err != nil {
+		return nil, err
+	}
+
+	return &statement, nil
+}
+
+// GetDashboardStats 获取仪表盘统计数据
+func (s *Service) GetDashboardStats(userID uint) (*DashboardStatsResponse, error) {
+	db := database.GetDB()
+	stats := &DashboardStatsResponse{
+		Currency: "RUB",
+	}
+
+	// 订单统计查询基础条件
+	orderQuery := db.Model(&Order{}).Where("user_id = ?", userID)
+
+	// 总订单数
+	orderQuery.Count(&stats.TotalOrders)
+
+	// 已签收订单数
+	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusDelivered).Count(&stats.DeliveredOrders)
+
+	// 待处理订单数（待处理+待发货状态）
+	db.Model(&Order{}).Where("user_id = ? AND status IN ?", userID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders)
+
+	// 今日订单数
+	today := time.Now().Truncate(24 * time.Hour)
+	db.Model(&Order{}).Where("user_id = ? AND order_time >= ?", userID, today).Count(&stats.TodayOrders)
+
+	// 订单总金额（已签收订单）
+	var totalAmount struct {
+		Total float64
+	}
+	db.Model(&Order{}).
+		Select("COALESCE(SUM(total_amount), 0) as total").
+		Where("user_id = ? AND status = ?", userID, OrderStatusDelivered).
+		Scan(&totalAmount)
+	stats.TotalOrderAmount = totalAmount.Total
+
+	// 佣金统计（已签收订单）
+	var commissionStats struct {
+		TotalProfit     float64
+		TotalCommission float64
+		TotalServiceFee float64
+	}
+	db.Model(&Order{}).
+		Select(`
+			COALESCE(SUM(profit_amount), 0) as total_profit,
+			COALESCE(SUM(sale_commission), 0) as total_commission,
+			COALESCE(SUM(services_amount), 0) as total_service_fee
+		`).
+		Where("user_id = ? AND status = ?", userID, OrderStatusDelivered).
+		Scan(&commissionStats)
+	stats.TotalProfit = commissionStats.TotalProfit
+	stats.TotalCommission = commissionStats.TotalCommission
+	stats.TotalServiceFee = commissionStats.TotalServiceFee
+
+	// 授权统计
+	db.Model(&PlatformAuth{}).Where("user_id = ?", userID).Count(&stats.TotalAuths)
+	db.Model(&PlatformAuth{}).Where("user_id = ? AND status = ?", userID, AuthStatusActive).Count(&stats.ActiveAuths)
+
+	return stats, nil
+}
+
+// GetRecentOrders 获取最近订单
+func (s *Service) GetRecentOrders(userID uint, limit int) ([]RecentOrderResponse, error) {
+	db := database.GetDB()
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var orders []Order
+	if err := db.Where("user_id = ?", userID).
+		Order("order_time DESC").
+		Limit(limit).
+		Find(&orders).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]RecentOrderResponse, len(orders))
+	for i, order := range orders {
+		result[i] = RecentOrderResponse{
+			ID:              order.ID,
+			PlatformOrderNo: order.PlatformOrderNo,
+			Status:          order.Status,
+			TotalAmount:     order.TotalAmount,
+			Currency:        order.Currency,
+			OrderTime:       order.OrderTime,
+		}
+	}
+
+	return result, nil
+}

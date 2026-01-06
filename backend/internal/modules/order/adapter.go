@@ -40,6 +40,13 @@ type PlatformAdapterWithOrders interface {
 	GetCommissionsForOrders(credentials string, postingNumbers []string, platformAuthID uint) (map[string]*CommissionData, error)
 }
 
+// PlatformAdapterWithCashFlow 支持现金流报表的适配器接口
+type PlatformAdapterWithCashFlow interface {
+	PlatformAdapter
+	// GetCashFlowStatements 获取现金流报表
+	GetCashFlowStatements(credentials string, since, to time.Time, platformAuthID uint) ([]CashFlowStatement, error)
+}
+
 // 注册的适配器
 var adapters = make(map[string]PlatformAdapter)
 
