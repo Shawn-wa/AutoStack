@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, onActivated } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 defineOptions({ name: 'Orders' })
@@ -34,8 +34,26 @@ const filters = ref({
   end_time: ''
 })
 
-// 从 URL query 初始化筛选条件
+// 重置筛选条件
+const resetFilters = () => {
+  filters.value = {
+    platform: '',
+    auth_id: undefined,
+    status: '',
+    keyword: '',
+    start_time: '',
+    end_time: ''
+  }
+  currentPage.value = 1
+  pageSize.value = 20
+}
+
+// 从 URL query 初始化筛选条件（先清空再设置，确保只使用URL中的参数）
 const initFiltersFromQuery = () => {
+  // 先重置所有过滤条件
+  resetFilters()
+  
+  // 再根据URL参数设置
   const query = route.query
   if (query.platform) filters.value.platform = query.platform as string
   if (query.auth_id) filters.value.auth_id = Number(query.auth_id)
@@ -71,6 +89,7 @@ const auths = ref<PlatformAuth[]>([])
 // 状态选项
 const statusOptions = [
   { label: '全部状态', value: '' },
+  { label: '待处理（含待发货）', value: 'pending,ready_to_ship' },
   { label: '待处理', value: 'pending' },
   { label: '待发货', value: 'ready_to_ship' },
   { label: '已发货', value: 'shipped' },
@@ -130,15 +149,7 @@ const handleSearch = () => {
 
 // 重置筛选
 const handleReset = () => {
-  filters.value = {
-    platform: '',
-    auth_id: undefined,
-    status: '',
-    keyword: '',
-    start_time: '',
-    end_time: ''
-  }
-  currentPage.value = 1
+  resetFilters()
   router.replace({ query: {} })
   fetchOrders()
 }
@@ -204,6 +215,24 @@ const getStatusText = (status: string) => {
   }
 }
 
+// 监听路由query变化（处理从其他页面跳转带参数的情况）
+watch(
+  () => route.query,
+  (newQuery, oldQuery) => {
+    // 只有当query真正变化时才重新加载
+    if (JSON.stringify(newQuery) !== JSON.stringify(oldQuery)) {
+      initFiltersFromQuery()
+      fetchOrders()
+    }
+  }
+)
+
+// keep-alive 激活时重新检查URL参数
+onActivated(() => {
+  initFiltersFromQuery()
+  fetchOrders()
+})
+
 onMounted(() => {
   // 从 URL query 恢复筛选条件
   initFiltersFromQuery()
@@ -262,20 +291,20 @@ onMounted(() => {
           <el-form-item label="下单时间">
             <el-date-picker
               v-model="filters.start_time"
-              type="date"
-              placeholder="开始日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-              style="width: 140px"
+              type="datetime"
+              placeholder="开始时间"
+              format="YYYY-MM-DD HH:mm:ss"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width: 180px"
             />
             <span style="margin: 0 8px; color: var(--text-secondary)">至</span>
             <el-date-picker
               v-model="filters.end_time"
-              type="date"
-              placeholder="结束日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-              style="width: 140px"
+              type="datetime"
+              placeholder="结束时间"
+              format="YYYY-MM-DD HH:mm:ss"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width: 180px"
             />
           </el-form-item>
           <el-form-item>

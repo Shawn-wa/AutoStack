@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -152,7 +154,7 @@ func (s *Service) UpdateAuth(id uint, userID uint, req *UpdateAuthRequest) (*Pla
 		updates["status"] = *req.Status
 	}
 
-	if req.Credentials != nil && len(req.Credentials) > 0 {
+	if len(req.Credentials) > 0 {
 		credBytes, err := json.Marshal(req.Credentials)
 		if err != nil {
 			return nil, err
@@ -416,21 +418,38 @@ func (s *Service) ListOrders(userID uint, req *OrderListRequest) ([]Order, int64
 		query = query.Where("platform_auth_id = ?", req.AuthID)
 	}
 	if req.Status != "" {
-		query = query.Where("status = ?", req.Status)
+		// 支持多状态筛选，逗号分隔
+		if strings.Contains(req.Status, ",") {
+			statuses := strings.Split(req.Status, ",")
+			query = query.Where("status IN ?", statuses)
+		} else {
+			query = query.Where("status = ?", req.Status)
+		}
 	}
 	if req.Keyword != "" {
 		keyword := "%" + req.Keyword + "%"
 		query = query.Where("platform_order_no LIKE ? OR recipient_name LIKE ?", keyword, keyword)
 	}
+	// 时间过滤 - 直接拼接 SQL 避免 GORM 的参数时区转换
 	if req.StartTime != "" {
-		if t, err := time.Parse("2006-01-02", req.StartTime); err == nil {
-			query = query.Where("order_time >= ?", t)
+		startTimeStr, _ := url.QueryUnescape(req.StartTime)
+		if startTimeStr == "" {
+			startTimeStr = req.StartTime
 		}
+		if len(startTimeStr) == 10 {
+			startTimeStr = startTimeStr + " 00:00:00"
+		}
+		query = query.Where(fmt.Sprintf("order_time >= '%s'", startTimeStr))
 	}
 	if req.EndTime != "" {
-		if t, err := time.Parse("2006-01-02", req.EndTime); err == nil {
-			query = query.Where("order_time <= ?", t.Add(24*time.Hour))
+		endTimeStr, _ := url.QueryUnescape(req.EndTime)
+		if endTimeStr == "" {
+			endTimeStr = req.EndTime
 		}
+		if len(endTimeStr) == 10 {
+			endTimeStr = endTimeStr + " 23:59:59"
+		}
+		query = query.Where(fmt.Sprintf("order_time <= '%s'", endTimeStr))
 	}
 
 	query.Count(&total)

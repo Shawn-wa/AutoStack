@@ -14,15 +14,15 @@ const recentOrders = ref<RecentOrder[]>([])
 // 状态映射
 const statusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待处理', color: 'warning' },
-  accepted: { label: '已接单', color: 'primary' },
-  shipped: { label: '已发货', color: 'info' },
+  ready_to_ship: { label: '待发货', color: 'primary' },
+  shipped: { label: '已发货', color: 'cyan' },
   delivered: { label: '已签收', color: 'success' },
   cancelled: { label: '已取消', color: 'danger' },
 }
 
 // 格式化金额
 const formatAmount = (value: number, currency: string = 'RUB') => {
-  return formatCurrency(value, currency, 'ru-RU')
+  return formatCurrency(value, currency)
 }
 
 // 统计卡片数据
@@ -34,28 +34,32 @@ const statCards = computed(() => {
       value: stats.value.total_orders, 
       icon: '📦', 
       color: 'primary',
-      suffix: '单'
+      suffix: '单',
+      filter: {} // 无过滤条件，显示全部
     },
     { 
       label: '已签收订单', 
       value: stats.value.delivered_orders, 
       icon: '✅', 
       color: 'success',
-      suffix: '单'
+      suffix: '单',
+      filter: { status: 'delivered' }
     },
     { 
       label: '今日新增', 
       value: stats.value.today_orders, 
       icon: '📈', 
       color: 'accent',
-      suffix: '单'
+      suffix: '单',
+      filter: { start_time: getTodayStart(), end_time: getTodayEnd() }
     },
     { 
       label: '待处理订单', 
       value: stats.value.pending_orders, 
       icon: '⏳', 
       color: 'warning',
-      suffix: '单'
+      suffix: '单',
+      filter: { status: 'pending,ready_to_ship' } // 待处理+待发货
     },
   ]
 })
@@ -126,10 +130,22 @@ const goToOrderDetail = (id: number) => {
   router.push({ name: 'OrderDetail', params: { id } })
 }
 
+// 获取今日开始时间 YYYY-MM-DD 00:00:00
+const getTodayStart = () => {
+  const today = new Date()
+  return today.toISOString().split('T')[0] + ' 00:00:00'
+}
+
+// 获取今日结束时间 YYYY-MM-DD 23:59:59
+const getTodayEnd = () => {
+  const today = new Date()
+  return today.toISOString().split('T')[0] + ' 23:59:59'
+}
+
 // 跳转到订单列表
-const goToOrders = (status?: string) => {
-  if (status) {
-    router.push({ name: 'Orders', query: { status } })
+const goToOrders = (filter?: { status?: string; start_time?: string; end_time?: string }) => {
+  if (filter && Object.keys(filter).length > 0) {
+    router.push({ name: 'Orders', query: filter })
   } else {
     router.push({ name: 'Orders' })
   }
@@ -165,7 +181,7 @@ onMounted(() => {
           :key="stat.label" 
           class="stat-card"
           :class="`stat-${stat.color}`"
-          @click="goToOrders(stat.label === '已签收订单' ? 'delivered' : stat.label === '待处理订单' ? 'accepted' : undefined)"
+          @click="goToOrders(stat.filter)"
         >
           <div class="stat-icon">{{ stat.icon }}</div>
           <div class="stat-content">
@@ -219,10 +235,9 @@ onMounted(() => {
             v-for="order in recentOrders" 
             :key="order.id" 
             class="order-item"
-            @click="goToOrderDetail(order.id)"
           >
             <div class="order-info">
-              <div class="order-no">{{ order.platform_order_no }}</div>
+              <div class="order-no" @click="goToOrderDetail(order.id)">{{ order.platform_order_no }}</div>
               <div class="order-time">{{ order.order_time ? formatDateTime(order.order_time) : '-' }}</div>
             </div>
             <div class="order-amount">
@@ -461,12 +476,7 @@ onMounted(() => {
   padding: 16px;
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
-  cursor: pointer;
   transition: all var(--transition-fast);
-  
-  &:hover {
-    background: var(--bg-hover);
-  }
 }
 
 .order-info {
@@ -474,13 +484,17 @@ onMounted(() => {
 }
 
 .order-no {
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  
+  &:hover {
+    color: var(--accent);
+  }
 }
 
 .order-time {
@@ -523,6 +537,11 @@ onMounted(() => {
     &.status-info {
       background: rgba(144, 147, 153, 0.1);
       color: var(--text-secondary);
+    }
+    
+    &.status-cyan {
+      background: rgba(0, 206, 209, 0.1);
+      color: #00ced1;
     }
     
     &.status-danger {

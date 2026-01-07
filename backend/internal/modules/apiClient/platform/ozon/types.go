@@ -163,17 +163,18 @@ type FinanceTotalsResponse struct {
 	Result FinanceTotalsItem `json:"result"`
 }
 
-// FinanceTotalsItem 财务汇总项
-// 参考文档: https://docs.ozon.ru/api/seller/#operation/FinanceAPI_FinanceTransactionTotalV3
+// FinanceTotalsItem 财务汇总项 - 单个订单的财务汇总数据
+// API: POST /v3/finance/transaction/totals
+// 文档: https://docs.ozon.ru/api/seller/#operation/FinanceAPI_FinanceTransactionTotalV3
 type FinanceTotalsItem struct {
-	AccrualsForSale         float64 `json:"accruals_for_sale"`          // 销售收入：卖家因销售商品获得的收入金额
-	SaleCommission          float64 `json:"sale_commission"`            // 销售佣金：Ozon平台从销售中收取的佣金费用
-	ProcessingAndDelivery   float64 `json:"processing_and_delivery"`    // 加工和配送：商品处理和配送的费用
-	RefundsAndCancellations float64 `json:"refunds_and_cancellations"`  // 退款和取消：退款及取消订单相关费用
-	ServicesAmount          float64 `json:"services_amount"`            // 服务费：平台服务费用
-	CompensationAmount      float64 `json:"compensation_amount"`        // 补偿金额：平台补偿给卖家的金额
-	MoneyTransfer           float64 `json:"money_transfer"`             // 资金转账：资金转账相关
-	OthersAmount            float64 `json:"others_amount"`              // 其他金额：其他杂项费用
+	AccrualsForSale         float64 `json:"accruals_for_sale"`         // 销售收入：卖家因销售商品获得的收入金额（正数，如 1500.00）
+	SaleCommission          float64 `json:"sale_commission"`           // 销售佣金：Ozon平台从销售中收取的佣金费用（负数，如 -225.00）
+	ProcessingAndDelivery   float64 `json:"processing_and_delivery"`   // 物流费用：商品处理、包装和配送的费用（负数，如 -150.00）
+	RefundsAndCancellations float64 `json:"refunds_and_cancellations"` // 退款退货：退款及取消订单产生的费用扣减（通常为负数或0）
+	ServicesAmount          float64 `json:"services_amount"`           // 平台服务费：Ozon提供的增值服务费用（负数，如广告费、仓储费）
+	CompensationAmount      float64 `json:"compensation_amount"`       // 补偿金额：平台对卖家的补偿款项（正数，如物流损坏赔偿）
+	MoneyTransfer           float64 `json:"money_transfer"`            // 资金划转：账户间资金转移记录（可正可负）
+	OthersAmount            float64 `json:"others_amount"`             // 其他费用：未归类的其他杂项费用
 }
 
 // ========== 现金流报表相关 ==========
@@ -197,15 +198,17 @@ type CashFlowResult struct {
 	PageCount int            `json:"page_count"`
 }
 
-// CashFlowItem 现金流条目（根据实际 API 响应）
+// CashFlowItem 现金流条目 - 按周期汇总的财务数据
+// API: POST /v1/finance/cash-flow-statement/list
+// 文档: https://docs.ozon.ru/api/seller/#operation/FinanceAPI_FinanceCashFlowStatementList
 type CashFlowItem struct {
-	Period                      CashFlowPeriod `json:"period"`                          // 报告周期
-	OrdersAmount                float64        `json:"orders_amount"`                   // 订单金额
-	ReturnsAmount               float64        `json:"returns_amount"`                  // 退货金额
-	CommissionAmount            float64        `json:"commission_amount"`               // 佣金金额
-	ServicesAmount              float64        `json:"services_amount"`                 // 服务费
-	ItemDeliveryAndReturnAmount float64        `json:"item_delivery_and_return_amount"` // 配送和退货金额
-	CurrencyCode                string         `json:"currency_code"`                   // 货币代码
+	Period                      CashFlowPeriod `json:"period"`                          // 报告周期：包含周期ID、开始和结束时间
+	OrdersAmount                float64        `json:"orders_amount"`                   // 订单销售金额：该周期内订单的总销售额（正数）
+	ReturnsAmount               float64        `json:"returns_amount"`                  // 退货金额：该周期内退货产生的金额（负数）
+	CommissionAmount            float64        `json:"commission_amount"`               // 平台佣金：Ozon收取的销售佣金总额（负数）
+	ServicesAmount              float64        `json:"services_amount"`                 // 服务费用：平台提供的各类服务费用（负数，如广告费、仓储费）
+	ItemDeliveryAndReturnAmount float64        `json:"item_delivery_and_return_amount"` // 物流费用：商品配送和退货物流费用（负数）
+	CurrencyCode                string         `json:"currency_code"`                   // 货币代码：结算货币，如 RUB、USD、CNY 等
 }
 
 // CashFlowPeriod 报告周期

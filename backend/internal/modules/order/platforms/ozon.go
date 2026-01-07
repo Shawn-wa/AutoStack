@@ -66,6 +66,8 @@ func (a *OzonAdapter) TestConnectionWithLog(credentials string, platformAuthID u
 }
 
 // SyncOrdersWithLog 同步订单（带日志记录）
+// 注意：Ozon API 对时间范围有限制（约30天），超过限制会返回 PERIOD_IS_TOO_LONG 错误
+// 此方法会自动将长时间范围拆分成多个30天批次进行请求
 func (a *OzonAdapter) SyncOrdersWithLog(credentials string, since, to time.Time, platformAuthID uint) ([]*order.Order, error) {
 	client, err := a.createClient(credentials, platformAuthID)
 	if err != nil {
@@ -74,33 +76,52 @@ func (a *OzonAdapter) SyncOrdersWithLog(credentials string, since, to time.Time,
 
 	orderAPI := ozon.NewOrderAPI(client)
 	var allOrders []*order.Order
-	offset := 0
-	limit := 100
 
-	for {
-		resp, err := orderAPI.GetOrderList(since, to, offset, limit)
-		if err != nil {
-			return nil, err
+	// Ozon API 时间范围限制为30天，将长时间范围拆分成多个批次
+	const maxDays = 30
+	batchStart := since
+
+	for batchStart.Before(to) {
+		batchEnd := batchStart.AddDate(0, 0, maxDays)
+		if batchEnd.After(to) {
+			batchEnd = to
 		}
 
-		log.Printf("[OZON] 同步订单: offset=%d, 获取到 %d 条订单", offset, len(resp.Result.Postings))
+		log.Printf("[OZON] 同步订单批次: %s ~ %s", batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"))
 
-		if len(resp.Result.Postings) == 0 {
-			break
+		// 分页获取该批次的订单
+		offset := 0
+		limit := 100
+
+		for {
+			resp, err := orderAPI.GetOrderList(batchStart, batchEnd, offset, limit)
+			if err != nil {
+				return nil, err
+			}
+
+			log.Printf("[OZON] 同步订单: offset=%d, 获取到 %d 条订单", offset, len(resp.Result.Postings))
+
+			if len(resp.Result.Postings) == 0 {
+				break
+			}
+
+			for _, posting := range resp.Result.Postings {
+				ord := a.convertToOrder(&posting)
+				allOrders = append(allOrders, ord)
+			}
+
+			if len(resp.Result.Postings) < limit {
+				break
+			}
+
+			offset += limit
 		}
 
-		for _, posting := range resp.Result.Postings {
-			ord := a.convertToOrder(&posting)
-			allOrders = append(allOrders, ord)
-		}
-
-		if len(resp.Result.Postings) < limit {
-			break
-		}
-
-		offset += limit
+		// 移动到下一批次
+		batchStart = batchEnd
 	}
 
+	log.Printf("[OZON] 同步完成: 共获取 %d 条订单", len(allOrders))
 	return allOrders, nil
 }
 
@@ -314,15 +335,29 @@ func (a *OzonAdapter) convertToOrder(posting *ozon.Posting) *order.Order {
 	return ord
 }
 
-// mapStatus 映射状态
+// mapStatus 映射状态（使用统一的状态映射机制）
 func (a *OzonAdapter) mapStatus(platformStatus string) string {
-	if status, ok := order.OzonStatusMap[platformStatus]; ok {
-		return status
-	}
-	return order.OrderStatusPending
+	return order.MapPlatformStatus(order.PlatformOzon, platformStatus)
 }
 
 func init() {
+	// 注册 Ozon 平台状态映射
+	// Ozon 订单状态映射
+	// 文档参考: https://docs.ozon.ru/api/seller/#operation/PostingAPI_GetFbsPostingListV3
+	order.RegisterPlatformStatusMapping(order.PlatformOzon, map[string]string{
+		"awaiting_packaging":  order.OrderStatusPending,     // 等待包装
+		"awaiting_deliver":    order.OrderStatusReadyToShip, // 等待交付
+		"ready_to_ship":       order.OrderStatusReadyToShip, // 准备发货
+		"arbitration":         order.OrderStatusPending,     // 仲裁中
+		"client_arbitration":  order.OrderStatusPending,     // 客户仲裁
+		"delivering":          order.OrderStatusShipped,     // 配送中
+		"driver_pickup":       order.OrderStatusShipped,     // 司机取货
+		"delivered":           order.OrderStatusDelivered,   // 已送达
+		"cancelled":           order.OrderStatusCancelled,   // 已取消
+		"not_accepted":        order.OrderStatusCancelled,   // 未接受
+		"sent_by_seller":      order.OrderStatusShipped,     // 卖家已发货
+	})
+
 	// 自动注册适配器
 	order.RegisterAdapter(&OzonAdapter{})
 }

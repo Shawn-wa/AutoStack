@@ -278,7 +278,15 @@ const handleSync = async () => {
   syncLoading.value = true
   try {
     const now = new Date()
-    const since = new Date(now.getTime() - syncDays.value * 24 * 60 * 60 * 1000)
+    let since: Date
+    
+    if (syncDays.value === -1) {
+      // 历史订单：从2025-01-01开始
+      since = new Date('2025-01-01T00:00:00Z')
+    } else {
+      since = new Date(now.getTime() - syncDays.value * 24 * 60 * 60 * 1000)
+    }
+    
     const res = await syncOrders(syncAuthId.value, {
       since: since.toISOString(),
       to: now.toISOString()
@@ -548,6 +556,7 @@ onMounted(() => {
             <el-option label="最近 7 天" :value="7" />
             <el-option label="最近 15 天" :value="15" />
             <el-option label="最近 30 天" :value="30" />
+            <el-option label="历史订单（从2025-01-01）" :value="-1" />
           </el-select>
         </el-form-item>
       </el-form>

@@ -40,7 +40,7 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=release
       - DATABASE_DRIVER=mysql
-      - DATABASE_DSN=root:As2024#xK9mPv7Rn@tcp(mysql:3306)/autostack?charset=utf8mb4&parseTime=True&loc=Local
+      - DATABASE_DSN=root:As2024#xK9mPv7Rn@tcp(mysql:3306)/autostack?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
       - JWT_SECRET=autostack-jwt-secret-Kx8Pm2Rv
       - CRYPTO_SECRET_KEY=kGi9gkEYeaK5uSyI73YOCcy4Py+eaOty
     volumes:

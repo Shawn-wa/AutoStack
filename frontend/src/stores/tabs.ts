@@ -43,10 +43,10 @@ export const useTabsStore = defineStore('tabs', () => {
     // 检查是否已存在（按 name 和 path 判断）
     const existingIndex = tabs.value.findIndex(t => t.name === tab.name && t.path === tab.path)
     if (existingIndex === -1) {
-      // 检查是否有相同 name 但不同 path 的标签（如订单详情）
+      // 检查是否有相同 name 但不同 path 的标签
       const sameNameIndex = tabs.value.findIndex(t => t.name === tab.name)
-      if (sameNameIndex !== -1 && tab.name !== 'Orders') {
-        // 替换现有标签（除了订单列表，因为它的 query 可能不同）
+      if (sameNameIndex !== -1) {
+        // 替换现有标签（包括订单列表，确保只有一个tab）
         tabs.value[sameNameIndex] = tab
       } else {
         tabs.value.push(tab)

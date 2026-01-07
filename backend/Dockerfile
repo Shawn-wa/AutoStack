@@ -32,8 +32,10 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # 安装必要的运行时依赖
 RUN apk add --no-cache ca-certificates tzdata wget
 
-# 设置时区
+# 设置时区为上海
 ENV TZ=Asia/Shanghai
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
 
 # 创建数据目录
 RUN mkdir -p /app/data
