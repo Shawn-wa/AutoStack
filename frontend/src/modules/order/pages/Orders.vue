@@ -34,6 +34,9 @@ const filters = ref({
   end_time: ''
 })
 
+// 日期范围选择器值
+const dateRange = ref<[Date, Date] | null>(null)
+
 // 重置筛选条件
 const resetFilters = () => {
   filters.value = {
@@ -44,8 +47,52 @@ const resetFilters = () => {
     start_time: '',
     end_time: ''
   }
+  dateRange.value = null
   currentPage.value = 1
   pageSize.value = 20
+}
+
+// 格式化日期时间
+const formatDateTimeStr = (date: Date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const h = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  const s = String(date.getSeconds()).padStart(2, '0')
+  return `${y}-${m}-${d} ${h}:${min}:${s}`
+}
+
+// 日期范围变化处理
+const handleDateRangeChange = (val: [Date, Date] | null) => {
+  if (!val) {
+    filters.value.start_time = ''
+    filters.value.end_time = ''
+    return
+  }
+  
+  const [start, end] = val
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  
+  // 判断是否选择了同一天且时间都是00:00:00（即只选了日期没选时间）
+  const isSameDay = startDate.getFullYear() === endDate.getFullYear() &&
+                    startDate.getMonth() === endDate.getMonth() &&
+                    startDate.getDate() === endDate.getDate()
+  
+  const isDefaultTime = startDate.getHours() === 0 && startDate.getMinutes() === 0 && startDate.getSeconds() === 0 &&
+                        endDate.getHours() === 0 && endDate.getMinutes() === 0 && endDate.getSeconds() === 0
+  
+  if (isSameDay && isDefaultTime) {
+    // 同一天且未选时间：设置为 00:00:00 到 23:59:59
+    const dateStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`
+    filters.value.start_time = `${dateStr} 00:00:00`
+    filters.value.end_time = `${dateStr} 23:59:59`
+  } else {
+    // 使用用户选择的具体时间
+    filters.value.start_time = formatDateTimeStr(startDate)
+    filters.value.end_time = formatDateTimeStr(endDate)
+  }
 }
 
 // 从 URL query 初始化筛选条件（先清空再设置，确保只使用URL中的参数）
@@ -63,6 +110,14 @@ const initFiltersFromQuery = () => {
   if (query.end_time) filters.value.end_time = query.end_time as string
   if (query.page) currentPage.value = Number(query.page)
   if (query.page_size) pageSize.value = Number(query.page_size)
+  
+  // 恢复日期范围选择器的值（包含完整时间）
+  if (filters.value.start_time && filters.value.end_time) {
+    dateRange.value = [
+      new Date(filters.value.start_time.replace(' ', 'T')),
+      new Date(filters.value.end_time.replace(' ', 'T'))
+    ]
+  }
 }
 
 // 更新 URL query（不触发导航）
@@ -290,21 +345,17 @@ onMounted(() => {
           </el-form-item>
           <el-form-item label="下单时间">
             <el-date-picker
-              v-model="filters.start_time"
-              type="datetime"
-              placeholder="开始时间"
+              v-model="dateRange"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="开始时间"
+              end-placeholder="结束时间"
               format="YYYY-MM-DD HH:mm:ss"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              style="width: 180px"
-            />
-            <span style="margin: 0 8px; color: var(--text-secondary)">至</span>
-            <el-date-picker
-              v-model="filters.end_time"
-              type="datetime"
-              placeholder="结束时间"
-              format="YYYY-MM-DD HH:mm:ss"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              style="width: 180px"
+              date-format="YYYY-MM-DD"
+              time-format="HH:mm:ss"
+              :unlink-panels="false"
+              style="width: 380px"
+              @change="handleDateRangeChange"
             />
           </el-form-item>
           <el-form-item>
