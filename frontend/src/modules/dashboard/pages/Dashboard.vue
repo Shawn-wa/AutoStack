@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDashboardStats, getRecentOrders, type DashboardStats, type RecentOrder } from '@/modules/order/api'
+import { ElMessage } from 'element-plus'
+import { getDashboardStats, getRecentOrders, getOrderTrend, initDashboardStats, refreshDashboardStats, type DashboardStats, type RecentOrder, type OrderTrendItem } from '@/modules/order/api'
 import { formatCurrency, formatDateTime } from '@/utils/format'
+import * as echarts from 'echarts'
 
 defineOptions({ name: 'Dashboard' })
 
@@ -10,6 +12,20 @@ const router = useRouter()
 const loading = ref(false)
 const stats = ref<DashboardStats | null>(null)
 const recentOrders = ref<RecentOrder[]>([])
+const trendData = ref<OrderTrendItem[]>([])
+const chartRef = ref<HTMLElement | null>(null)
+const trendRefreshing = ref(false)
+const currentTrendCurrency = ref('RUB') // 默认币种
+
+// 可选币种（排除CNY）
+const availableCurrencies = computed(() => {
+  if (!stats.value || !stats.value.total_amounts || stats.value.total_amounts.length === 0) {
+    return ['RUB']
+  }
+  return stats.value.total_amounts.map(a => a.currency).filter(c => c !== 'CNY')
+})
+
+let chartInstance: echarts.ECharts | null = null
 
 // 状态映射
 const statusMap: Record<string, { label: string; color: string }> = {
@@ -67,13 +83,27 @@ const statCards = computed(() => {
 // 金额统计卡片
 const amountCards = computed(() => {
   if (!stats.value) return []
+  
+  // 处理订单总金额（多币种）
+  let totalAmountValue: any = 0
+  let isMulti = false
+  
+  if (stats.value.total_amounts && stats.value.total_amounts.length > 0) {
+    const validAmounts = stats.value.total_amounts.filter(a => a.amount > 0)
+    if (validAmounts.length > 0) {
+      totalAmountValue = validAmounts
+      isMulti = true
+    }
+  }
+
   return [
     { 
       label: '订单总金额', 
-      value: stats.value.total_order_amount,
+      value: totalAmountValue,
       currency: stats.value.currency,
       icon: '💰', 
-      color: 'primary'
+      color: 'primary',
+      isMultiCurrency: isMulti
     },
     { 
       label: '累计利润', 
@@ -112,18 +142,247 @@ const authStats = computed(() => {
 const loadData = async () => {
   loading.value = true
   try {
-    const [statsRes, ordersRes] = await Promise.all([
+    // 先触发初始化统计（异步，不阻塞）
+    initDashboardStats().catch(() => {})
+    
+    const [statsRes, ordersRes, trendRes] = await Promise.all([
       getDashboardStats(),
-      getRecentOrders(8)
+      getRecentOrders(8),
+      getOrderTrend(30, currentTrendCurrency.value)
     ])
     stats.value = statsRes.data
     recentOrders.value = ordersRes.data || []
+    trendData.value = trendRes.data?.items || []
+    
+    // 如果返回的统计中有币种，且当前默认的RUB不在其中，则切换到第一个币种
+    if (stats.value.total_amounts && stats.value.total_amounts.length > 0) {
+      const hasCurrent = stats.value.total_amounts.some(a => a.currency === currentTrendCurrency.value)
+      if (!hasCurrent) {
+        currentTrendCurrency.value = stats.value.total_amounts[0].currency
+        // 重新加载走势
+        const newTrendRes = await getOrderTrend(30, currentTrendCurrency.value)
+        trendData.value = newTrendRes.data?.items || []
+      }
+    }
+
+    // 初始化图表
+    initChart()
   } catch (error) {
     console.error('加载仪表盘数据失败:', error)
   } finally {
     loading.value = false
   }
 }
+
+// 切换走势图币种
+const changeTrendCurrency = async (currency: string) => {
+  if (currentTrendCurrency.value === currency) return
+  currentTrendCurrency.value = currency
+  trendRefreshing.value = true
+  try {
+    const trendRes = await getOrderTrend(30, currency)
+    trendData.value = trendRes.data?.items || []
+    initChart()
+  } catch (error) {
+    console.error('切换币种失败:', error)
+  } finally {
+    trendRefreshing.value = false
+  }
+}
+
+// 刷新走势统计
+const refreshTrendStats = async () => {
+  trendRefreshing.value = true
+  try {
+    // 强制刷新统计数据
+    await refreshDashboardStats()
+    // 重新加载走势数据
+    const trendRes = await getOrderTrend(30, currentTrendCurrency.value)
+    trendData.value = trendRes.data?.items || []
+    initChart()
+    ElMessage.success('走势数据已更新')
+  } catch (error) {
+    console.error('刷新走势数据失败:', error)
+    ElMessage.error('刷新失败，请稍后重试')
+  } finally {
+    trendRefreshing.value = false
+  }
+}
+
+// 初始化图表
+const initChart = () => {
+  if (!chartRef.value || trendData.value.length === 0) return
+  
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  
+  chartInstance = echarts.init(chartRef.value)
+  
+  const dates = trendData.value.map(item => {
+    const d = new Date(item.date)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  })
+  const counts = trendData.value.map(item => item.count)
+  const amounts = trendData.value.map(item => item.amount)
+  
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(30, 30, 30, 0.95)',
+      borderColor: '#333',
+      borderWidth: 1,
+      textStyle: {
+        color: '#fff'
+      },
+      formatter: (params: any) => {
+        const index = params[0].dataIndex
+        const item = trendData.value[index]
+        return `<div style="padding: 4px;">
+          <div style="color: #999; margin-bottom: 6px; font-size: 12px;">${item.date}</div>
+          <div style="display: flex; justify-content: space-between; gap: 16px; margin-bottom: 4px;">
+            <span style="color: #00d4ff;">● 订单量</span>
+            <span style="font-weight: bold;">${item.count}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 16px;">
+            <span style="color: #ffd700;">● 销售额</span>
+            <span style="font-weight: bold;">₽${item.amount.toLocaleString()}</span>
+          </div>
+        </div>`
+      }
+    },
+    legend: {
+      data: ['订单量', '销售额'],
+      bottom: 0,
+      textStyle: { color: 'rgba(255, 255, 255, 0.6)', fontSize: 11 },
+      itemWidth: 12,
+      itemHeight: 12
+    },
+    grid: {
+      left: 40,
+      right: 60,
+      top: 30,
+      bottom: 30
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLine: {
+        show: true,
+        lineStyle: { color: 'rgba(255,255,255,0.2)' }
+      },
+      axisLabel: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 10,
+        interval: Math.floor(dates.length / 10)
+      },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { 
+          color: 'rgba(255,255,255,0.06)',
+          type: 'dashed'
+        }
+      }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '订单量',
+        nameTextStyle: { color: 'rgba(255,255,255,0.4)', padding: [0, 20, 0, 0] },
+        splitNumber: 5,
+        splitLine: {
+          show: true,
+          lineStyle: { 
+            color: 'rgba(255,255,255,0.08)',
+            type: 'dashed'
+          }
+        },
+        axisLine: { 
+          show: true,
+          lineStyle: { color: 'rgba(255,255,255,0.1)' }
+        },
+        axisLabel: {
+          color: 'rgba(255,255,255,0.5)',
+          fontSize: 11
+        }
+      },
+      {
+        type: 'value',
+        name: '销售额',
+        nameTextStyle: { color: 'rgba(255,255,255,0.4)', padding: [0, 0, 0, 20] },
+        splitLine: { show: false },
+        axisLine: { 
+          show: true,
+          lineStyle: { color: 'rgba(255,255,255,0.1)' }
+        },
+        axisLabel: {
+          color: 'rgba(255,255,255,0.5)',
+          fontSize: 10,
+          formatter: (value: number) => value >= 1000 ? `${(value/1000).toFixed(0)}k` : `${value}`
+        }
+      }
+    ],
+    series: [
+      {
+        name: '订单量',
+        data: counts,
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        yAxisIndex: 0,
+        lineStyle: {
+          color: '#00d4ff',
+          width: 2
+        },
+        itemStyle: {
+          color: '#00d4ff'
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(0, 212, 255, 0.25)' },
+            { offset: 1, color: 'rgba(0, 212, 255, 0.01)' }
+          ])
+        }
+      },
+      {
+        name: '销售额',
+        data: amounts,
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        yAxisIndex: 1,
+        lineStyle: {
+          color: '#ffd700',
+          width: 2
+        },
+        itemStyle: {
+          color: '#ffd700'
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(255, 215, 0, 0.25)' },
+            { offset: 1, color: 'rgba(255, 215, 0, 0.01)' }
+          ])
+        }
+      }
+    ]
+  }
+  
+  chartInstance.setOption(option)
+}
+
+// 窗口resize时重绘图表
+const handleResize = () => {
+  chartInstance?.resize()
+}
+
+// 监听主题变化
+watch(() => trendData.value, () => {
+  if (chartRef.value) {
+    initChart()
+  }
+})
 
 // 跳转到订单详情
 const goToOrderDetail = (id: number) => {
@@ -158,6 +417,15 @@ const goToAuths = () => {
 
 onMounted(() => {
   loadData()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
 })
 </script>
 
@@ -169,58 +437,96 @@ onMounted(() => {
       <p class="page-desc">查看您的订单和经营数据统计</p>
     </div>
 
-    <!-- 订单统计卡片 -->
-    <section class="stats-section">
-      <h2 class="section-title">
-        <span class="title-icon">📊</span>
-        订单统计
-      </h2>
-      <div class="stats-grid">
-        <div 
-          v-for="stat in statCards" 
-          :key="stat.label" 
-          class="stat-card"
-          :class="`stat-${stat.color}`"
-          @click="goToOrders(stat.filter)"
-        >
-          <div class="stat-icon">{{ stat.icon }}</div>
-          <div class="stat-content">
-            <div class="stat-value">
-              {{ stat.value?.toLocaleString() || 0 }}
-              <span class="stat-suffix">{{ stat.suffix }}</span>
+    <!-- 订单统计 + 经营数据 并排 -->
+    <div class="stats-row">
+      <!-- 订单统计卡片 -->
+      <section class="stats-section stats-section-half">
+        <h2 class="section-title">
+          <span class="title-icon">📊</span>
+          订单统计
+        </h2>
+        <div class="stats-grid stats-grid-2">
+          <div 
+            v-for="stat in statCards" 
+            :key="stat.label" 
+            class="stat-card stat-card-compact"
+            :class="`stat-${stat.color}`"
+            @click="goToOrders(stat.filter)"
+          >
+            <div class="stat-icon">{{ stat.icon }}</div>
+            <div class="stat-content">
+              <div class="stat-value">
+                {{ stat.value?.toLocaleString() || 0 }}
+                <span class="stat-suffix">{{ stat.suffix }}</span>
+              </div>
+              <div class="stat-label">{{ stat.label }}</div>
             </div>
-            <div class="stat-label">{{ stat.label }}</div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- 金额统计卡片 -->
-    <section class="stats-section">
-      <h2 class="section-title">
-        <span class="title-icon">💰</span>
-        经营数据
-      </h2>
-      <div class="stats-grid stats-grid-4">
-        <div 
-          v-for="stat in amountCards" 
-          :key="stat.label" 
-          class="stat-card amount-card"
-          :class="`stat-${stat.color}`"
-        >
-          <div class="stat-icon">{{ stat.icon }}</div>
-          <div class="stat-content">
-            <div class="stat-value amount-value">
-              {{ formatAmount(stat.value || 0, stat.currency) }}
+      <!-- 金额统计卡片 -->
+      <section class="stats-section stats-section-half">
+        <h2 class="section-title">
+          <span class="title-icon">💰</span>
+          经营数据
+        </h2>
+        <div class="stats-grid stats-grid-2">
+          <div 
+            v-for="stat in amountCards" 
+            :key="stat.label" 
+            class="stat-card stat-card-compact amount-card"
+            :class="`stat-${stat.color}`"
+          >
+            <div class="stat-icon">{{ stat.icon }}</div>
+            <div class="stat-content">
+              <div class="stat-value amount-value" :class="{ 'multi-value': stat.isMultiCurrency }">
+                <template v-if="stat.isMultiCurrency">
+                  <div v-for="item in stat.value" :key="item.currency" class="multi-currency-item">
+                    {{ formatAmount(item.amount, item.currency) }}
+                  </div>
+                </template>
+                <template v-else>
+                  {{ formatAmount(stat.value || 0, stat.currency) }}
+                </template>
+              </div>
+              <div class="stat-label">{{ stat.label }}</div>
             </div>
-            <div class="stat-label">{{ stat.label }}</div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <!-- 底部区域：最近订单 + 授权统计 -->
+    <!-- 底部区域：订单走势 + 最近订单 + 授权统计 -->
     <div class="bottom-section">
+      <!-- 订单走势图 -->
+      <section class="trend-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="title-icon">📈</span>
+            订单走势
+          </h2>
+          <div class="trend-actions">
+            <div class="trend-tabs">
+              <button 
+                v-for="curr in availableCurrencies" 
+                :key="curr"
+                class="trend-tab"
+                :class="{ active: currentTrendCurrency === curr }"
+                @click="changeTrendCurrency(curr)"
+              >
+                {{ curr }}
+              </button>
+            </div>
+            <span class="trend-period">近30天</span>
+            <button class="refresh-btn" @click="refreshTrendStats" :disabled="trendRefreshing">
+              <span class="refresh-icon" :class="{ 'spinning': trendRefreshing }">🔄</span>
+            </button>
+          </div>
+        </div>
+        <div class="trend-chart" ref="chartRef"></div>
+      </section>
+
       <!-- 最近订单 -->
       <section class="recent-section">
         <div class="section-header">
@@ -311,6 +617,11 @@ onMounted(() => {
   }
 }
 
+.stats-row {
+  display: flex;
+  gap: 24px;
+}
+
 .stats-section {
   .section-title {
     display: flex;
@@ -325,6 +636,11 @@ onMounted(() => {
       font-size: 18px;
     }
   }
+  
+  &.stats-section-half {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .stats-grid {
@@ -334,6 +650,11 @@ onMounted(() => {
   
   &.stats-grid-4 {
     grid-template-columns: repeat(4, 1fr);
+  }
+  
+  &.stats-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
   }
 }
 
@@ -361,6 +682,15 @@ onMounted(() => {
       transform: none;
     }
   }
+  
+  &.stat-card-compact {
+    padding: 16px;
+    gap: 12px;
+    
+    &:hover {
+      transform: translateY(-2px);
+    }
+  }
 }
 
 .stat-icon {
@@ -372,6 +702,12 @@ onMounted(() => {
   justify-content: center;
   font-size: 26px;
   flex-shrink: 0;
+  
+  .stat-card-compact & {
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+  }
 }
 
 .stat-success .stat-icon {
@@ -407,9 +743,28 @@ onMounted(() => {
   display: flex;
   align-items: baseline;
   gap: 4px;
+
+  &.multi-value {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .multi-currency-item {
+    font-size: 18px;
+    line-height: 1.4;
+  }
   
   &.amount-value {
     font-size: 20px;
+  }
+  
+  .stat-card-compact & {
+    font-size: 22px;
+    
+    &.amount-value {
+      font-size: 16px;
+    }
   }
 }
 
@@ -427,15 +782,105 @@ onMounted(() => {
 
 .bottom-section {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 24px;
 }
 
-.recent-section, .auth-section {
+.trend-section, .recent-section, .auth-section {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 24px;
+}
+
+.trend-section {
+  .trend-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .trend-tabs {
+    display: flex;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    margin-right: 8px;
+    
+    .trend-tab {
+      background: none;
+      border: none;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: var(--radius-xs);
+      transition: all 0.2s;
+      
+      &:hover {
+        color: var(--text-primary);
+      }
+      
+      &.active {
+        background: var(--bg-card);
+        color: var(--color-primary);
+        font-weight: 500;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      }
+    }
+  }
+  
+  .trend-period {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+  }
+  
+  .refresh-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    
+    &:hover:not(:disabled) {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      .refresh-icon {
+        filter: brightness(10);
+      }
+    }
+    
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    
+    .refresh-icon {
+      font-size: 14px;
+      display: inline-block;
+      
+      &.spinning {
+        animation: spin 1s linear infinite;
+      }
+    }
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .trend-chart {
+    height: 220px;
+    margin-top: 8px;
+  }
 }
 
 .section-header {
@@ -620,19 +1065,45 @@ onMounted(() => {
   }
 }
 
+@media (max-width: 1400px) {
+  .bottom-section {
+    grid-template-columns: 1fr 1fr;
+    
+    .auth-section {
+      grid-column: span 2;
+    }
+  }
+}
+
 @media (max-width: 1200px) {
+  .stats-row {
+    flex-direction: column;
+  }
+  
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+    
+    &.stats-grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
   
   .bottom-section {
     grid-template-columns: 1fr;
+    
+    .auth-section {
+      grid-column: span 1;
+    }
   }
 }
 
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: 1fr;
+    
+    &.stats-grid-2 {
+      grid-template-columns: 1fr;
+    }
   }
 }
 </style>

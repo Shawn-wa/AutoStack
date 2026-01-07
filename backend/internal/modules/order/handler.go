@@ -715,3 +715,60 @@ func GetRecentOrders(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "获取成功", orders)
 }
+
+// GetOrderTrend 获取订单趋势数据
+func GetOrderTrend(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "7"))
+	if days <= 0 || days > 30 {
+		days = 7
+	}
+	currency := c.Query("currency")
+
+	trend, err := orderService.GetOrderTrend(userID, days, currency)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取订单趋势失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", trend)
+}
+
+// InitDashboardStats 初始化仪表盘统计数据（首次访问时调用）
+func InitDashboardStats(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	// 异步初始化统计数据（不强制更新）
+	go func() {
+		_ = orderService.InitOrderTrendStats(userID, false)
+	}()
+
+	response.Success(c, http.StatusOK, "初始化任务已启动", nil)
+}
+
+// RefreshDashboardStats 刷新仪表盘统计数据（强制重新计算）
+func RefreshDashboardStats(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	// 同步刷新统计数据（强制更新）
+	err := orderService.InitOrderTrendStats(userID, true)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "刷新统计数据失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "统计数据已刷新", nil)
+}

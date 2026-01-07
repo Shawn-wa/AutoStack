@@ -725,19 +725,19 @@ func (s *Service) GetDashboardStats(userID uint) (*DashboardStatsResponse, error
 	// 待处理订单数（待处理+待发货状态）
 	db.Model(&Order{}).Where("user_id = ? AND status IN ?", userID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders)
 
-	// 今日订单数
-	today := time.Now().Truncate(24 * time.Hour)
+	// 今日订单数（使用本地时区的今天零点）
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	db.Model(&Order{}).Where("user_id = ? AND order_time >= ?", userID, today).Count(&stats.TodayOrders)
 
-	// 订单总金额（已签收订单）
-	var totalAmount struct {
-		Total float64
-	}
+	// 订单总金额（所有非取消订单，按币种分别统计）
+	var totalAmounts []CurrencyAmount
 	db.Model(&Order{}).
-		Select("COALESCE(SUM(total_amount), 0) as total").
-		Where("user_id = ? AND status = ?", userID, OrderStatusDelivered).
-		Scan(&totalAmount)
-	stats.TotalOrderAmount = totalAmount.Total
+		Select("currency, COALESCE(SUM(total_amount), 0) as amount").
+		Where("user_id = ? AND status != ?", userID, OrderStatusCancelled).
+		Group("currency").
+		Scan(&totalAmounts)
+	stats.TotalAmounts = totalAmounts
 
 	// 佣金统计（已签收订单）
 	var commissionStats struct {
@@ -793,4 +793,155 @@ func (s *Service) GetRecentOrders(userID uint, limit int) ([]RecentOrderResponse
 	}
 
 	return result, nil
+}
+
+// InitOrderTrendStats 初始化订单走势统计数据（如果不存在则计算）
+// forceUpdate: 为true时强制重新计算，忽略已有数据
+func (s *Service) InitOrderTrendStats(userID uint, forceUpdate bool) error {
+	db := database.GetDB()
+
+	// 检查是否有统计数据
+	var count int64
+	db.Model(&OrderDailyStat{}).Where("user_id = ?", userID).Count(&count)
+
+	if count > 0 && !forceUpdate {
+		// 已有数据且非强制更新，无需初始化
+		return nil
+	}
+
+	// 强制更新时，先删除旧数据
+	if forceUpdate && count > 0 {
+		db.Where("user_id = ?", userID).Delete(&OrderDailyStat{})
+		log.Printf("[Service] 用户 %d 强制刷新，已清除旧统计数据", userID)
+	}
+
+	// 执行统计（最近30天）
+	log.Printf("[Service] 用户 %d %s订单走势统计...", userID, map[bool]string{true: "刷新", false: "首次访问，初始化"}[forceUpdate])
+
+	days := 30
+	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour)
+	startDate := endDate.AddDate(0, 0, -days)
+
+	type DailyStats struct {
+		Date     time.Time
+		Currency string
+		Count    int64
+		Amount   float64
+	}
+
+	var dailyStats []DailyStats
+	err := db.Model(&Order{}).
+		Select(`
+			DATE(order_time) as date, 
+			currency,
+			COUNT(*) as count, 
+			COALESCE(SUM(total_amount), 0) as amount
+		`).
+		Where("user_id = ? AND order_time >= ? AND order_time < ?", userID, startDate, endDate).
+		Group("DATE(order_time), currency").
+		Order("date ASC").
+		Scan(&dailyStats).Error
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[Service] 用户 %d 共查询到 %d 条日期统计数据", userID, len(dailyStats))
+
+	// 存储统计数据
+	for _, stat := range dailyStats {
+		newStat := OrderDailyStat{
+			UserID:      userID,
+			StatDate:    stat.Date,
+			Currency:    stat.Currency,
+			OrderCount:  stat.Count,
+			OrderAmount: stat.Amount,
+		}
+		db.Create(&newStat)
+	}
+
+	log.Printf("[Service] 用户 %d 订单走势统计初始化完成，共 %d 条记录", userID, len(dailyStats))
+	return nil
+}
+
+// GetOrderTrend 获取订单趋势数据（优先从统计表读取，回退到实时查询）
+func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderTrendResponse, error) {
+	db := database.GetDB()
+
+	if days <= 0 {
+		days = 7
+	}
+	// 如果未指定币种，默认为 RUB
+	if currency == "" {
+		currency = "RUB"
+	}
+
+	// 计算起始日期（当天往前推days天）
+	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour) // 明天0点
+	startDate := endDate.AddDate(0, 0, -days)                          // N天前
+
+	// 优先从 order_daily_stats 表读取
+	var cachedStats []OrderDailyStat
+	err := db.Where("user_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", userID, currency, startDate, endDate).
+		Order("stat_date ASC").
+		Find(&cachedStats).Error
+
+	// 构建日期映射
+	statsMap := make(map[string]OrderTrendItem)
+	
+	if err == nil && len(cachedStats) > 0 {
+		// 使用缓存数据
+		for _, stat := range cachedStats {
+			date := stat.StatDate.Format("2006-01-02")
+			statsMap[date] = OrderTrendItem{
+				Date:   date,
+				Count:  stat.OrderCount,
+				Amount: stat.OrderAmount,
+			}
+		}
+	} else {
+		// 回退到实时查询
+		type DailyStats struct {
+			Date   string
+			Count  int64
+			Amount float64
+		}
+
+		var dailyStats []DailyStats
+		err = db.Model(&Order{}).
+			Select("DATE(order_time) as date, COUNT(*) as count, COALESCE(SUM(total_amount), 0) as amount").
+			Where("user_id = ? AND currency = ? AND order_time >= ? AND order_time < ?", userID, currency, startDate, endDate).
+			Group("DATE(order_time)").
+			Order("date ASC").
+			Scan(&dailyStats).Error
+
+		if err != nil {
+			return nil, err
+		}
+
+		for _, stat := range dailyStats {
+			statsMap[stat.Date] = OrderTrendItem{
+				Date:   stat.Date,
+				Count:  stat.Count,
+				Amount: stat.Amount,
+			}
+		}
+	}
+
+	// 填充所有日期（确保连续）
+	items := make([]OrderTrendItem, days)
+	for i := 0; i < days; i++ {
+		date := startDate.AddDate(0, 0, i).Format("2006-01-02")
+		if stat, ok := statsMap[date]; ok {
+			items[i] = stat
+		} else {
+			items[i] = OrderTrendItem{
+				Date:   date,
+				Count:  0,
+				Amount: 0,
+			}
+		}
+	}
+
+	return &OrderTrendResponse{Items: items}, nil
 }

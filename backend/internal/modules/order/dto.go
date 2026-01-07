@@ -179,20 +179,26 @@ type CashFlowListResponse struct {
 // DashboardStatsResponse 仪表盘统计响应
 type DashboardStatsResponse struct {
 	// 订单统计
-	TotalOrders      int64   `json:"total_orders"`       // 总订单数
-	DeliveredOrders  int64   `json:"delivered_orders"`   // 已签收订单数
-	PendingOrders    int64   `json:"pending_orders"`     // 待处理订单数
-	TodayOrders      int64   `json:"today_orders"`       // 今日订单数
-	TotalOrderAmount float64 `json:"total_order_amount"` // 订单总金额
+	TotalOrders     int64            `json:"total_orders"`     // 总订单数
+	DeliveredOrders int64            `json:"delivered_orders"` // 已签收订单数
+	PendingOrders   int64            `json:"pending_orders"`   // 待处理订单数
+	TodayOrders     int64            `json:"today_orders"`     // 今日订单数
+	TotalAmounts    []CurrencyAmount `json:"total_amounts"`    // 订单总金额（多币种）
 	// 佣金统计
-	TotalProfit        float64 `json:"total_profit"`         // 总利润
-	TotalCommission    float64 `json:"total_commission"`     // 总佣金
-	TotalServiceFee    float64 `json:"total_service_fee"`    // 总服务费
+	TotalProfit     float64 `json:"total_profit"`      // 总利润
+	TotalCommission float64 `json:"total_commission"`  // 总佣金
+	TotalServiceFee float64 `json:"total_service_fee"` // 总服务费
 	// 授权统计
 	TotalAuths  int64 `json:"total_auths"`  // 总授权数
 	ActiveAuths int64 `json:"active_auths"` // 活跃授权数
 	// 货币
 	Currency string `json:"currency"`
+}
+
+// CurrencyAmount 币种金额
+type CurrencyAmount struct {
+	Currency string  `json:"currency"`
+	Amount   float64 `json:"amount"`
 }
 
 // RecentOrderResponse 最近订单响应
@@ -203,4 +209,16 @@ type RecentOrderResponse struct {
 	TotalAmount     float64    `json:"total_amount"`
 	Currency        string     `json:"currency"`
 	OrderTime       *time.Time `json:"order_time"`
+}
+
+// OrderTrendItem 订单趋势数据项
+type OrderTrendItem struct {
+	Date   string `json:"date"`   // 日期 YYYY-MM-DD
+	Count  int64  `json:"count"`  // 订单数量
+	Amount float64 `json:"amount"` // 订单金额
+}
+
+// OrderTrendResponse 订单趋势响应
+type OrderTrendResponse struct {
+	Items []OrderTrendItem `json:"items"`
 }

@@ -170,3 +170,20 @@ type CashFlowStatement struct {
 func (CashFlowStatement) TableName() string {
 	return "cash_flow_statements"
 }
+
+// OrderDailyStat 订单每日统计模型
+type OrderDailyStat struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      uint      `gorm:"uniqueIndex:idx_user_date_currency;not null" json:"user_id"`
+	StatDate    time.Time `gorm:"uniqueIndex:idx_user_date_currency;type:date;not null" json:"stat_date"`
+	Currency    string    `gorm:"size:10;not null;default:'RUB';uniqueIndex:idx_user_date_currency" json:"currency"`
+	OrderCount  int64     `gorm:"default:0;comment:当日订单数量" json:"order_count"`
+	OrderAmount float64   `gorm:"type:decimal(15,2);default:0;comment:当日订单金额" json:"order_amount"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// TableName 指定表名
+func (OrderDailyStat) TableName() string {
+	return "order_daily_stats"
+}

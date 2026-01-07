@@ -26,13 +26,21 @@ func Start() {
 	// 每小时同步订单和佣金（每小时的第 5 分钟执行，避免整点高峰）
 	_, err := cronScheduler.AddFunc("0 5 * * * *", syncAllAuthsOrdersAndCommission)
 	if err != nil {
-		log.Printf("[Scheduler] 添加定时任务失败: %v", err)
+		log.Printf("[Scheduler] 添加订单同步任务失败: %v", err)
+		return
+	}
+
+	// 每4小时统计订单走势数据（每天 0/4/8/12/16/20 点的第10分钟执行）
+	_, err = cronScheduler.AddFunc("0 10 */4 * * *", calculateOrderTrendStats)
+	if err != nil {
+		log.Printf("[Scheduler] 添加订单走势统计任务失败: %v", err)
 		return
 	}
 
 	cronScheduler.Start()
 	log.Println("[Scheduler] 定时任务调度器已启动")
 	log.Println("[Scheduler] - 每小时第5分钟同步所有授权的订单和佣金")
+	log.Println("[Scheduler] - 每4小时第10分钟统计订单走势数据")
 }
 
 // Stop 停止调度器
@@ -46,6 +54,11 @@ func Stop() {
 // TriggerSync 手动触发一次同步（供 API 调用）
 func TriggerSync() {
 	go syncAllAuthsOrdersAndCommission()
+}
+
+// TriggerTrendStats 手动触发一次订单走势统计（供 API 调用）
+func TriggerTrendStats() {
+	go calculateOrderTrendStats()
 }
 
 // syncAllAuthsOrdersAndCommission 同步所有活跃授权的订单和佣金
@@ -100,6 +113,108 @@ func syncAllAuthsOrdersAndCommission() {
 	}
 
 	log.Printf("[Scheduler] 定时同步任务完成: 成功=%d, 失败=%d", successCount, failCount)
+}
+
+// calculateOrderTrendStats 统计订单走势数据并存储到 order_daily_stats 表
+func calculateOrderTrendStats() {
+	log.Println("[Scheduler] 开始执行订单走势统计任务...")
+
+	db := database.GetDB()
+
+	// 获取所有用户
+	type UserInfo struct {
+		ID uint
+	}
+	var users []UserInfo
+	if err := db.Table("users").Select("id").Find(&users).Error; err != nil {
+		log.Printf("[Scheduler] 获取用户列表失败: %v", err)
+		return
+	}
+
+	log.Printf("[Scheduler] 找到 %d 个用户需要统计订单走势", len(users))
+
+	// 统计时间范围：最近30天（存储更多历史数据）
+	days := 30
+	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour)
+	startDate := endDate.AddDate(0, 0, -days)
+
+	totalSaved := 0
+	totalUpdated := 0
+
+	for _, user := range users {
+		// 按日期分组统计
+		type DailyStats struct {
+			Date     time.Time
+			Currency string
+			Count    int64
+			Amount   float64
+		}
+
+		var dailyStats []DailyStats
+		err := db.Table("orders").
+			Select(`
+				DATE(order_time) as date, 
+				currency,
+				COUNT(*) as count, 
+				COALESCE(SUM(total_amount), 0) as amount
+			`).
+			Where("user_id = ? AND order_time >= ? AND order_time < ?", user.ID, startDate, endDate).
+			Group("DATE(order_time), currency").
+			Order("date ASC").
+			Scan(&dailyStats).Error
+
+		if err != nil {
+			log.Printf("[Scheduler] 用户 %d 订单走势统计失败: %v", user.ID, err)
+			continue
+		}
+
+		log.Printf("[Scheduler] 用户 %d 共有 %d 条日期统计数据", user.ID, len(dailyStats))
+
+		// 存储到 order_daily_stats 表
+		for _, stat := range dailyStats {
+			statDate := stat.Date
+
+			// 使用 upsert 逻辑：存在则更新，不存在则创建
+			var existing order.OrderDailyStat
+			result := db.Where("user_id = ? AND stat_date = ? AND currency = ?", user.ID, statDate, stat.Currency).First(&existing)
+
+			if result.Error != nil {
+				// 不存在，创建新记录
+				newStat := order.OrderDailyStat{
+					UserID:      user.ID,
+					StatDate:    statDate,
+					Currency:    stat.Currency,
+					OrderCount:  stat.Count,
+					OrderAmount: stat.Amount,
+				}
+				if err := db.Create(&newStat).Error; err != nil {
+					log.Printf("[Scheduler] 创建统计记录失败: %v", err)
+					continue
+				}
+				totalSaved++
+			} else {
+				// 存在，更新记录
+				db.Model(&existing).Updates(map[string]interface{}{
+					"order_count":  stat.Count,
+					"order_amount": stat.Amount,
+				})
+				totalUpdated++
+			}
+		}
+
+		// 计算总计
+		var totalOrders int64
+		var totalAmount float64
+		for _, stat := range dailyStats {
+			totalOrders += stat.Count
+			totalAmount += stat.Amount
+		}
+
+		log.Printf("[Scheduler] 用户 %d 订单走势统计完成: 近%d天订单=%d, 总金额=%.2f",
+			user.ID, days, totalOrders, totalAmount)
+	}
+
+	log.Printf("[Scheduler] 订单走势统计任务完成: 新增=%d, 更新=%d", totalSaved, totalUpdated)
 }
 
 // syncCommissionForDeliveredOrders 只同步已签收订单的佣金

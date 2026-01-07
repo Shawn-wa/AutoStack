@@ -43,6 +43,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&order.OrderItem{},
 		&order.OrdersRequestLog{},
 		&order.CashFlowStatement{},
+		&order.OrderDailyStat{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -111,6 +112,11 @@ func (s *Server) setupRoutes() {
 					scheduler.TriggerSync()
 					c.JSON(200, gin.H{"message": "同步任务已触发，请查看日志"})
 				})
+				// 手动触发订单走势统计
+				admin.POST("/trigger-trend-stats", func(c *gin.Context) {
+					scheduler.TriggerTrendStats()
+					c.JSON(200, gin.H{"message": "订单走势统计任务已触发，请查看日志"})
+				})
 			}
 
 			// 项目管理
@@ -147,6 +153,9 @@ func (s *Server) setupRoutes() {
 				// 仪表盘统计
 				orderGroup.GET("/dashboard/stats", order.GetDashboardStats)
 				orderGroup.GET("/dashboard/recent-orders", order.GetRecentOrders)
+				orderGroup.GET("/dashboard/trend", order.GetOrderTrend)
+				orderGroup.POST("/dashboard/init", order.InitDashboardStats)
+				orderGroup.POST("/dashboard/refresh", order.RefreshDashboardStats)
 
 				// 平台列表
 				orderGroup.GET("/platforms", order.ListPlatforms)

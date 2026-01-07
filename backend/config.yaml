@@ -3,9 +3,8 @@ server:
   mode: "debug"  # debug, release, test
 
 database:
-  driver: "sqlite"  # sqlite, mysql
-  dsn: "autostack.db"
-  # MySQL 示例: "user:password@tcp(127.0.0.1:3306)/autostack?charset=utf8mb4&parseTime=True&loc=Local"
+  driver: "mysql"  # sqlite, mysql
+  dsn: "root:As2024#xK9mPv7Rn@tcp(127.0.0.1:3306)/autostack?charset=utf8mb4&parseTime=True&loc=Local"
 
 jwt:
   secret: "your-secret-key-change-in-production"

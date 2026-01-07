@@ -262,7 +262,7 @@ export interface DashboardStats {
   delivered_orders: number
   pending_orders: number
   today_orders: number
-  total_order_amount: number
+  total_amounts: Array<{ currency: string; amount: number }>
   total_profit: number
   total_commission: number
   total_service_fee: number
@@ -291,4 +291,33 @@ export function getRecentOrders(limit: number = 10) {
   return request.get<any, { data: RecentOrder[] }>('/order/dashboard/recent-orders', {
     params: { limit }
   })
+}
+
+// 订单趋势数据项
+export interface OrderTrendItem {
+  date: string
+  count: number
+  amount: number
+}
+
+// 订单趋势响应
+export interface OrderTrendResponse {
+  items: OrderTrendItem[]
+}
+
+// 获取订单趋势数据
+export function getOrderTrend(days: number = 7, currency?: string) {
+  return request.get<any, { data: OrderTrendResponse }>('/order/dashboard/trend', {
+    params: { days, currency }
+  })
+}
+
+// 初始化仪表盘统计数据（首次访问时调用）
+export function initDashboardStats() {
+  return request.post<any, { data: null }>('/order/dashboard/init')
+}
+
+// 刷新仪表盘统计数据（强制重新计算）
+export function refreshDashboardStats() {
+  return request.post<any, { data: null }>('/order/dashboard/refresh')
 }
