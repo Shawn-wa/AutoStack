@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
+import { ref, onMounted, onActivated, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getDashboardStats, getRecentOrders, getOrderTrend, initDashboardStats, refreshDashboardStats, type DashboardStats, type RecentOrder, type OrderTrendItem } from '@/modules/order/api'
 import { formatCurrency, formatDateTime } from '@/utils/format'
+import { cacheStore } from '@/utils/storage'
 import * as echarts from 'echarts'
+
+const STATS_CACHE_KEY = 'dashboard_stats'
+const STATS_CACHE_MINUTES = 30 // 缓存30分钟
 
 defineOptions({ name: 'Dashboard' })
 
@@ -145,12 +149,29 @@ const loadData = async () => {
     // 先触发初始化统计（异步，不阻塞）
     initDashboardStats().catch(() => {})
     
-    const [statsRes, ordersRes, trendRes] = await Promise.all([
-      getDashboardStats(),
+    // 尝试从缓存获取统计数据
+    const cachedStats = cacheStore.get<DashboardStats>(STATS_CACHE_KEY)
+    
+    let statsData: DashboardStats | null = null
+    
+    if (cachedStats) {
+      // 使用缓存数据
+      statsData = cachedStats
+    } else {
+      // 缓存不存在或已过期，请求接口
+      const statsRes = await getDashboardStats()
+      statsData = statsRes.data
+      // 存入缓存（30分钟过期，关闭浏览器也会失效）
+      cacheStore.set(STATS_CACHE_KEY, statsData, STATS_CACHE_MINUTES)
+    }
+    
+    stats.value = statsData
+    
+    // 其他数据不缓存，每次请求
+    const [ordersRes, trendRes] = await Promise.all([
       getRecentOrders(8),
       getOrderTrend(30, currentTrendCurrency.value)
     ])
-    stats.value = statsRes.data
     recentOrders.value = ordersRes.data || []
     trendData.value = trendRes.data?.items || []
     
@@ -194,15 +215,24 @@ const changeTrendCurrency = async (currency: string) => {
 const refreshTrendStats = async () => {
   trendRefreshing.value = true
   try {
+    // 清除统计缓存
+    cacheStore.remove(STATS_CACHE_KEY)
+    
     // 强制刷新统计数据
     await refreshDashboardStats()
+    
+    // 重新请求统计数据并缓存
+    const statsRes = await getDashboardStats()
+    stats.value = statsRes.data
+    cacheStore.set(STATS_CACHE_KEY, statsRes.data, STATS_CACHE_MINUTES)
+    
     // 重新加载走势数据
     const trendRes = await getOrderTrend(30, currentTrendCurrency.value)
     trendData.value = trendRes.data?.items || []
     initChart()
-    ElMessage.success('走势数据已更新')
+    ElMessage.success('数据已更新')
   } catch (error) {
-    console.error('刷新走势数据失败:', error)
+    console.error('刷新数据失败:', error)
     ElMessage.error('刷新失败，请稍后重试')
   } finally {
     trendRefreshing.value = false
@@ -418,6 +448,11 @@ const goToAuths = () => {
 onMounted(() => {
   loadData()
   window.addEventListener('resize', handleResize)
+})
+
+// keep-alive 激活时重新加载数据
+onActivated(() => {
+  loadData()
 })
 
 onUnmounted(() => {
