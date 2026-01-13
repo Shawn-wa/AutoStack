@@ -169,6 +169,7 @@ func (s *Server) setupRoutes() {
 				orderGroup.POST("/auths/:id/sync", order.SyncOrders)
 				orderGroup.POST("/auths/:id/sync-commission", order.SyncCommission)
 				orderGroup.POST("/auths/:id/sync-cashflow", order.SyncCashFlow)
+				orderGroup.POST("/auths/:id/mutual-settlement", order.GetMutualSettlement)
 
 				// 订单管理
 				orderGroup.GET("/orders", order.ListOrders)

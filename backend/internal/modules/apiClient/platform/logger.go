@@ -57,9 +57,10 @@ func (l *RequestLogger) LogRequest(log *RequestLog) error {
 
 // RequestType 请求类型常量
 const (
-	RequestTypeTestConnect = "TestConnect"
-	RequestTypeOrderList   = "OrderList"
-	RequestTypeFinance     = "Finance"
-	RequestTypeCashFlow    = "CashFlow"
+	RequestTypeTestConnect      = "TestConnect"
+	RequestTypeOrderList        = "OrderList"
+	RequestTypeFinance          = "Finance"
+	RequestTypeCashFlow         = "CashFlow"
+	RequestTypeMutualSettlement = "MutualSettlement"
+	RequestTypeReportInfo       = "ReportInfo"
 )
-

@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm"
 
 	"autostack/internal/commonBase/database"
+	"autostack/internal/modules/apiClient/platform"
+	"autostack/internal/modules/apiClient/platform/ozon"
 )
 
 var (
@@ -704,6 +706,52 @@ func (s *Service) GetCashFlowStatement(id, userID uint) (*CashFlowStatement, err
 	}
 
 	return &statement, nil
+}
+
+// GetMutualSettlement 获取结算报告
+// API: POST /v1/finance/mutual-settlement
+func (s *Service) GetMutualSettlement(authID, userID uint, since, to time.Time) (interface{}, error) {
+	db := database.GetDB()
+
+	// 获取授权信息
+	var auth PlatformAuth
+	if err := db.First(&auth, authID).Error; err != nil {
+		return nil, ErrAuthNotFound
+	}
+
+	if auth.UserID != userID {
+		return nil, fmt.Errorf("无权访问该授权")
+	}
+
+	// 目前只支持 Ozon
+	if auth.Platform != PlatformOzon {
+		return nil, fmt.Errorf("平台 %s 暂不支持结算报告", auth.Platform)
+	}
+
+	// 解密凭证
+	credentials, err := Decrypt(auth.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("解密凭证失败: %w", err)
+	}
+
+	// 解析凭证并创建客户端
+	creds, err := ozon.ParseCredentials(credentials)
+	if err != nil {
+		return nil, fmt.Errorf("解析凭证失败: %w", err)
+	}
+
+	// 创建带日志记录器的客户端
+	logger := platform.NewRequestLogger(db, authID, PlatformOzon)
+	client := ozon.NewClient(creds, logger)
+	financeAPI := ozon.NewFinanceAPI(client)
+
+	// 调用结算报告接口（支持异步报告轮询）
+	result, err := financeAPI.GetMutualSettlementWithReport(since, to, 15)
+	if err != nil {
+		return nil, fmt.Errorf("获取结算报告失败: %w", err)
+	}
+
+	return result, nil
 }
 
 // GetDashboardStats 获取仪表盘统计数据

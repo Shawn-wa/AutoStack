@@ -23,8 +23,37 @@ const baseMenuItems = [
 const orderMenuItems = [
   { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权' },
   { path: '/order/orders', name: 'Orders', icon: '📋', label: '订单列表' },
-  { path: '/order/cashflow', name: 'CashFlow', icon: '💰', label: '报表' },
+  { 
+    icon: '📊', 
+    label: '报表',
+    children: [
+      { path: '/order/cashflow', name: 'CashFlow', label: '财务报告' },
+      { path: '/order/settlement', name: 'Settlement', label: '结算报告' },
+    ]
+  },
 ]
+
+// 展开的菜单
+const expandedMenus = ref<string[]>(['报表'])
+
+// 切换菜单展开
+const toggleMenu = (label: string) => {
+  const index = expandedMenus.value.indexOf(label)
+  if (index > -1) {
+    expandedMenus.value.splice(index, 1)
+  } else {
+    expandedMenus.value.push(label)
+  }
+}
+
+// 检查菜单是否展开
+const isMenuExpanded = (label: string) => expandedMenus.value.includes(label)
+
+// 检查子菜单是否激活
+const isChildActive = (item: any) => {
+  if (!item.children) return false
+  return item.children.some((child: any) => route.path === child.path)
+}
 
 // 管理员菜单项
 const adminMenuItems = [
@@ -46,7 +75,8 @@ const routeTitleMap: Record<string, string> = {
   'PlatformAuths': '平台授权',
   'Orders': '订单列表',
   'OrderDetail': '订单详情',
-  'CashFlow': '报表',
+  'CashFlow': '财务报告',
+  'Settlement': '结算报告',
   'UserManagement': '用户管理',
 }
 
@@ -271,16 +301,41 @@ const handleLogout = async () => {
       </div>
       
       <nav class="sidebar-nav">
-        <button
-          v-for="item in menuItems"
-          :key="item.path"
-          class="nav-item"
-          :class="{ active: isActive(item.path) }"
-          @click="navigateTo(item.path)"
-        >
-          <span class="nav-icon">{{ item.icon }}</span>
-          <span class="nav-label" v-show="!sidebarCollapsed">{{ item.label }}</span>
-        </button>
+        <template v-for="item in menuItems" :key="item.path || item.label">
+          <!-- 有子菜单的项 -->
+          <template v-if="item.children">
+            <button
+              class="nav-item nav-parent"
+              :class="{ active: isChildActive(item), expanded: isMenuExpanded(item.label) }"
+              @click="toggleMenu(item.label)"
+            >
+              <span class="nav-icon">{{ item.icon }}</span>
+              <span class="nav-label" v-show="!sidebarCollapsed">{{ item.label }}</span>
+              <span class="nav-arrow" v-show="!sidebarCollapsed">{{ isMenuExpanded(item.label) ? '▾' : '▸' }}</span>
+            </button>
+            <div class="nav-children" v-show="isMenuExpanded(item.label) && !sidebarCollapsed">
+              <button
+                v-for="child in item.children"
+                :key="child.path"
+                class="nav-item nav-child"
+                :class="{ active: isActive(child.path) }"
+                @click="navigateTo(child.path)"
+              >
+                <span class="nav-label">{{ child.label }}</span>
+              </button>
+            </div>
+          </template>
+          <!-- 无子菜单的项 -->
+          <button
+            v-else
+            class="nav-item"
+            :class="{ active: isActive(item.path) }"
+            @click="navigateTo(item.path)"
+          >
+            <span class="nav-icon">{{ item.icon }}</span>
+            <span class="nav-label" v-show="!sidebarCollapsed">{{ item.label }}</span>
+          </button>
+        </template>
       </nav>
       
       <div class="sidebar-footer">
@@ -487,6 +542,40 @@ const handleLogout = async () => {
     .nav-icon {
       text-shadow: 0 0 8px var(--color-primary);
     }
+  }
+}
+
+.nav-parent {
+  justify-content: flex-start;
+  
+  .nav-arrow {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform var(--transition-fast);
+  }
+  
+  &.expanded .nav-arrow {
+    color: var(--color-primary);
+  }
+}
+
+.nav-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 20px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border-color);
+}
+
+.nav-child {
+  padding: 10px 16px;
+  font-size: 13px;
+  
+  &.active {
+    background: rgba(0, 212, 255, 0.1);
+    color: var(--color-primary);
   }
 }
 

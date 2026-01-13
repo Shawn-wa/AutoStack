@@ -218,3 +218,63 @@ type CashFlowPeriod struct {
 	End   string `json:"end"`
 }
 
+// ========== 结算报告相关 ==========
+
+// MutualSettlementRequest 结算报告请求
+// API: POST /v1/finance/mutual-settlement
+// 注意：date 字段是字符串格式 "YYYY-MM"（年-月），不是完整日期
+type MutualSettlementRequest struct {
+	Date string `json:"date"` // 日期，格式：YYYY-MM（如 2026-01）
+}
+
+// MutualSettlementResponse 结算报告响应（创建报告）
+type MutualSettlementResponse struct {
+	Result MutualSettlementResult `json:"result"`
+}
+
+// MutualSettlementResult 结算报告结果（创建报告返回的 code）
+type MutualSettlementResult struct {
+	Code    string                   `json:"code"`    // 报告唯一标识符
+	Details []MutualSettlementDetail `json:"details"` // 结算明细（如果直接返回）
+}
+
+// ========== 报告信息相关 ==========
+
+// ReportInfoRequest 报告信息请求
+// API: POST /v1/report/info
+type ReportInfoRequest struct {
+	Code string `json:"code"` // 报告唯一标识符
+}
+
+// ReportInfoResponse 报告信息响应
+type ReportInfoResponse struct {
+	Result ReportInfoResult `json:"result"`
+}
+
+// ReportInfoResult 报告信息结果
+type ReportInfoResult struct {
+	Code       string `json:"code"`        // 报告唯一标识符
+	Status     string `json:"status"`      // 报告状态：waiting, processing, success, failed
+	Error      string `json:"error"`       // 错误信息
+	File       string `json:"file"`        // 报告文件下载链接
+	ReportType string `json:"report_type"` // 报告类型
+	CreatedAt  string `json:"created_at"`  // 创建时间
+}
+
+// MutualSettlementFullResponse 结算报告完整响应（包含创建响应和报告信息）
+type MutualSettlementFullResponse struct {
+	CreateResponse *MutualSettlementResponse `json:"create_response"` // 创建报告响应
+	ReportInfo     *ReportInfoResponse       `json:"report_info"`     // 报告信息（如果是异步生成）
+}
+
+// MutualSettlementDetail 结算明细
+// API: POST /v1/finance/mutual-settlement
+// 对应页面: https://seller.ozon.ru/app/finances/balance
+type MutualSettlementDetail struct {
+	BalanceAtBeginning float64 `json:"balance_at_beginning"` // 期初余额（如：一月月初 -6,163）
+	AccruedAmount      float64 `json:"accrued_amount"`       // 应计金额（如：已于一月应计 36,476）
+	PaidAmount         float64 `json:"paid_amount"`          // 已支付金额（如：已于一月支付 0）
+	Balance            float64 `json:"balance"`              // 当前余额（如：当前余额 30,313）
+	CurrencyCode       string  `json:"currency_code"`        // 货币代码
+	PeriodName         string  `json:"period_name"`          // 周期名称
+}

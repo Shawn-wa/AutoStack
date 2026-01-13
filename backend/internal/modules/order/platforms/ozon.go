@@ -252,6 +252,18 @@ func (a *OzonAdapter) convertToCashFlowStatement(cf *ozon.CashFlowItem) *order.C
 	return statement
 }
 
+// GetMutualSettlement 获取结算报告
+// API: POST /v1/finance/mutual-settlement
+func (a *OzonAdapter) GetMutualSettlement(credentials string, since, to time.Time, platformAuthID uint) (*ozon.MutualSettlementResponse, error) {
+	client, err := a.createClient(credentials, platformAuthID)
+	if err != nil {
+		return nil, err
+	}
+
+	financeAPI := ozon.NewFinanceAPI(client)
+	return financeAPI.GetMutualSettlement(since, to)
+}
+
 // ========== 辅助方法 ==========
 
 // createClient 创建OZON API客户端

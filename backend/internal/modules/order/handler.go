@@ -772,3 +772,54 @@ func RefreshDashboardStats(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "统计数据已刷新", nil)
 }
+
+// GetMutualSettlement 获取结算报告
+// API: POST /v1/finance/mutual-settlement
+func GetMutualSettlement(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	// 解析请求参数
+	var req struct {
+		Since string `json:"since"` // 开始时间 RFC3339
+		To    string `json:"to"`    // 结束时间 RFC3339
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 默认当月
+		now := time.Now()
+		req.Since = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format(time.RFC3339)
+		req.To = now.Format(time.RFC3339)
+	}
+
+	since, err := time.Parse(time.RFC3339, req.Since)
+	if err != nil {
+		now := time.Now()
+		since = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	}
+
+	to, err := time.Parse(time.RFC3339, req.To)
+	if err != nil {
+		to = time.Now()
+	}
+
+	result, err := orderService.GetMutualSettlement(uint(id), userID, since, to)
+	if err != nil {
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "获取结算报告失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", result)
+}

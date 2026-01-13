@@ -74,7 +74,13 @@ const routes: RouteRecordRaw[] = [
         path: 'order/cashflow',
         name: 'CashFlow',
         component: () => import('@/modules/order/pages/CashFlow.vue'),
-        meta: { title: '报表' }
+        meta: { title: '财务报告' }
+      },
+      {
+        path: 'order/settlement',
+        name: 'Settlement',
+        component: () => import('@/modules/order/pages/Settlement.vue'),
+        meta: { title: '结算报告' }
       }
     ]
   },
