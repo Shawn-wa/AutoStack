@@ -19,6 +19,19 @@ const baseMenuItems = [
   { path: '/', name: 'Dashboard', icon: '🏠', label: '首页' },
 ]
 
+// 产品管理菜单项
+const productMenuItems = [
+  { 
+    icon: '📦', 
+    label: '产品管理',
+    children: [
+      { path: '/product/products', name: 'LocalProducts', label: '本地产品' },
+      { path: '/product/platform-products', name: 'PlatformProducts', label: '平台产品' },
+      { path: '/product/summary', name: 'OrderSummary', label: '订单汇总' },
+    ]
+  },
+]
+
 // 订单管理菜单项
 const orderMenuItems = [
   { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权' },
@@ -62,7 +75,7 @@ const adminMenuItems = [
 
 // 计算显示的菜单项
 const menuItems = computed(() => {
-  let items = [...baseMenuItems, ...orderMenuItems]
+  let items = [...baseMenuItems, ...productMenuItems, ...orderMenuItems]
   if (userStore.isAdmin) {
     items = [...items, ...adminMenuItems]
   }
@@ -77,6 +90,9 @@ const routeTitleMap: Record<string, string> = {
   'OrderDetail': '订单详情',
   'CashFlow': '财务报告',
   'Settlement': '结算报告',
+  'LocalProducts': '本地产品',
+  'PlatformProducts': '平台产品',
+  'OrderSummary': '订单汇总',
   'UserManagement': '用户管理',
 }
 

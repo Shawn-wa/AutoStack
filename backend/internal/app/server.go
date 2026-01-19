@@ -13,6 +13,7 @@ import (
 	"autostack/internal/modules/deployment"
 	"autostack/internal/modules/order"
 	_ "autostack/internal/modules/order/platforms" // 注册平台适配器
+	"autostack/internal/modules/product"
 	"autostack/internal/modules/project"
 	"autostack/internal/modules/template"
 	"autostack/internal/modules/user"
@@ -44,6 +45,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&order.OrdersRequestLog{},
 		&order.CashFlowStatement{},
 		&order.OrderDailyStat{},
+		&product.Product{},
+		&product.PlatformProduct{},
+		&product.ProductMapping{},
+		&product.PlatformSyncTask{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -117,6 +122,11 @@ func (s *Server) setupRoutes() {
 					scheduler.TriggerTrendStats()
 					c.JSON(200, gin.H{"message": "订单走势统计任务已触发，请查看日志"})
 				})
+				// 手动触发同步任务扫描
+				admin.POST("/trigger-sync-tasks", func(c *gin.Context) {
+					scheduler.TriggerSyncTasks()
+					c.JSON(200, gin.H{"message": "同步任务扫描已触发，请查看日志"})
+				})
 			}
 
 			// 项目管理
@@ -154,6 +164,7 @@ func (s *Server) setupRoutes() {
 				orderGroup.GET("/dashboard/stats", order.GetDashboardStats)
 				orderGroup.GET("/dashboard/recent-orders", order.GetRecentOrders)
 				orderGroup.GET("/dashboard/trend", order.GetOrderTrend)
+				orderGroup.GET("/stats/summary", order.GetOrderSummary)
 				orderGroup.POST("/dashboard/init", order.InitDashboardStats)
 				orderGroup.POST("/dashboard/refresh", order.RefreshDashboardStats)
 
@@ -179,6 +190,26 @@ func (s *Server) setupRoutes() {
 				// 现金流报表
 				orderGroup.GET("/cashflow", order.ListCashFlow)
 				orderGroup.GET("/cashflow/:id", order.GetCashFlow)
+			}
+
+			// 产品管理模块
+			productGroup := authorized.Group("/product")
+			{
+				// 本地产品
+				productGroup.GET("/products", product.ListProducts)
+				productGroup.POST("/products", product.CreateProduct)
+				productGroup.PUT("/products/:id", product.UpdateProduct)
+				productGroup.DELETE("/products/:id", product.DeleteProduct)
+
+				// 平台产品
+				productGroup.GET("/platform-products", product.ListPlatformProducts)
+				productGroup.POST("/sync", product.SyncPlatformProducts)
+				productGroup.POST("/map", product.MapProduct)
+				productGroup.DELETE("/map/:id", product.UnmapProduct)
+
+				// 同步任务
+				productGroup.GET("/sync-tasks", product.ListSyncTasks)
+				productGroup.POST("/sync-tasks/trigger", product.TriggerSyncTasks)
 			}
 		}
 	}

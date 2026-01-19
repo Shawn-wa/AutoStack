@@ -222,3 +222,31 @@ type OrderTrendItem struct {
 type OrderTrendResponse struct {
 	Items []OrderTrendItem `json:"items"`
 }
+
+// ========== 订单汇总相关 ==========
+
+// OrderSummaryRequest 订单汇总请求
+type OrderSummaryRequest struct {
+	StartTime string `form:"start_time"`
+	EndTime   string `form:"end_time"`
+	AuthID    uint   `form:"auth_id"`
+	Platform  string `form:"platform"`
+}
+
+// OrderSummaryStatusDetail 状态明细
+type OrderSummaryStatusDetail struct {
+	Status   string  `json:"status"`
+	Quantity int     `json:"quantity"`
+	Amount   float64 `json:"amount"`
+}
+
+// OrderSummaryItem 订单汇总项（按本地SKU合并）
+type OrderSummaryItem struct {
+	LocalSKU      string                     `json:"local_sku"`
+	ProductName   string                     `json:"product_name"`
+	PlatformSKUs  []string                   `json:"platform_skus"`
+	Quantity      int                        `json:"quantity"`
+	Amount        float64                    `json:"amount"`
+	Currency      string                     `json:"currency"`
+	StatusDetails []OrderSummaryStatusDetail `json:"status_details"`
+}

@@ -823,3 +823,26 @@ func GetMutualSettlement(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "获取成功", result)
 }
+
+// GetOrderSummary 获取订单汇总
+func GetOrderSummary(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	var req OrderSummaryRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+
+	items, err := orderService.GetOrderSummary(userID, &req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取订单汇总失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", items)
+}

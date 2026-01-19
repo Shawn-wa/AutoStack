@@ -63,4 +63,6 @@ const (
 	RequestTypeCashFlow         = "CashFlow"
 	RequestTypeMutualSettlement = "MutualSettlement"
 	RequestTypeReportInfo       = "ReportInfo"
+	RequestTypeProductList      = "ProductList"
+	RequestTypeProductInfo      = "ProductInfo"
 )

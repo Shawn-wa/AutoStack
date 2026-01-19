@@ -936,7 +936,7 @@ func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderT
 
 	// 构建日期映射
 	statsMap := make(map[string]OrderTrendItem)
-	
+
 	if err == nil && len(cachedStats) > 0 {
 		// 使用缓存数据
 		for _, stat := range cachedStats {
@@ -992,4 +992,138 @@ func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderT
 	}
 
 	return &OrderTrendResponse{Items: items}, nil
+}
+
+// orderSummaryRaw 原始查询结果
+type orderSummaryRaw struct {
+	LocalSKU    string  `gorm:"column:local_sku"`
+	ProductName string  `gorm:"column:product_name"`
+	PlatformSKU string  `gorm:"column:platform_sku"`
+	Status      string  `gorm:"column:status"`
+	Quantity    int     `gorm:"column:quantity"`
+	Amount      float64 `gorm:"column:amount"`
+	Currency    string  `gorm:"column:currency"`
+}
+
+// GetOrderSummary 获取订单汇总（按本地SKU合并）
+func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]OrderSummaryItem, error) {
+	db := database.GetDB()
+	var rawItems []orderSummaryRaw
+
+	query := db.Table("order_items oi").
+		Select(`
+			COALESCE(p.sku, '') as local_sku,
+			COALESCE(p.name, '') as product_name,
+			oi.sku as platform_sku,
+			o.status,
+			SUM(oi.quantity) as quantity,
+			SUM(oi.price * oi.quantity) as amount,
+			oi.currency
+		`).
+		Joins("JOIN orders o ON oi.order_id = o.id").
+		Joins("LEFT JOIN platform_products pp ON pp.platform_sku = oi.sku AND pp.platform_auth_id = o.platform_auth_id").
+		Joins("LEFT JOIN product_mappings pm ON pm.platform_product_id = pp.id").
+		Joins("LEFT JOIN products p ON p.id = pm.product_id").
+		Where("o.user_id = ?", userID).
+		Group("local_sku, product_name, platform_sku, o.status, oi.currency")
+
+	// 过滤条件
+	if req.Platform != "" {
+		query = query.Where("o.platform = ?", req.Platform)
+	}
+	if req.AuthID > 0 {
+		query = query.Where("o.platform_auth_id = ?", req.AuthID)
+	}
+	if req.StartTime != "" {
+		startTimeStr, _ := url.QueryUnescape(req.StartTime)
+		if startTimeStr == "" {
+			startTimeStr = req.StartTime
+		}
+		if len(startTimeStr) == 10 {
+			startTimeStr = startTimeStr + " 00:00:00"
+		}
+		query = query.Where("o.order_time >= ?", startTimeStr)
+	}
+	if req.EndTime != "" {
+		endTimeStr, _ := url.QueryUnescape(req.EndTime)
+		if endTimeStr == "" {
+			endTimeStr = req.EndTime
+		}
+		if len(endTimeStr) == 10 {
+			endTimeStr = endTimeStr + " 23:59:59"
+		}
+		query = query.Where("o.order_time <= ?", endTimeStr)
+	}
+
+	if err := query.Scan(&rawItems).Error; err != nil {
+		return nil, err
+	}
+
+	// 按本地SKU聚合
+	skuMap := make(map[string]*OrderSummaryItem)
+	skuOrder := []string{} // 保持顺序
+
+	for _, raw := range rawItems {
+		key := raw.LocalSKU
+		if key == "" {
+			key = "_unmapped_" + raw.PlatformSKU // 未关联的按平台SKU区分
+		}
+
+		item, exists := skuMap[key]
+		if !exists {
+			item = &OrderSummaryItem{
+				LocalSKU:      raw.LocalSKU,
+				ProductName:   raw.ProductName,
+				PlatformSKUs:  []string{},
+				Quantity:      0,
+				Amount:        0,
+				Currency:      raw.Currency,
+				StatusDetails: []OrderSummaryStatusDetail{},
+			}
+			skuMap[key] = item
+			skuOrder = append(skuOrder, key)
+		}
+
+		// 累加总数量和总金额
+		item.Quantity += raw.Quantity
+		item.Amount += raw.Amount
+
+		// 添加平台SKU（去重）
+		found := false
+		for _, sku := range item.PlatformSKUs {
+			if sku == raw.PlatformSKU {
+				found = true
+				break
+			}
+		}
+		if !found {
+			item.PlatformSKUs = append(item.PlatformSKUs, raw.PlatformSKU)
+		}
+
+		// 添加或更新状态明细
+		statusFound := false
+		for i, sd := range item.StatusDetails {
+			if sd.Status == raw.Status {
+				item.StatusDetails[i].Quantity += raw.Quantity
+				item.StatusDetails[i].Amount += raw.Amount
+				statusFound = true
+				break
+			}
+		}
+		if !statusFound {
+			item.StatusDetails = append(item.StatusDetails, OrderSummaryStatusDetail{
+				Status:   raw.Status,
+				Quantity: raw.Quantity,
+				Amount:   raw.Amount,
+			})
+		}
+	}
+
+	// 按顺序输出结果
+	result := make([]OrderSummaryItem, 0, len(skuOrder))
+	for _, key := range skuOrder {
+		result = append(result, *skuMap[key])
+	}
+
+	return result, nil
 }

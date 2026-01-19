@@ -278,3 +278,90 @@ type MutualSettlementDetail struct {
 	CurrencyCode       string  `json:"currency_code"`        // 货币代码
 	PeriodName         string  `json:"period_name"`          // 周期名称
 }
+
+// ========== 产品相关 ==========
+
+// ProductListRequest 商品列表请求
+// API: POST /v3/product/list
+// 文档: https://docs.ozon.com/api/seller/en/#operation/ProductAPI_GetProductListV3
+type ProductListRequest struct {
+	Filter ProductListFilter `json:"filter"`
+	LastID string            `json:"last_id,omitempty"`
+	Limit  int               `json:"limit"`
+}
+
+// ProductListFilter 商品列表过滤条件
+type ProductListFilter struct {
+	OfferID    []string `json:"offer_id,omitempty"`
+	ProductID  []int64  `json:"product_id,omitempty"`
+	Visibility string   `json:"visibility,omitempty"` // ALL, VISIBLE, INVISIBLE, EMPTY_STOCK, NOT_MODERATED, MODERATED, DISABLED, STATE_FAILED, READY_TO_SUPPLY, VALIDATION_STATE_PENDING, VALIDATION_STATE_FAIL, VALIDATION_STATE_SUCCESS, TO_SUPPLY, IN_SALE, REMOVED_FROM_SALE, BANNED, OVERPRICED, CRITICALLY_OVERPRICED, EMPTY_BARCODE, BARCODE_EXIST, QUARANTINE, ARCHIVED, OVERPRICED_WITH_STOCK, PARTIAL_APPROVED, IMAGE_ABSENT, MODERATION_BLOCK
+}
+
+// ProductListResponse 商品列表响应
+type ProductListResponse struct {
+	Result ProductListResult `json:"result"`
+}
+
+// ProductListResult 商品列表结果
+type ProductListResult struct {
+	Items  []ProductItem `json:"items"`
+	LastID string        `json:"last_id"`
+	Total  int           `json:"total"`
+}
+
+// ProductItem 商品项
+type ProductItem struct {
+	ProductID int64  `json:"product_id"`
+	OfferID   string `json:"offer_id"`
+}
+
+// ProductInfoRequest 商品详情请求
+// API: POST /v2/product/info/list
+type ProductInfoRequest struct {
+	OfferID   []string `json:"offer_id,omitempty"`
+	ProductID []int64  `json:"product_id,omitempty"`
+}
+
+// ProductInfoResponse 商品详情响应
+type ProductInfoResponse struct {
+	Result ProductInfoResult `json:"result"`
+}
+
+// ProductInfoResult 商品详情结果
+type ProductInfoResult struct {
+	Items []ProductInfoItem `json:"items"`
+}
+
+// ProductInfoItem 商品详情项
+type ProductInfoItem struct {
+	ID             int64            `json:"id"`
+	Name           string           `json:"name"`
+	OfferID        string           `json:"offer_id"`
+	Barcode        string           `json:"barcode"`
+	Price          string           `json:"price"` // 注意：Ozon API 返回的价格可能是字符串或数字，这里根据实际情况可能需要调整，但通常作为字符串处理更安全
+	OldPrice       string           `json:"old_price"`
+	PremiumPrice   string           `json:"premium_price"`
+	Vat            string           `json:"vat"`
+	Visible        bool             `json:"visible"`
+	Stocks         ProductInfoStock `json:"stocks"`
+	Status         ProductStatus    `json:"status"`
+	MarketingPrice string           `json:"marketing_price"`
+	CurrencyCode   string           `json:"currency_code"`
+}
+
+// ProductInfoStock 商品库存信息
+type ProductInfoStock struct {
+	Coming   int `json:"coming"`
+	Present  int `json:"present"`
+	Reserved int `json:"reserved"`
+}
+
+// ProductStatus 商品状态
+type ProductStatus struct {
+	State            string `json:"state"`
+	StateFailDetails string `json:"state_fail_details"`
+	StateName        string `json:"state_name"`
+	StateDescription string `json:"state_description"`
+	IsFailed         bool   `json:"is_failed"`
+	IsCreated        bool   `json:"is_created"`
+}

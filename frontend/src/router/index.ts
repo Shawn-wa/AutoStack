@@ -53,6 +53,24 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理', requiresAdmin: true }
       },
       {
+        path: 'product/products',
+        name: 'LocalProducts',
+        component: () => import('@/modules/product/pages/LocalProducts.vue'),
+        meta: { title: '本地产品' }
+      },
+      {
+        path: 'product/platform-products',
+        name: 'PlatformProducts',
+        component: () => import('@/modules/product/pages/PlatformProducts.vue'),
+        meta: { title: '平台产品' }
+      },
+      {
+        path: 'product/summary',
+        name: 'OrderSummary',
+        component: () => import('@/modules/product/pages/OrderSummary.vue'),
+        meta: { title: '订单汇总' }
+      },
+      {
         path: 'order/auths',
         name: 'PlatformAuths',
         component: () => import('@/modules/order/pages/PlatformAuths.vue'),

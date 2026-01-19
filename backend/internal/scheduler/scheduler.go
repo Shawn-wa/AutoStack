@@ -9,6 +9,7 @@ import (
 
 	"autostack/internal/commonBase/database"
 	"autostack/internal/modules/order"
+	"autostack/internal/modules/product"
 )
 
 // commissionSyncResult 佣金同步结果
@@ -37,10 +38,26 @@ func Start() {
 		return
 	}
 
+	// 每5分钟扫描并执行待处理的同步任务
+	_, err = cronScheduler.AddFunc("0 */5 * * * *", processPendingSyncTasks)
+	if err != nil {
+		log.Printf("[Scheduler] 添加同步任务扫描失败: %v", err)
+		return
+	}
+
+	// 每天凌晨1:20清理3个月前的同步任务记录
+	_, err = cronScheduler.AddFunc("0 20 1 * * *", cleanOldSyncTasks)
+	if err != nil {
+		log.Printf("[Scheduler] 添加任务清理失败: %v", err)
+		return
+	}
+
 	cronScheduler.Start()
 	log.Println("[Scheduler] 定时任务调度器已启动")
 	log.Println("[Scheduler] - 每小时第5分钟同步所有授权的订单和佣金")
 	log.Println("[Scheduler] - 每4小时第10分钟统计订单走势数据")
+	log.Println("[Scheduler] - 每5分钟扫描并执行待处理的同步任务")
+	log.Println("[Scheduler] - 每天凌晨1:20清理3个月前的同步任务记录")
 }
 
 // Stop 停止调度器
@@ -59,6 +76,11 @@ func TriggerSync() {
 // TriggerTrendStats 手动触发一次订单走势统计（供 API 调用）
 func TriggerTrendStats() {
 	go calculateOrderTrendStats()
+}
+
+// TriggerSyncTasks 手动触发一次同步任务扫描（供 API 调用）
+func TriggerSyncTasks() {
+	go processPendingSyncTasks()
 }
 
 // syncAllAuthsOrdersAndCommission 同步所有活跃授权的订单和佣金
@@ -302,4 +324,31 @@ func syncCommissionForDeliveredOrders(authID, userID uint, since, to time.Time) 
 	}
 
 	return result, nil
+}
+
+// processPendingSyncTasks 扫描并执行待处理的同步任务
+func processPendingSyncTasks() {
+	log.Println("[Scheduler] 开始扫描待处理的同步任务...")
+
+	productService := &product.Service{}
+	productService.ProcessPendingTasks()
+
+	log.Println("[Scheduler] 同步任务扫描完成")
+}
+
+// cleanOldSyncTasks 清理3个月前的同步任务记录
+func cleanOldSyncTasks() {
+	log.Println("[Scheduler] 开始清理旧的同步任务记录...")
+
+	// 3个月前
+	before := time.Now().AddDate(0, -3, 0)
+
+	productService := &product.Service{}
+	deleted, err := productService.CleanOldTasks(before)
+	if err != nil {
+		log.Printf("[Scheduler] 清理同步任务记录失败: %v", err)
+		return
+	}
+
+	log.Printf("[Scheduler] 同步任务记录清理完成: 删除 %d 条", deleted)
 }
