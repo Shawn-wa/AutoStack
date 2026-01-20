@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Link, Delete } from '@element-plus/icons-vue'
+import { Refresh, Link, Delete, Search, Picture } from '@element-plus/icons-vue'
 import api, { type PlatformProduct, type Product } from '../api'
 import { getAuths, type AuthResponse } from '@/modules/order/api'
 import { formatDateTime } from '@/utils/format'
@@ -15,6 +15,8 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const authId = ref<number | undefined>(undefined)
 const authOptions = ref<AuthResponse[]>([])
+const keyword = ref('')
+const syncLoading = ref(false)
 
 // 映射对话框
 const mapDialogVisible = ref(false)
@@ -46,7 +48,8 @@ const fetchProducts = async () => {
     const res = await api.listPlatformProducts({
       page: currentPage.value,
       page_size: pageSize.value,
-      platform_auth_id: authId.value
+      platform_auth_id: authId.value,
+      keyword: keyword.value || undefined
     })
     tableData.value = res.data.list || []
     total.value = res.data.total || 0
@@ -60,12 +63,33 @@ const fetchProducts = async () => {
 // 同步产品
 const handleSync = async () => {
   if (!authId.value) return
+  syncLoading.value = true
   try {
     await api.syncProducts(authId.value)
-    ElMessage.success('同步任务已开始，请稍后刷新查看')
+    ElMessage.success('同步任务已创建，请稍后刷新查看')
   } catch (error) {
     console.error('同步失败', error)
+  } finally {
+    syncLoading.value = false
   }
+}
+
+// 刷新列表
+const handleRefresh = () => {
+  fetchProducts()
+}
+
+// 搜索
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchProducts()
+}
+
+// 重置筛选
+const handleReset = () => {
+  keyword.value = ''
+  currentPage.value = 1
+  fetchProducts()
 }
 
 // 分页变化
@@ -175,19 +199,32 @@ onMounted(() => {
         <h1 class="page-title">平台产品管理</h1>
         <p class="page-desc">管理各平台的listing并关联本地产品</p>
       </div>
-      <div class="header-right">
-        <el-select v-model="authId" placeholder="选择店铺" style="width: 200px; margin-right: 12px" @change="fetchProducts">
-          <el-option
-            v-for="item in authOptions"
-            :key="item.id"
-            :label="`${item.platform} - ${item.shop_name}`"
-            :value="item.id"
-          />
-        </el-select>
-        <el-button type="primary" :icon="Refresh" @click="handleSync" :disabled="!authId">
-          同步产品
-        </el-button>
-      </div>
+    </div>
+
+    <div class="filter-card">
+      <el-form inline>
+        <el-form-item label="店铺">
+          <el-select v-model="authId" placeholder="选择店铺" style="width: 200px" @change="handleSearch">
+            <el-option
+              v-for="item in authOptions"
+              :key="item.id"
+              :label="`${item.platform} - ${item.shop_name}`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关键词">
+          <el-input v-model="keyword" placeholder="SKU/名称" clearable style="width: 180px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
+          <el-button @click="handleReset">重置</el-button>
+          <el-button :icon="Refresh" @click="handleRefresh">刷新</el-button>
+          <el-button type="success" :icon="Refresh" :loading="syncLoading" @click="handleSync" :disabled="!authId">
+            同步产品
+          </el-button>
+        </el-form-item>
+      </el-form>
     </div>
 
     <div class="content-card">
@@ -197,8 +234,31 @@ onMounted(() => {
         style="width: 100%"
         stripe
       >
-        <el-table-column prop="platform_sku" label="平台SKU" width="180" />
-        <el-table-column prop="name" label="平台标题" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="platform_sku" label="平台SKU" width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="sku-cell">{{ row.platform_sku }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="平台标题" min-width="280">
+          <template #default="{ row }">
+            <div class="product-info-cell">
+              <el-image
+                v-if="row.image"
+                :src="row.image"
+                :preview-src-list="[row.image]"
+                :preview-teleported="true"
+                :z-index="3000"
+                :initial-index="0"
+                fit="cover"
+                class="product-image"
+              />
+              <div v-else class="product-image-placeholder">
+                <el-icon><Picture /></el-icon>
+              </div>
+              <span class="product-name" :title="row.name">{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="price" label="售价" width="120">
           <template #default="{ row }">
             {{ row.price }} {{ row.currency }}
@@ -206,11 +266,12 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="stock" label="库存" width="100" />
         <el-table-column prop="status" label="状态" width="120" />
-        <el-table-column label="关联本地产品" min-width="200">
+        <el-table-column label="关联本地产品" min-width="250">
           <template #default="{ row }">
-            <el-tag v-if="row.product_mapping" type="success" style="margin-right: 8px">
-              {{ row.product_mapping.product?.sku }}
-            </el-tag>
+            <div v-if="row.product_mapping" class="local-product-info">
+              <el-tag type="success" size="small">{{ row.product_mapping.product?.sku }}</el-tag>
+              <span class="product-name">{{ row.product_mapping.product?.name }}</span>
+            </div>
             <span v-else class="text-secondary">未关联</span>
           </template>
         </el-table-column>
@@ -313,6 +374,14 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.filter-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 0;
+  margin-bottom: 24px;
+}
+
 .content-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -329,5 +398,63 @@ onMounted(() => {
 .text-secondary {
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.local-product-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .product-name {
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.sku-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.product-info-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-image {
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.product-image-placeholder {
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  border-radius: 4px;
+  background: var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 20px;
+}
+
+.product-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
 }
 </style>

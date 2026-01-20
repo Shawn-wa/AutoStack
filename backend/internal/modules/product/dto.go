@@ -47,6 +47,7 @@ type PlatformProductResponse struct {
 	PlatformAuthID uint             `json:"platform_auth_id"`
 	PlatformSKU    string           `json:"platform_sku"`
 	Name           string           `json:"name"`
+	Image          string           `json:"image"`
 	Stock          int              `json:"stock"`
 	Price          float64          `json:"price"`
 	Currency       string           `json:"currency"`

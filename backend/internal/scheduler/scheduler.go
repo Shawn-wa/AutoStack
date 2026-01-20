@@ -38,8 +38,8 @@ func Start() {
 		return
 	}
 
-	// 每5分钟扫描并执行待处理的同步任务
-	_, err = cronScheduler.AddFunc("0 */5 * * * *", processPendingSyncTasks)
+	// 每1分钟扫描并执行待处理的同步任务
+	_, err = cronScheduler.AddFunc("0 */1 * * * *", processPendingSyncTasks)
 	if err != nil {
 		log.Printf("[Scheduler] 添加同步任务扫描失败: %v", err)
 		return
@@ -56,7 +56,7 @@ func Start() {
 	log.Println("[Scheduler] 定时任务调度器已启动")
 	log.Println("[Scheduler] - 每小时第5分钟同步所有授权的订单和佣金")
 	log.Println("[Scheduler] - 每4小时第10分钟统计订单走势数据")
-	log.Println("[Scheduler] - 每5分钟扫描并执行待处理的同步任务")
+	log.Println("[Scheduler] - 每1分钟扫描并执行待处理的同步任务")
 	log.Println("[Scheduler] - 每天凌晨1:20清理3个月前的同步任务记录")
 }
 

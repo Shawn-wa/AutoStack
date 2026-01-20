@@ -20,6 +20,7 @@ export interface PlatformProduct {
   platform_auth_id: number
   platform_sku: string
   name: string
+  image: string
   stock: number
   price: number
   currency: string
@@ -40,11 +41,19 @@ export interface OrderSummaryStatusDetail {
   amount: number
 }
 
+// 平台产品SKU详情
+export interface OrderSummaryPlatformSKU {
+  sku: string
+  name: string
+  image: string
+}
+
 // 订单汇总项接口（按本地SKU合并）
 export interface OrderSummaryItem {
   local_sku: string
   product_name: string
   platform_skus: string[]
+  platform_products: OrderSummaryPlatformSKU[]
   quantity: number
   amount: number
   currency: string
@@ -79,6 +88,7 @@ export interface ListRequest {
 // 平台产品列表查询请求
 export interface ListPlatformProductRequest extends ListRequest {
   platform_auth_id?: number
+  keyword?: string
 }
 
 // 订单汇总查询请求
@@ -87,6 +97,8 @@ export interface OrderSummaryRequest {
   end_time?: string
   auth_id?: number
   platform?: string
+  keyword?: string // 搜索关键词（本地SKU/标题/平台SKU）
+  status?: string  // 订单状态筛选
 }
 
 const api = {

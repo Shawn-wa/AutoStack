@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Picture } from '@element-plus/icons-vue'
 import api, { type OrderSummaryItem } from '../api'
 import { getAuths, type AuthResponse } from '@/modules/order/api'
 
@@ -10,6 +11,17 @@ const tableData = ref<OrderSummaryItem[]>([])
 const authId = ref<number | undefined>(undefined)
 const authOptions = ref<AuthResponse[]>([])
 const dateRange = ref<[Date, Date] | null>(null)
+const keyword = ref('')
+const status = ref('')
+
+// 订单状态选项
+const statusOptions = [
+  { value: 'pending', label: '待处理' },
+  { value: 'ready_to_ship', label: '待发货' },
+  { value: 'shipped', label: '已发货' },
+  { value: 'delivered', label: '已签收' },
+  { value: 'cancelled', label: '已取消' },
+]
 
 // 默认本月
 const defaultDateRange = () => {
@@ -46,6 +58,12 @@ const fetchSummary = async () => {
       params.start_time = formatDate(dateRange.value[0])
       params.end_time = formatDate(dateRange.value[1])
     }
+    if (keyword.value) {
+      params.keyword = keyword.value
+    }
+    if (status.value) {
+      params.status = status.value
+    }
 
     const res = await api.getOrderSummary(params)
     tableData.value = res.data || []
@@ -56,6 +74,13 @@ const fetchSummary = async () => {
   }
 }
 
+// 重置搜索
+const handleReset = () => {
+  keyword.value = ''
+  status.value = ''
+  fetchSummary()
+}
+
 const formatDate = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -63,14 +88,19 @@ const formatDate = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-// 获取状态标签类型
+// 获取状态标签类型（根据中文状态名称）
 const getStatusType = (status: string) => {
   const typeMap: Record<string, string> = {
-    'shipped': 'success',
-    'delivered': 'success',
-    'cancelled': 'danger',
-    'pending': 'warning',
-    'ready_to_ship': 'primary',
+    '已发货': 'success',
+    '已签收': 'success',
+    '配送中': 'primary',
+    '已取消': 'danger',
+    '已退货': 'danger',
+    '待处理': 'warning',
+    '待打包': 'warning',
+    '待发货': 'warning',
+    '待揽收': 'primary',
+    '仲裁中': 'danger',
   }
   return typeMap[status] || 'info'
 }
@@ -112,8 +142,28 @@ onMounted(() => {
             @change="fetchSummary"
           />
         </el-form-item>
+        <el-form-item label="订单状态">
+          <el-select v-model="status" placeholder="全部状态" clearable style="width: 140px" @change="fetchSummary">
+            <el-option
+              v-for="item in statusOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关键词">
+          <el-input
+            v-model="keyword"
+            placeholder="SKU/标题"
+            clearable
+            style="width: 180px"
+            @keyup.enter="fetchSummary"
+          />
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="fetchSummary">查询</el-button>
+          <el-button @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -158,19 +208,48 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="local_sku" label="本地SKU" width="150">
+        <el-table-column prop="local_sku" label="系统SKU" width="120">
           <template #default="{ row }">
             <el-tag v-if="row.local_sku" type="success">{{ row.local_sku }}</el-tag>
             <span v-else class="text-secondary">未关联</span>
           </template>
         </el-table-column>
-        <el-table-column prop="product_name" label="本地名称" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="platform_skus" label="平台SKU" width="200">
+        <el-table-column prop="product_name" label="系统产品名" width="400">
+          <template #default="{ row }">
+            <span class="wrap-text">{{ row.product_name || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="platform_skus" label="平台SKU" width="180">
           <template #default="{ row }">
             <span v-if="row.platform_skus?.length === 1">{{ row.platform_skus[0] }}</span>
             <el-tooltip v-else-if="row.platform_skus?.length > 1" :content="row.platform_skus.join(', ')" placement="top">
               <span>{{ row.platform_skus[0] }} <el-tag size="small" type="info">+{{ row.platform_skus.length - 1 }}</el-tag></span>
             </el-tooltip>
+            <span v-else class="text-secondary">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="平台产品" min-width="280">
+          <template #default="{ row }">
+            <div v-if="row.platform_products?.length > 0" class="platform-product-cell">
+              <el-image
+                v-if="row.platform_products[0].image"
+                :src="row.platform_products[0].image"
+                :preview-src-list="[row.platform_products[0].image]"
+                :preview-teleported="true"
+                :z-index="3000"
+                fit="cover"
+                class="product-image"
+              />
+              <div v-else class="product-image-placeholder">
+                <el-icon><Picture /></el-icon>
+              </div>
+              <div class="product-info">
+                <span class="product-name" :title="row.platform_products[0].name">{{ row.platform_products[0].name || '-' }}</span>
+                <span v-if="row.platform_products.length > 1" class="more-products">
+                  +{{ row.platform_products.length - 1 }} 个产品
+                </span>
+              </div>
+            </div>
             <span v-else class="text-secondary">-</span>
           </template>
         </el-table-column>
@@ -254,5 +333,58 @@ onMounted(() => {
 
 .sku-tag {
   font-family: monospace;
+}
+
+.platform-product-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-image {
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.product-image-placeholder {
+  width: 50px;
+  height: 50px;
+  min-width: 50px;
+  border-radius: 4px;
+  background: var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 20px;
+}
+
+.product-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.product-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.more-products {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.wrap-text {
+  word-break: break-word;
+  white-space: normal;
+  line-height: 1.5;
 }
 </style>

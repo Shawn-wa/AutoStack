@@ -231,6 +231,8 @@ type OrderSummaryRequest struct {
 	EndTime   string `form:"end_time"`
 	AuthID    uint   `form:"auth_id"`
 	Platform  string `form:"platform"`
+	Keyword   string `form:"keyword"` // 搜索关键词（本地SKU/标题/平台SKU）
+	Status    string `form:"status"`  // 订单状态筛选
 }
 
 // OrderSummaryStatusDetail 状态明细
@@ -240,13 +242,21 @@ type OrderSummaryStatusDetail struct {
 	Amount   float64 `json:"amount"`
 }
 
+// OrderSummaryPlatformSKU 平台SKU详情
+type OrderSummaryPlatformSKU struct {
+	SKU   string `json:"sku"`
+	Name  string `json:"name"`
+	Image string `json:"image"`
+}
+
 // OrderSummaryItem 订单汇总项（按本地SKU合并）
 type OrderSummaryItem struct {
-	LocalSKU      string                     `json:"local_sku"`
-	ProductName   string                     `json:"product_name"`
-	PlatformSKUs  []string                   `json:"platform_skus"`
-	Quantity      int                        `json:"quantity"`
-	Amount        float64                    `json:"amount"`
-	Currency      string                     `json:"currency"`
-	StatusDetails []OrderSummaryStatusDetail `json:"status_details"`
+	LocalSKU         string                    `json:"local_sku"`
+	ProductName      string                    `json:"product_name"`
+	PlatformSKUs     []string                  `json:"platform_skus"`      // 保持兼容
+	PlatformProducts []OrderSummaryPlatformSKU `json:"platform_products"`  // 平台产品详情
+	Quantity         int                       `json:"quantity"`
+	Amount           float64                   `json:"amount"`
+	Currency         string                    `json:"currency"`
+	StatusDetails    []OrderSummaryStatusDetail `json:"status_details"`
 }

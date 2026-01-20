@@ -996,13 +996,15 @@ func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderT
 
 // orderSummaryRaw 原始查询结果
 type orderSummaryRaw struct {
-	LocalSKU    string  `gorm:"column:local_sku"`
-	ProductName string  `gorm:"column:product_name"`
-	PlatformSKU string  `gorm:"column:platform_sku"`
-	Status      string  `gorm:"column:status"`
-	Quantity    int     `gorm:"column:quantity"`
-	Amount      float64 `gorm:"column:amount"`
-	Currency    string  `gorm:"column:currency"`
+	LocalSKU     string  `gorm:"column:local_sku"`
+	ProductName  string  `gorm:"column:product_name"`
+	PlatformSKU  string  `gorm:"column:platform_sku"`
+	PlatformName string  `gorm:"column:platform_name"`
+	PlatformImg  string  `gorm:"column:platform_img"`
+	Status       string  `gorm:"column:status"`
+	Quantity     int     `gorm:"column:quantity"`
+	Amount       float64 `gorm:"column:amount"`
+	Currency     string  `gorm:"column:currency"`
 }
 
 // GetOrderSummary 获取订单汇总（按本地SKU合并）
@@ -1015,6 +1017,8 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 			COALESCE(p.sku, '') as local_sku,
 			COALESCE(p.name, '') as product_name,
 			oi.sku as platform_sku,
+			COALESCE(pp.name, '') as platform_name,
+			COALESCE(pp.image, '') as platform_img,
 			o.status,
 			SUM(oi.quantity) as quantity,
 			SUM(oi.price * oi.quantity) as amount,
@@ -1025,7 +1029,7 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		Joins("LEFT JOIN product_mappings pm ON pm.platform_product_id = pp.id").
 		Joins("LEFT JOIN products p ON p.id = pm.product_id").
 		Where("o.user_id = ?", userID).
-		Group("local_sku, product_name, platform_sku, o.status, oi.currency")
+		Group("local_sku, product_name, platform_sku, platform_name, platform_img, o.status, oi.currency")
 
 	// 过滤条件
 	if req.Platform != "" {
@@ -1054,6 +1058,13 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		}
 		query = query.Where("o.order_time <= ?", endTimeStr)
 	}
+	if req.Keyword != "" {
+		like := "%" + req.Keyword + "%"
+		query = query.Where("(p.sku LIKE ? OR p.name LIKE ? OR oi.sku LIKE ?)", like, like, like)
+	}
+	if req.Status != "" {
+		query = query.Where("o.status = ?", req.Status)
+	}
 
 	if err := query.Scan(&rawItems).Error; err != nil {
 		return nil, err
@@ -1072,13 +1083,14 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		item, exists := skuMap[key]
 		if !exists {
 			item = &OrderSummaryItem{
-				LocalSKU:      raw.LocalSKU,
-				ProductName:   raw.ProductName,
-				PlatformSKUs:  []string{},
-				Quantity:      0,
-				Amount:        0,
-				Currency:      raw.Currency,
-				StatusDetails: []OrderSummaryStatusDetail{},
+				LocalSKU:         raw.LocalSKU,
+				ProductName:      raw.ProductName,
+				PlatformSKUs:     []string{},
+				PlatformProducts: []OrderSummaryPlatformSKU{},
+				Quantity:         0,
+				Amount:           0,
+				Currency:         raw.Currency,
+				StatusDetails:    []OrderSummaryStatusDetail{},
 			}
 			skuMap[key] = item
 			skuOrder = append(skuOrder, key)
@@ -1088,7 +1100,7 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		item.Quantity += raw.Quantity
 		item.Amount += raw.Amount
 
-		// 添加平台SKU（去重）
+		// 添加平台SKU和详情（去重）
 		found := false
 		for _, sku := range item.PlatformSKUs {
 			if sku == raw.PlatformSKU {
@@ -1098,12 +1110,18 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		}
 		if !found {
 			item.PlatformSKUs = append(item.PlatformSKUs, raw.PlatformSKU)
+			item.PlatformProducts = append(item.PlatformProducts, OrderSummaryPlatformSKU{
+				SKU:   raw.PlatformSKU,
+				Name:  raw.PlatformName,
+				Image: raw.PlatformImg,
+			})
 		}
 
-		// 添加或更新状态明细
+		// 添加或更新状态明细（使用中文状态名称）
+		statusLabel := GetOrderStatusName(raw.Status)
 		statusFound := false
 		for i, sd := range item.StatusDetails {
-			if sd.Status == raw.Status {
+			if sd.Status == statusLabel {
 				item.StatusDetails[i].Quantity += raw.Quantity
 				item.StatusDetails[i].Amount += raw.Amount
 				statusFound = true
@@ -1112,7 +1130,7 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		}
 		if !statusFound {
 			item.StatusDetails = append(item.StatusDetails, OrderSummaryStatusDetail{
-				Status:   raw.Status,
+				Status:   statusLabel,
 				Quantity: raw.Quantity,
 				Amount:   raw.Amount,
 			})

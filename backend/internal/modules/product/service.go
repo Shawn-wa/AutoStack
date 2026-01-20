@@ -102,7 +102,7 @@ func (s *Service) DeleteProduct(id uint) error {
 }
 
 // ListPlatformProducts 获取平台产品列表
-func (s *Service) ListPlatformProducts(platformAuthID uint, page, pageSize int) ([]PlatformProduct, int64, error) {
+func (s *Service) ListPlatformProducts(platformAuthID uint, keyword string, page, pageSize int) ([]PlatformProduct, int64, error) {
 	var products []PlatformProduct
 	var total int64
 	db := database.GetDB()
@@ -111,13 +111,28 @@ func (s *Service) ListPlatformProducts(platformAuthID uint, page, pageSize int) 
 	if platformAuthID > 0 {
 		query = query.Where("platform_auth_id = ?", platformAuthID)
 	}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		// 使用子查询搜索本地SKU，避免JOIN导致的重复记录和性能问题
+		// 搜索条件：平台SKU、平台名称、关联的本地SKU
+		query = query.Where(`(
+			platform_sku LIKE ? OR 
+			name LIKE ? OR 
+			id IN (
+				SELECT pm.platform_product_id 
+				FROM product_mappings pm 
+				JOIN products p ON p.id = pm.product_id 
+				WHERE p.sku LIKE ?
+			)
+		)`, like, like, like)
+	}
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * pageSize
-	if err := query.Preload("ProductMapping.Product").Offset(offset).Limit(pageSize).Find(&products).Error; err != nil {
+	if err := query.Preload("ProductMapping.Product").Order("id DESC").Offset(offset).Limit(pageSize).Find(&products).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -235,9 +250,23 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 			continue
 		}
 
+		// 调试日志：打印返回的产品数量
+		fmt.Printf("[DEBUG] 获取产品详情成功，返回 %d 个产品\n", len(infoResp.Items))
+		if len(infoResp.Items) == 0 {
+			// 打印原始响应以便调试
+			rawResp, _ := json.Marshal(infoResp)
+			fmt.Printf("[DEBUG] 产品详情响应为空，原始响应: %s\n", string(rawResp))
+		}
+
 		// 保存到数据库
-		for _, info := range infoResp.Result.Items {
+		for _, info := range infoResp.Items {
 			price, _ := strconv.ParseFloat(info.Price, 64)
+			
+			// 计算总库存 (累加所有仓库类型的库存)
+			totalStock := 0
+			for _, stock := range info.Stocks.Stocks {
+				totalStock += stock.Present
+			}
 			
 			// 查找或创建
 			var pp PlatformProduct
@@ -253,10 +282,21 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 
 			// 更新字段
 			pp.Name = info.Name
-			pp.Stock = info.Stocks.Present
+			pp.Stock = totalStock
 			pp.Price = price
 			pp.Currency = info.CurrencyCode
-			pp.Status = info.Status.State
+			// 保存主图：优先使用 primary_image，其次使用 images[0]
+			if info.PrimaryImage != "" {
+				pp.Image = info.PrimaryImage
+			} else if len(info.Images) > 0 {
+				pp.Image = info.Images[0]
+			}
+			// v3 API 无 status.state，使用 is_archived 判断状态
+			if info.IsArchived {
+				pp.Status = "archived"
+			} else {
+				pp.Status = "active"
+			}
 			rawData, _ := json.Marshal(info)
 			pp.RawData = string(rawData)
 
@@ -287,14 +327,32 @@ func createOzonClient(credentials string, platformAuthID uint) (*ozon.Client, er
 
 // ========== 同步任务相关 ==========
 
-// CreateSyncTask 创建同步任务
+// CreateSyncTask 创建同步任务（自动去重，避免并发，手动触发提升优先级）
 func (s *Service) CreateSyncTask(platformAuthID uint, taskType string) (*PlatformSyncTask, error) {
 	db := database.GetDB()
 
+	// 检查是否已存在相同的待处理或执行中的任务
+	var existingTask PlatformSyncTask
+	err := db.Where(
+		"platform_auth_id = ? AND task_type = ? AND status IN ?",
+		platformAuthID, taskType, []string{SyncTaskStatusPending, SyncTaskStatusRunning},
+	).First(&existingTask).Error
+
+	if err == nil {
+		// 已存在相同任务，提升优先级+1
+		db.Model(&PlatformSyncTask{}).Where("id = ?", existingTask.ID).
+			Update("priority", existingTask.Priority+1)
+		existingTask.Priority++
+		fmt.Printf("[SyncTask] 任务 %d 已存在，优先级提升至 %d\n", existingTask.ID, existingTask.Priority)
+		return &existingTask, nil
+	}
+
+	// 创建新任务，默认优先级10
 	task := &PlatformSyncTask{
 		PlatformAuthID: platformAuthID,
 		TaskType:       taskType,
 		Status:         SyncTaskStatusPending,
+		Priority:       10,
 		MaxRetry:       5,
 	}
 
@@ -330,7 +388,7 @@ func (s *Service) ProcessPendingTasks() {
 	db.Where(
 		"(status = ? OR (status = ? AND locked_at < ?)) AND retry_count < max_retry",
 		SyncTaskStatusPending, SyncTaskStatusRunning, lockExpired,
-	).Order("created_at ASC").Limit(10).Find(&tasks)
+	).Order("priority DESC, created_at ASC").Limit(10).Find(&tasks)
 
 	fmt.Printf("[SyncTask] 扫描到 %d 个待处理任务\n", len(tasks))
 

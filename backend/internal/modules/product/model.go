@@ -28,6 +28,7 @@ type PlatformSyncTask struct {
 	PlatformAuthID uint       `gorm:"index;not null" json:"platform_auth_id"`
 	TaskType       string     `gorm:"size:32;not null;index" json:"task_type"`
 	Status         string     `gorm:"size:16;not null;default:pending;index" json:"status"`
+	Priority       int        `gorm:"default:10;index" json:"priority"` // 优先级，值越大越优先，默认10
 	RetryCount     int        `gorm:"default:0" json:"retry_count"`
 	MaxRetry       int        `gorm:"default:5" json:"max_retry"`
 	ErrorMessage   string     `gorm:"type:text" json:"error_message"`
@@ -69,6 +70,7 @@ type PlatformProduct struct {
 	PlatformAuthID uint      `gorm:"index:idx_platform_auth_sku;not null" json:"platform_auth_id"`
 	PlatformSKU    string    `gorm:"size:100;not null;index:idx_platform_auth_sku" json:"platform_sku"`
 	Name           string    `gorm:"size:500" json:"name"`
+	Image          string    `gorm:"column:image;size:500" json:"image"` // 产品主图URL
 	Stock          int       `gorm:"default:0" json:"stock"`
 	Price          float64   `gorm:"type:decimal(10,2)" json:"price"`
 	Currency       string    `gorm:"size:10" json:"currency"`

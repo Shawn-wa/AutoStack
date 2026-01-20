@@ -287,6 +287,30 @@ html.dark {
   border: 1px solid var(--border-color);
 }
 
+// 图片预览样式
+.el-image-viewer__wrapper {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+.el-image-viewer__mask {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  opacity: 1 !important;
+}
+
+.el-image-viewer__img {
+  max-width: 600px !important;
+  max-height: 600px !important;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.el-image-viewer__canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 // =============================================
 // 重置样式
 // =============================================

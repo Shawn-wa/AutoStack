@@ -316,52 +316,87 @@ type ProductItem struct {
 }
 
 // ProductInfoRequest 商品详情请求
-// API: POST /v2/product/info/list
+// API: POST /v3/product/info/list
+// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductInfoListV3
 type ProductInfoRequest struct {
 	OfferID   []string `json:"offer_id,omitempty"`
 	ProductID []int64  `json:"product_id,omitempty"`
+	SKU       []int64  `json:"sku,omitempty"`
 }
 
-// ProductInfoResponse 商品详情响应
+// ProductInfoResponse 商品详情响应 (v3 API 直接返回 items，无 result 包装)
 type ProductInfoResponse struct {
-	Result ProductInfoResult `json:"result"`
-}
-
-// ProductInfoResult 商品详情结果
-type ProductInfoResult struct {
 	Items []ProductInfoItem `json:"items"`
 }
 
 // ProductInfoItem 商品详情项
 type ProductInfoItem struct {
-	ID             int64            `json:"id"`
-	Name           string           `json:"name"`
-	OfferID        string           `json:"offer_id"`
-	Barcode        string           `json:"barcode"`
-	Price          string           `json:"price"` // 注意：Ozon API 返回的价格可能是字符串或数字，这里根据实际情况可能需要调整，但通常作为字符串处理更安全
-	OldPrice       string           `json:"old_price"`
-	PremiumPrice   string           `json:"premium_price"`
-	Vat            string           `json:"vat"`
-	Visible        bool             `json:"visible"`
-	Stocks         ProductInfoStock `json:"stocks"`
-	Status         ProductStatus    `json:"status"`
-	MarketingPrice string           `json:"marketing_price"`
-	CurrencyCode   string           `json:"currency_code"`
+	ID                    int64                    `json:"id"`
+	Name                  string                   `json:"name"`
+	OfferID               string                   `json:"offer_id"`
+	Barcodes              []string                 `json:"barcodes"`
+	Price                 string                   `json:"price"`
+	OldPrice              string                   `json:"old_price"`
+	MinPrice              string                   `json:"min_price"`
+	MarketingPrice        string                   `json:"marketing_price"`
+	Vat                   string                   `json:"vat"`
+	CurrencyCode          string                   `json:"currency_code"`
+	Stocks                ProductInfoStocks        `json:"stocks"`
+	Errors                []ProductError           `json:"errors"`
+	VisibilityDetails     ProductVisibilityDetails `json:"visibility_details"`
+	PriceIndexes          ProductPriceIndexes      `json:"price_indexes"`
+	VolumeWeight          float64                  `json:"volume_weight"`
+	IsArchived            bool                     `json:"is_archived"`
+	IsAutoarchived        bool                     `json:"is_autoarchived"`
+	IsDiscounted          bool                     `json:"is_discounted"`
+	IsPrepaymentAllowed   bool                     `json:"is_prepayment_allowed"`
+	HasDiscountedFboItem  bool                     `json:"has_discounted_fbo_item"`
+	DiscountedFboStocks   int                      `json:"discounted_fbo_stocks"`
+	DescriptionCategoryID int64                    `json:"description_category_id"`
+	TypeID                int64                    `json:"type_id"`
+	CreatedAt             string                   `json:"created_at"`
+	UpdatedAt             string                   `json:"updated_at"`
+	Images                []string                 `json:"images"`
+	PrimaryImage          string                   `json:"primary_image"` // 主图URL
 }
 
-// ProductInfoStock 商品库存信息
-type ProductInfoStock struct {
-	Coming   int `json:"coming"`
-	Present  int `json:"present"`
-	Reserved int `json:"reserved"`
+// ProductInfoStocks 商品库存信息 (v3 结构)
+type ProductInfoStocks struct {
+	HasStock bool               `json:"has_stock"`
+	Stocks   []ProductStockItem `json:"stocks"`
 }
 
-// ProductStatus 商品状态
-type ProductStatus struct {
-	State            string `json:"state"`
-	StateFailDetails string `json:"state_fail_details"`
-	StateName        string `json:"state_name"`
-	StateDescription string `json:"state_description"`
-	IsFailed         bool   `json:"is_failed"`
-	IsCreated        bool   `json:"is_created"`
+// ProductStockItem 库存明细项
+type ProductStockItem struct {
+	Type     string `json:"type"`     // fbo, fbs 等
+	Present  int    `json:"present"`  // 当前库存
+	Reserved int    `json:"reserved"` // 预留库存
+}
+
+// ProductError 商品错误信息
+type ProductError struct {
+	Code        string `json:"code"`
+	Field       string `json:"field"`
+	AttributeID int64  `json:"attribute_id"`
+	State       string `json:"state"`
+	Level       string `json:"level"`
+}
+
+// ProductVisibilityDetails 商品可见性详情
+type ProductVisibilityDetails struct {
+	HasPrice bool `json:"has_price"`
+	HasStock bool `json:"has_stock"`
+}
+
+// ProductPriceIndexes 价格指数
+type ProductPriceIndexes struct {
+	ColorIndex        string                 `json:"color_index"`
+	ExternalIndexData ProductExternalIndexes `json:"external_index_data"`
+}
+
+// ProductExternalIndexes 外部价格指数
+type ProductExternalIndexes struct {
+	MinimalPrice         string  `json:"minimal_price"`
+	MinimalPriceCurrency string  `json:"minimal_price_currency"`
+	PriceIndexValue      float64 `json:"price_index_value"`
 }

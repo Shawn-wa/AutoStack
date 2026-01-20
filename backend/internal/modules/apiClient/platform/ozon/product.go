@@ -3,6 +3,7 @@ package ozon
 import (
 	"autostack/internal/modules/apiClient/platform"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -37,20 +38,25 @@ func (c *Client) GetProductList(limit int, lastID string) (*ProductListResponse,
 	return &result, nil
 }
 
-// GetProductInfo 获取商品详细信息
-// offerIds: 商品的 Offer ID 列表
+// GetProductInfo 获取商品详细信息（批量）
+// API: POST /v3/product/info/list
+// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductInfoListV3
 func (c *Client) GetProductInfo(offerIds []string) (*ProductInfoResponse, error) {
 	reqBody := ProductInfoRequest{
 		OfferID: offerIds,
 	}
 
-	resp, err := c.DoRequest(http.MethodPost, "/v2/product/info/list", reqBody, platform.RequestTypeProductInfo)
+	resp, err := c.DoRequest(http.MethodPost, "/v3/product/info/list", reqBody, platform.RequestTypeProductInfo)
 	if err != nil {
 		return nil, err
 	}
 
+	// 调试日志：打印原始响应
+	fmt.Printf("[DEBUG] ProductInfo 原始响应 (前500字符): %.500s\n", string(resp.Body))
+
 	var result ProductInfoResponse
 	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		fmt.Printf("[DEBUG] JSON 解析失败: %v\n", err)
 		return nil, err
 	}
 

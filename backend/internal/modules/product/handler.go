@@ -95,8 +95,9 @@ func ListPlatformProducts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	authID, _ := strconv.Atoi(c.DefaultQuery("platform_auth_id", "0"))
+	keyword := c.Query("keyword")
 
-	products, total, err := service.ListPlatformProducts(uint(authID), page, pageSize)
+	products, total, err := service.ListPlatformProducts(uint(authID), keyword, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取平台产品列表失败")
 		return
@@ -110,6 +111,7 @@ func ListPlatformProducts(c *gin.Context) {
 			PlatformAuthID: p.PlatformAuthID,
 			PlatformSKU:    p.PlatformSKU,
 			Name:           p.Name,
+			Image:          p.Image,
 			Stock:          p.Stock,
 			Price:          p.Price,
 			Currency:       p.Currency,
