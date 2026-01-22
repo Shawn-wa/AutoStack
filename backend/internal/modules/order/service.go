@@ -1143,5 +1143,42 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		result = append(result, *skuMap[key])
 	}
 
+	// 查询系统可用库存
+	if len(result) > 0 {
+		skus := make([]string, 0, len(result))
+		for _, item := range result {
+			if item.LocalSKU != "" {
+				skus = append(skus, item.LocalSKU)
+			}
+		}
+
+		if len(skus) > 0 {
+			// 查询库存（按SKU汇总所有仓库的可用库存）
+			type StockResult struct {
+				SKU            string
+				AvailableStock int
+			}
+			var stocks []StockResult
+			db.Table("warehouse_center_inventory").
+				Select("sku, SUM(available_stock) as available_stock").
+				Where("sku IN ?", skus).
+				Group("sku").
+				Scan(&stocks)
+
+			// 构建库存映射
+			stockMap := make(map[string]int)
+			for _, s := range stocks {
+				stockMap[s.SKU] = s.AvailableStock
+			}
+
+			// 更新结果
+			for i := range result {
+				if stock, ok := stockMap[result[i].LocalSKU]; ok {
+					result[i].AvailableStock = stock
+				}
+			}
+		}
+	}
+
 	return result, nil
 }

@@ -251,12 +251,13 @@ type OrderSummaryPlatformSKU struct {
 
 // OrderSummaryItem 订单汇总项（按本地SKU合并）
 type OrderSummaryItem struct {
-	LocalSKU         string                    `json:"local_sku"`
-	ProductName      string                    `json:"product_name"`
-	PlatformSKUs     []string                  `json:"platform_skus"`      // 保持兼容
-	PlatformProducts []OrderSummaryPlatformSKU `json:"platform_products"`  // 平台产品详情
-	Quantity         int                       `json:"quantity"`
-	Amount           float64                   `json:"amount"`
-	Currency         string                    `json:"currency"`
+	LocalSKU         string                     `json:"local_sku"`
+	ProductName      string                     `json:"product_name"`
+	PlatformSKUs     []string                   `json:"platform_skus"`      // 保持兼容
+	PlatformProducts []OrderSummaryPlatformSKU  `json:"platform_products"`  // 平台产品详情
+	Quantity         int                        `json:"quantity"`
+	Amount           float64                    `json:"amount"`
+	Currency         string                     `json:"currency"`
 	StatusDetails    []OrderSummaryStatusDetail `json:"status_details"`
+	AvailableStock   int                        `json:"available_stock"`    // 系统可用库存
 }

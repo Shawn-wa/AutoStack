@@ -19,17 +19,23 @@ import (
 type Service struct{}
 
 // ListProducts 获取本地产品列表
-func (s *Service) ListProducts(page, pageSize int) ([]Product, int64, error) {
+func (s *Service) ListProducts(page, pageSize int, keyword string) ([]Product, int64, error) {
 	var products []Product
 	var total int64
 	db := database.GetDB()
 
-	if err := db.Model(&Product{}).Count(&total).Error; err != nil {
+	query := db.Model(&Product{})
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("sku LIKE ? OR name LIKE ?", like, like)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * pageSize
-	if err := db.Offset(offset).Limit(pageSize).Find(&products).Error; err != nil {
+	if err := query.Order("id DESC").Offset(offset).Limit(pageSize).Find(&products).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -90,7 +96,7 @@ func (s *Service) UpdateProduct(id uint, req UpdateProductRequest) (*Product, er
 // DeleteProduct 删除本地产品
 func (s *Service) DeleteProduct(id uint) error {
 	db := database.GetDB()
-	
+
 	// 检查是否有映射关联
 	var count int64
 	db.Model(&ProductMapping{}).Where("product_id = ?", id).Count(&count)
@@ -182,7 +188,7 @@ func (s *Service) UnmapProduct(platformProductID uint) error {
 // SyncPlatformProducts 同步平台产品
 func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 	db := database.GetDB()
-	
+
 	// 获取授权信息
 	var auth order.PlatformAuth
 	if err := db.First(&auth, platformAuthID).Error; err != nil {
@@ -261,17 +267,17 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 		// 保存到数据库
 		for _, info := range infoResp.Items {
 			price, _ := strconv.ParseFloat(info.Price, 64)
-			
+
 			// 计算总库存 (累加所有仓库类型的库存)
 			totalStock := 0
 			for _, stock := range info.Stocks.Stocks {
 				totalStock += stock.Present
 			}
-			
+
 			// 查找或创建
 			var pp PlatformProduct
 			err := db.Where("platform_auth_id = ? AND platform_sku = ?", platformAuthID, info.OfferID).First(&pp).Error
-			
+
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				pp = PlatformProduct{
 					Platform:       order.PlatformOzon,
@@ -309,7 +315,7 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 	// 更新同步时间
 	// 注意：PlatformAuth 模型中可能没有 LastProductSyncAt 字段，这里暂时复用 LastSyncAt 或忽略
 	// 最好是在 PlatformAuth 添加字段，但为了简化，这里先不更新 Auth 表状态，只记录日志
-	
+
 	return nil
 }
 
@@ -466,6 +472,80 @@ func (s *Service) CleanOldTasks(before time.Time) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+// InitProductsFromPlatform 根据平台SKU初始化本地产品
+func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsResponse, error) {
+	db := database.GetDB()
+	result := &InitProductsResponse{}
+
+	// 查询平台产品
+	query := db.Model(&PlatformProduct{})
+	if platformAuthID > 0 {
+		query = query.Where("platform_auth_id = ?", platformAuthID)
+	}
+
+	var platformProducts []PlatformProduct
+	if err := query.Find(&platformProducts).Error; err != nil {
+		return nil, fmt.Errorf("查询平台产品失败: %v", err)
+	}
+
+	result.TotalPlatformProducts = len(platformProducts)
+
+	for _, pp := range platformProducts {
+		// 检查是否已有映射
+		var existingMapping ProductMapping
+		if err := db.Where("platform_product_id = ?", pp.ID).First(&existingMapping).Error; err == nil {
+			result.SkippedMapped++
+			continue
+		}
+
+		// 查找是否已存在相同SKU的本地产品
+		var localProduct Product
+		err := db.Where("sku = ?", pp.PlatformSKU).First(&localProduct).Error
+
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 创建新的本地产品
+			localProduct = Product{
+				SKU:   pp.PlatformSKU,
+				Name:  pp.Name,
+				Image: pp.Image,
+			}
+			if err := db.Create(&localProduct).Error; err != nil {
+				fmt.Printf("[InitProducts] 创建本地产品失败 %s: %v\n", pp.PlatformSKU, err)
+				continue
+			}
+			result.CreatedProducts++
+		} else if err != nil {
+			fmt.Printf("[InitProducts] 查询本地产品失败 %s: %v\n", pp.PlatformSKU, err)
+			continue
+		}
+
+		// 再次检查该本地产品是否已被其他平台产品关联
+		var existingMappingForProduct ProductMapping
+		if err := db.Where("product_id = ?", localProduct.ID).First(&existingMappingForProduct).Error; err == nil {
+			// 本地产品已被关联，跳过
+			result.SkippedExisting++
+			continue
+		}
+
+		// 创建映射关系
+		mapping := ProductMapping{
+			PlatformProductID: pp.ID,
+			ProductID:         localProduct.ID,
+		}
+		if err := db.Create(&mapping).Error; err != nil {
+			fmt.Printf("[InitProducts] 创建映射失败 %d -> %d: %v\n", pp.ID, localProduct.ID, err)
+			continue
+		}
+		result.CreatedMappings++
+	}
+
+	fmt.Printf("[InitProducts] 完成: 总数=%d, 跳过(已映射)=%d, 跳过(已关联)=%d, 新建产品=%d, 新建映射=%d\n",
+		result.TotalPlatformProducts, result.SkippedMapped, result.SkippedExisting,
+		result.CreatedProducts, result.CreatedMappings)
+
+	return result, nil
+}
+
 // ListSyncTasks 获取同步任务列表
 func (s *Service) ListSyncTasks(page, pageSize int, status string) ([]PlatformSyncTask, int64, error) {
 	db := database.GetDB()
@@ -487,4 +567,357 @@ func (s *Service) ListSyncTasks(page, pageSize int, status string) ([]PlatformSy
 	}
 
 	return tasks, total, nil
+}
+
+// ========== 入库单相关 ==========
+
+// generateStockInOrderNo 生成入库单号
+func generateStockInOrderNo() string {
+	return fmt.Sprintf("SI%s%04d", time.Now().Format("20060102150405"), time.Now().Nanosecond()%10000)
+}
+
+// CreateStockInOrder 创建入库单（同时更新库存）
+func (s *Service) CreateStockInOrder(req CreateStockInOrderRequest) (*StockInOrder, error) {
+	db := database.GetDB()
+
+	// 验证仓库存在
+	var warehouse Warehouse
+	if err := db.First(&warehouse, req.WarehouseID).Error; err != nil {
+		return nil, fmt.Errorf("仓库不存在")
+	}
+
+	// 开启事务
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 创建入库单
+	order := &StockInOrder{
+		OrderNo:     generateStockInOrderNo(),
+		WarehouseID: req.WarehouseID,
+		Status:      StockInStatusCompleted, // 直接完成
+		Remark:      req.Remark,
+	}
+
+	if err := tx.Create(order).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("创建入库单失败: %v", err)
+	}
+
+	// 创建明细并更新库存
+	for _, item := range req.Items {
+		// 查询产品
+		var product Product
+		if err := tx.First(&product, item.ProductID).Error; err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("产品不存在: %d", item.ProductID)
+		}
+
+		// 创建明细
+		orderItem := &StockInOrderItem{
+			StockInOrderID: order.ID,
+			ProductID:      item.ProductID,
+			SKU:            product.SKU,
+			ProductName:    product.Name,
+			Quantity:       item.Quantity,
+		}
+		if err := tx.Create(orderItem).Error; err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("创建入库明细失败: %v", err)
+		}
+
+		// 更新产品总库存
+		if err := tx.Model(&Product{}).Where("id = ?", item.ProductID).
+			Update("stock", gorm.Expr("stock + ?", item.Quantity)).Error; err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("更新产品库存失败: %v", err)
+		}
+
+		// 更新仓库库存明细（warehouse_center_inventory）
+		var inventory WarehouseCenterInventory
+		err := tx.Where("product_id = ? AND warehouse_id = ?", item.ProductID, req.WarehouseID).First(&inventory).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 创建新的库存记录
+			inventory = WarehouseCenterInventory{
+				ProductID:      item.ProductID,
+				WarehouseID:    req.WarehouseID,
+				SKU:            product.SKU,
+				AvailableStock: item.Quantity,
+				LockedStock:    0,
+				InTransitStock: 0,
+			}
+			if err := tx.Create(&inventory).Error; err != nil {
+				tx.Rollback()
+				return nil, fmt.Errorf("创建仓库库存记录失败: %v", err)
+			}
+		} else if err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("查询仓库库存失败: %v", err)
+		} else {
+			// 更新现有库存记录的可用库存
+			if err := tx.Model(&WarehouseCenterInventory{}).Where("id = ?", inventory.ID).
+				Update("available_stock", gorm.Expr("available_stock + ?", item.Quantity)).Error; err != nil {
+				tx.Rollback()
+				return nil, fmt.Errorf("更新仓库库存失败: %v", err)
+			}
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, fmt.Errorf("提交事务失败: %v", err)
+	}
+
+	// 重新加载完整数据
+	db.Preload("Items").First(order, order.ID)
+
+	return order, nil
+}
+
+// ListStockInOrders 获取入库单列表
+func (s *Service) ListStockInOrders(page, pageSize int, status string) ([]StockInOrder, int64, error) {
+	db := database.GetDB()
+	var orders []StockInOrder
+	var total int64
+
+	query := db.Model(&StockInOrder{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	if err := query.Preload("Warehouse").Preload("Items").Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&orders).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return orders, total, nil
+}
+
+// GetStockInOrder 获取入库单详情
+func (s *Service) GetStockInOrder(id uint) (*StockInOrder, error) {
+	db := database.GetDB()
+	var order StockInOrder
+	if err := db.Preload("Warehouse").Preload("Items").First(&order, id).Error; err != nil {
+		return nil, errors.New("入库单不存在")
+	}
+	return &order, nil
+}
+
+// ========== 仓库相关 ==========
+
+// ListWarehouses 获取仓库列表
+func (s *Service) ListWarehouses() ([]Warehouse, error) {
+	db := database.GetDB()
+	var warehouses []Warehouse
+	if err := db.Where("status = ?", WarehouseStatusActive).Order("id ASC").Find(&warehouses).Error; err != nil {
+		return nil, err
+	}
+	return warehouses, nil
+}
+
+// ListAllWarehouses 获取所有仓库（支持按类型筛选）
+func (s *Service) ListAllWarehouses(warehouseType string) ([]Warehouse, error) {
+	db := database.GetDB()
+	var warehouses []Warehouse
+
+	query := db.Model(&Warehouse{})
+	if warehouseType != "" && warehouseType != "all" {
+		query = query.Where("type = ?", warehouseType)
+	}
+
+	if err := query.Order("id ASC").Find(&warehouses).Error; err != nil {
+		return nil, err
+	}
+	return warehouses, nil
+}
+
+// CreateWarehouse 创建仓库
+func (s *Service) CreateWarehouse(req CreateWarehouseRequest) (*Warehouse, error) {
+	db := database.GetDB()
+
+	// 检查编码是否已存在
+	var count int64
+	db.Model(&Warehouse{}).Where("code = ?", req.Code).Count(&count)
+	if count > 0 {
+		return nil, errors.New("仓库编码已存在")
+	}
+
+	// 默认仓库类型为本地仓
+	warehouseType := req.Type
+	if warehouseType == "" {
+		warehouseType = WarehouseTypeLocal
+	}
+
+	warehouse := &Warehouse{
+		Code:    req.Code,
+		Name:    req.Name,
+		Type:    warehouseType,
+		Address: req.Address,
+		Status:  WarehouseStatusActive,
+	}
+
+	if err := db.Create(warehouse).Error; err != nil {
+		return nil, err
+	}
+
+	return warehouse, nil
+}
+
+// InitDefaultWarehouse 初始化默认仓库
+func (s *Service) InitDefaultWarehouse() error {
+	db := database.GetDB()
+	var count int64
+	db.Model(&Warehouse{}).Count(&count)
+	if count > 0 {
+		return nil // 已有仓库，无需初始化
+	}
+
+	defaultWarehouse := &Warehouse{
+		Code:    "WH001",
+		Name:    "默认仓库",
+		Address: "",
+		Status:  WarehouseStatusActive,
+	}
+	return db.Create(defaultWarehouse).Error
+}
+
+// ========== 库存相关 ==========
+
+// ListInventory 获取库存明细列表
+func (s *Service) ListInventory(warehouseID uint, keyword string, page, pageSize int) ([]WarehouseCenterInventory, int64, error) {
+	db := database.GetDB()
+	var inventories []WarehouseCenterInventory
+	var total int64
+
+	query := db.Model(&WarehouseCenterInventory{})
+	if warehouseID > 0 {
+		query = query.Where("warehouse_id = ?", warehouseID)
+	}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("sku LIKE ?", like)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	if err := query.Preload("Product").Preload("Warehouse").
+		Order("updated_at DESC").Offset(offset).Limit(pageSize).Find(&inventories).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return inventories, total, nil
+}
+
+// GetOrCreateInventory 获取或创建库存记录
+func (s *Service) GetOrCreateInventory(productID, warehouseID uint) (*WarehouseCenterInventory, error) {
+	db := database.GetDB()
+
+	var inventory WarehouseCenterInventory
+	err := db.Where("product_id = ? AND warehouse_id = ?", productID, warehouseID).First(&inventory).Error
+	if err == nil {
+		return &inventory, nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// 获取产品信息
+	var product Product
+	if err := db.First(&product, productID).Error; err != nil {
+		return nil, errors.New("产品不存在")
+	}
+
+	// 创建新库存记录
+	inventory = WarehouseCenterInventory{
+		ProductID:      productID,
+		WarehouseID:    warehouseID,
+		SKU:            product.SKU,
+		AvailableStock: 0,
+		LockedStock:    0,
+		InTransitStock: 0,
+	}
+
+	if err := db.Create(&inventory).Error; err != nil {
+		return nil, err
+	}
+
+	return &inventory, nil
+}
+
+// UpdateInventory 更新库存
+func (s *Service) UpdateInventory(req UpdateInventoryRequest) (*WarehouseCenterInventory, error) {
+	db := database.GetDB()
+
+	inventory, err := s.GetOrCreateInventory(req.ProductID, req.WarehouseID)
+	if err != nil {
+		return nil, err
+	}
+
+	updates := make(map[string]interface{})
+	if req.AvailableStock != nil {
+		updates["available_stock"] = *req.AvailableStock
+	}
+	if req.LockedStock != nil {
+		updates["locked_stock"] = *req.LockedStock
+	}
+	if req.InTransitStock != nil {
+		updates["in_transit_stock"] = *req.InTransitStock
+	}
+
+	if len(updates) > 0 {
+		if err := db.Model(inventory).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	// 重新加载
+	db.Preload("Product").Preload("Warehouse").First(inventory, inventory.ID)
+
+	return inventory, nil
+}
+
+// InitInventoryFromProducts 从产品表初始化库存（为所有产品创建默认仓库库存记录）
+func (s *Service) InitInventoryFromProducts(warehouseID uint) (int, error) {
+	db := database.GetDB()
+
+	// 获取所有产品
+	var products []Product
+	if err := db.Find(&products).Error; err != nil {
+		return 0, err
+	}
+
+	created := 0
+	for _, p := range products {
+		var count int64
+		db.Model(&WarehouseCenterInventory{}).Where("product_id = ? AND warehouse_id = ?", p.ID, warehouseID).Count(&count)
+		if count > 0 {
+			continue // 已存在
+		}
+
+		inventory := WarehouseCenterInventory{
+			ProductID:      p.ID,
+			WarehouseID:    warehouseID,
+			SKU:            p.SKU,
+			AvailableStock: p.Stock, // 使用产品表的库存作为初始可用库存
+			LockedStock:    0,
+			InTransitStock: 0,
+		}
+		if err := db.Create(&inventory).Error; err != nil {
+			fmt.Printf("[InitInventory] 创建库存记录失败 %s: %v\n", p.SKU, err)
+			continue
+		}
+		created++
+	}
+
+	return created, nil
 }

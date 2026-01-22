@@ -58,6 +58,7 @@ export interface OrderSummaryItem {
   amount: number
   currency: string
   status_details: OrderSummaryStatusDetail[]
+  available_stock: number  // 系统可用库存
 }
 
 // 创建产品请求
@@ -83,6 +84,7 @@ export interface UpdateProductRequest {
 export interface ListRequest {
   page?: number
   page_size?: number
+  keyword?: string
 }
 
 // 平台产品列表查询请求
@@ -99,6 +101,89 @@ export interface OrderSummaryRequest {
   platform?: string
   keyword?: string // 搜索关键词（本地SKU/标题/平台SKU）
   status?: string  // 订单状态筛选
+}
+
+// 初始化产品响应
+export interface InitProductsResponse {
+  total_platform_products: number // 平台产品总数
+  skipped_mapped: number          // 跳过（已有映射）
+  skipped_existing: number        // 跳过（SKU已存在但已关联）
+  created_products: number        // 新创建的本地产品数
+  created_mappings: number        // 新创建的映射数
+}
+
+// ========== 入库单相关 ==========
+
+// 入库单明细请求
+export interface StockInOrderItemRequest {
+  product_id: number
+  quantity: number
+}
+
+// 创建入库单请求
+export interface CreateStockInOrderRequest {
+  warehouse_id: number
+  items: StockInOrderItemRequest[]
+  remark?: string
+}
+
+// 入库单明细响应
+export interface StockInOrderItemResponse {
+  id: number
+  product_id: number
+  sku: string
+  product_name: string
+  quantity: number
+}
+
+// 入库单响应
+export interface StockInOrderResponse {
+  id: number
+  order_no: string
+  warehouse_id: number
+  warehouse_name: string
+  status: string
+  remark: string
+  items: StockInOrderItemResponse[]
+  created_at: string
+}
+
+// ========== 仓库相关 ==========
+
+// 仓库响应
+export interface WarehouseResponse {
+  id: number
+  code: string
+  name: string
+  type: string      // 仓库类型：local/overseas/fba/third/virtual
+  address: string
+  status: string
+  created_at: string
+}
+
+// ========== 库存相关 ==========
+
+// 库存明细响应
+export interface InventoryResponse {
+  id: number
+  product_id: number
+  warehouse_id: number
+  sku: string
+  product_name: string
+  product_image: string
+  warehouse_code: string
+  warehouse_name: string
+  available_stock: number
+  locked_stock: number
+  in_transit_stock: number
+  total_stock: number
+  updated_at: string
+}
+
+// 库存列表查询请求
+export interface ListInventoryRequest extends ListRequest {
+  warehouse_id?: number
+  keyword?: string
 }
 
 const api = {
@@ -133,6 +218,49 @@ const api = {
   // 订单汇总
   getOrderSummary: (params: OrderSummaryRequest) => {
     return request.get('/order/stats/summary', { params })
+  },
+
+  // 初始化本地产品（根据平台SKU生成）
+  initProducts: (platformAuthId?: number) => {
+    return request.post<InitProductsResponse>('/product/init', { platform_auth_id: platformAuthId || 0 })
+  },
+
+  // 入库单
+  listStockInOrders: (params: ListRequest & { status?: string }) => {
+    return request.get('/product/stock-in-orders', { params })
+  },
+  createStockInOrder: (data: CreateStockInOrderRequest) => {
+    return request.post<StockInOrderResponse>('/product/stock-in-orders', data)
+  },
+  getStockInOrder: (id: number) => {
+    return request.get<StockInOrderResponse>(`/product/stock-in-orders/${id}`)
+  },
+
+  // 仓库
+  listWarehouses: () => {
+    return request.get<WarehouseResponse[]>('/product/warehouses')
+  },
+  // 获取当前用户可用仓库（用于入库单等业务场景）
+  listAvailableWarehouses: () => {
+    return request.get<{ list: WarehouseResponse[]; total: number }>('/product/warehouses/available')
+  },
+  listAllWarehouses: (type?: string) => {
+    const params = type && type !== 'all' ? { type } : {}
+    return request.get<WarehouseResponse[]>('/product/warehouses/all', { params })
+  },
+  createWarehouse: (data: { code: string; name: string; type?: string; address?: string }) => {
+    return request.post<WarehouseResponse>('/product/warehouses', data)
+  },
+
+  // 库存
+  listInventory: (params: ListInventoryRequest) => {
+    return request.get('/product/inventory', { params })
+  },
+  updateInventory: (data: { product_id: number; warehouse_id: number; available_stock?: number; locked_stock?: number; in_transit_stock?: number }) => {
+    return request.put('/product/inventory', data)
+  },
+  initInventory: (warehouseId: number) => {
+    return request.post('/product/inventory/init', null, { params: { warehouse_id: warehouseId } })
   }
 }
 

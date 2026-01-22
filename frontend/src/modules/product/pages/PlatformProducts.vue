@@ -5,8 +5,14 @@ import { Refresh, Link, Delete, Search, Picture } from '@element-plus/icons-vue'
 import api, { type PlatformProduct, type Product } from '../api'
 import { getAuths, type AuthResponse } from '@/modules/order/api'
 import { formatDateTime } from '@/utils/format'
+import ImagePreview from '@/components/ImagePreview.vue'
 
 defineOptions({ name: 'PlatformProducts' })
+
+const imagePreviewRef = ref<InstanceType<typeof ImagePreview>>()
+const showImagePreview = (src: string) => {
+  imagePreviewRef.value?.show(src)
+}
 
 const loading = ref(false)
 const tableData = ref<PlatformProduct[]>([])
@@ -245,12 +251,9 @@ onMounted(() => {
               <el-image
                 v-if="row.image"
                 :src="row.image"
-                :preview-src-list="[row.image]"
-                :preview-teleported="true"
-                :z-index="3000"
-                :initial-index="0"
                 fit="cover"
                 class="product-image"
+                @click="showImagePreview(row.image)"
               />
               <div v-else class="product-image-placeholder">
                 <el-icon><Picture /></el-icon>
@@ -347,6 +350,9 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 图片预览 -->
+    <ImagePreview ref="imagePreviewRef" />
   </div>
 </template>
 

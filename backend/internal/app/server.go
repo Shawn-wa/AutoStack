@@ -49,6 +49,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&product.PlatformProduct{},
 		&product.ProductMapping{},
 		&product.PlatformSyncTask{},
+		&product.StockInOrder{},
+		&product.StockInOrderItem{},
+		&product.Warehouse{},
+		&product.WarehouseCenterInventory{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -200,6 +204,7 @@ func (s *Server) setupRoutes() {
 				productGroup.POST("/products", product.CreateProduct)
 				productGroup.PUT("/products/:id", product.UpdateProduct)
 				productGroup.DELETE("/products/:id", product.DeleteProduct)
+				productGroup.POST("/init", product.InitProducts) // 根据平台SKU初始化本地产品
 
 				// 平台产品
 				productGroup.GET("/platform-products", product.ListPlatformProducts)
@@ -210,6 +215,22 @@ func (s *Server) setupRoutes() {
 				// 同步任务
 				productGroup.GET("/sync-tasks", product.ListSyncTasks)
 				productGroup.POST("/sync-tasks/trigger", product.TriggerSyncTasks)
+
+				// 入库单
+				productGroup.GET("/stock-in-orders", product.ListStockInOrders)
+				productGroup.POST("/stock-in-orders", product.CreateStockInOrder)
+				productGroup.GET("/stock-in-orders/:id", product.GetStockInOrder)
+
+				// 仓库
+				productGroup.GET("/warehouses", product.ListWarehouses)
+				productGroup.GET("/warehouses/available", product.ListAvailableWarehouses) // 获取当前用户可用仓库
+				productGroup.GET("/warehouses/all", product.ListAllWarehouses)
+				productGroup.POST("/warehouses", product.CreateWarehouse)
+
+				// 库存
+				productGroup.GET("/inventory", product.ListInventory)
+				productGroup.PUT("/inventory", product.UpdateInventory)
+				productGroup.POST("/inventory/init", product.InitInventory)
 			}
 		}
 	}

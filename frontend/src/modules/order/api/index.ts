@@ -160,9 +160,11 @@ export function testAuth(id: number) {
   return request.post<any, { data: null }>(`/order/auths/${id}/test`)
 }
 
-// 同步订单
+// 同步订单（超时时间延长至5分钟）
 export function syncOrders(id: number, data?: SyncOrdersParams) {
-  return request.post<any, { data: SyncOrdersResult }>(`/order/auths/${id}/sync`, data || {})
+  return request.post<any, { data: SyncOrdersResult }>(`/order/auths/${id}/sync`, data || {}, {
+    timeout: 300000 // 5分钟
+  })
 }
 
 // 获取订单列表

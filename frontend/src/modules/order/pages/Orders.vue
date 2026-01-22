@@ -9,6 +9,7 @@ import {
   getOrders,
   getPlatforms,
   getAuths,
+  syncOrders,
   type Order,
   type PlatformInfo,
   type PlatformAuth
@@ -288,6 +289,50 @@ onActivated(() => {
   fetchOrders()
 })
 
+// ========== 同步订单相关 ==========
+const syncDialogVisible = ref(false)
+const syncAuthId = ref<number | undefined>(undefined)
+const syncLoading = ref(false)
+const syncDays = ref(7)
+
+// 打开同步对话框
+const openSyncDialog = () => {
+  syncAuthId.value = filters.value.auth_id || (auths.value.length > 0 ? auths.value[0].id : undefined)
+  syncDays.value = 7
+  syncDialogVisible.value = true
+}
+
+// 执行同步
+const handleSync = async () => {
+  if (!syncAuthId.value) {
+    ElMessage.warning('请选择要同步的店铺')
+    return
+  }
+  
+  syncLoading.value = true
+  try {
+    const now = new Date()
+    let since: Date
+    if (syncDays.value === -1) {
+      since = new Date('2020-01-01')
+    } else {
+      since = new Date(now.getTime() - syncDays.value * 24 * 60 * 60 * 1000)
+    }
+    
+    const res = await syncOrders(syncAuthId.value, {
+      since: since.toISOString(),
+      to: now.toISOString()
+    })
+    ElMessage.success(`同步完成：共 ${res.data.total} 条，新增 ${res.data.created} 条，更新 ${res.data.updated} 条`)
+    syncDialogVisible.value = false
+    fetchOrders() // 刷新列表
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || '同步订单失败')
+  } finally {
+    syncLoading.value = false
+  }
+}
+
 onMounted(() => {
   // 从 URL query 恢复筛选条件
   initFiltersFromQuery()
@@ -303,6 +348,9 @@ onMounted(() => {
       <div class="header-left">
         <h1 class="page-title">订单列表</h1>
         <p class="page-desc">查看和管理从各电商平台同步的订单</p>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="openSyncDialog">同步订单</el-button>
       </div>
     </div>
 
@@ -449,6 +497,42 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 同步对话框 -->
+    <el-dialog
+      v-model="syncDialogVisible"
+      title="同步订单"
+      width="400px"
+    >
+      <el-form label-width="80px">
+        <el-form-item label="选择店铺">
+          <el-select v-model="syncAuthId" placeholder="选择店铺" style="width: 100%">
+            <el-option
+              v-for="auth in auths"
+              :key="auth.id"
+              :label="auth.shop_name"
+              :value="auth.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="同步范围">
+          <el-select v-model="syncDays" style="width: 100%">
+            <el-option :value="1" label="最近1天" />
+            <el-option :value="3" label="最近3天" />
+            <el-option :value="7" label="最近7天" />
+            <el-option :value="14" label="最近14天" />
+            <el-option :value="30" label="最近30天" />
+            <el-option :value="90" label="最近90天" />
+            <el-option :value="-1" label="全部订单" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="syncDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="syncLoading" @click="handleSync">
+          开始同步
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

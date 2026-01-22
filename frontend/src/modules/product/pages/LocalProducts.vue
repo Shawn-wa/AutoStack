@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Picture } from '@element-plus/icons-vue'
 import api, { type Product, type CreateProductRequest, type UpdateProductRequest } from '../api'
 import { formatDateTime } from '@/utils/format'
+import ImagePreview from '@/components/ImagePreview.vue'
 
 defineOptions({ name: 'LocalProducts' })
+
+const imagePreviewRef = ref<InstanceType<typeof ImagePreview>>()
+const showImagePreview = (src: string) => {
+  imagePreviewRef.value?.show(src)
+}
 
 const loading = ref(false)
 const tableData = ref<Product[]>([])
@@ -164,13 +170,14 @@ onMounted(() => {
           <template #default="{ row }">
             <el-image
               v-if="row.image"
-              style="width: 50px; height: 50px"
+              style="width: 50px; height: 50px; cursor: pointer"
               :src="row.image"
               fit="cover"
-              :preview-src-list="[row.image]"
-              preview-teleported
+              @click="showImagePreview(row.image)"
             />
-            <span v-else>-</span>
+            <div v-else class="image-placeholder">
+              <el-icon><Picture /></el-icon>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip />
@@ -245,6 +252,9 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 图片预览 -->
+    <ImagePreview ref="imagePreviewRef" />
   </div>
 </template>
 
@@ -283,5 +293,17 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.image-placeholder {
+  width: 50px;
+  height: 50px;
+  border-radius: 4px;
+  background: var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 20px;
 }
 </style>

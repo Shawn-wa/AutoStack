@@ -99,6 +99,24 @@ const routes: RouteRecordRaw[] = [
         name: 'Settlement',
         component: () => import('@/modules/order/pages/Settlement.vue'),
         meta: { title: '结算报告' }
+      },
+      {
+        path: 'warehouse/stock-in',
+        name: 'StockInOrders',
+        component: () => import('@/modules/product/pages/StockInOrders.vue'),
+        meta: { title: '入库单' }
+      },
+      {
+        path: 'warehouse/inventory',
+        name: 'InventoryList',
+        component: () => import('@/modules/product/pages/InventoryList.vue'),
+        meta: { title: '库存明细' }
+      },
+      {
+        path: 'warehouse/list',
+        name: 'WarehouseList',
+        component: () => import('@/modules/product/pages/WarehouseList.vue'),
+        meta: { title: '仓库列表' }
       }
     ]
   },

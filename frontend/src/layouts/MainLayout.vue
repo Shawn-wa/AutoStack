@@ -46,6 +46,19 @@ const orderMenuItems = [
   },
 ]
 
+// 仓库管理菜单项
+const warehouseMenuItems = [
+  { 
+    icon: '🏭', 
+    label: '仓库',
+    children: [
+      { path: '/warehouse/list', name: 'WarehouseList', label: '仓库列表' },
+      { path: '/warehouse/inventory', name: 'InventoryList', label: '库存明细' },
+      { path: '/warehouse/stock-in', name: 'StockInOrders', label: '入库单' },
+    ]
+  },
+]
+
 // 展开的菜单
 const expandedMenus = ref<string[]>(['报表'])
 
@@ -75,7 +88,7 @@ const adminMenuItems = [
 
 // 计算显示的菜单项
 const menuItems = computed(() => {
-  let items = [...baseMenuItems, ...productMenuItems, ...orderMenuItems]
+  let items = [...baseMenuItems, ...productMenuItems, ...orderMenuItems, ...warehouseMenuItems]
   if (userStore.isAdmin) {
     items = [...items, ...adminMenuItems]
   }
@@ -93,6 +106,9 @@ const routeTitleMap: Record<string, string> = {
   'LocalProducts': '本地产品',
   'PlatformProducts': '平台产品',
   'OrderSummary': '订单汇总',
+  'StockInOrders': '入库单',
+  'InventoryList': '库存明细',
+  'WarehouseList': '仓库列表',
   'UserManagement': '用户管理',
 }
 
