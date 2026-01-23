@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import api, { type OrderSummaryItem, type StockInOrderItemRequest } from '../api'
+import api, { type OrderSummaryItem, type StockInOrderItemRequest, type WarehouseResponse } from '../api'
 import { getAuths, type AuthResponse } from '@/modules/order/api'
 import ImagePreview from '@/components/ImagePreview.vue'
 
@@ -133,19 +133,36 @@ const getStockStatusClass = (row: OrderSummaryItem) => {
 // ========== 备货相关 ==========
 const stockInDialogVisible = ref(false)
 const stockInLoading = ref(false)
+const warehouseList = ref<WarehouseResponse[]>([])
+const selectedWarehouseId = ref<number | undefined>(undefined)
 const stockInForm = ref<{
   product_id: number
   sku: string
   product_name: string
   quantity: number
   suggested_quantity: number
+  available_stock: number
 }>({
   product_id: 0,
   sku: '',
   product_name: '',
   quantity: 0,
-  suggested_quantity: 0
+  suggested_quantity: 0,
+  available_stock: 0
 })
+
+// 获取可用仓库列表
+const fetchWarehouses = async () => {
+  try {
+    const res = await api.listAvailableWarehouses()
+    warehouseList.value = res.data.list || []
+    if (warehouseList.value.length > 0 && !selectedWarehouseId.value) {
+      selectedWarehouseId.value = warehouseList.value[0].id
+    }
+  } catch (error) {
+    console.error('获取仓库列表失败', error)
+  }
+}
 
 // 打开备货弹窗
 const handleStockIn = (row: OrderSummaryItem) => {
@@ -166,7 +183,8 @@ const handleStockIn = (row: OrderSummaryItem) => {
     sku: row.local_sku,
     product_name: row.product_name || row.local_sku,
     quantity: suggested,
-    suggested_quantity: suggested
+    suggested_quantity: suggested,
+    available_stock: row.available_stock || 0
   }
   
   // 查询本地产品获取 product_id
@@ -191,6 +209,10 @@ const fetchProductIdBySku = async (sku: string) => {
 
 // 提交备货
 const submitStockIn = async () => {
+  if (!selectedWarehouseId.value) {
+    ElMessage.error('请选择入库仓库')
+    return
+  }
   if (!stockInForm.value.product_id) {
     ElMessage.error('产品信息不完整')
     return
@@ -208,12 +230,14 @@ const submitStockIn = async () => {
     }]
     
     await api.createStockInOrder({
+      warehouse_id: selectedWarehouseId.value,
       items,
       remark: `订单汇总备货 - ${stockInForm.value.sku}`
     })
     
     ElMessage.success('入库单创建成功，库存已更新')
     stockInDialogVisible.value = false
+    fetchSummary() // 刷新列表数据
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '创建入库单失败')
   } finally {
@@ -224,6 +248,7 @@ const submitStockIn = async () => {
 onMounted(() => {
   defaultDateRange()
   fetchAuths()
+  fetchWarehouses()
 })
 </script>
 
@@ -397,6 +422,20 @@ onMounted(() => {
       :close-on-click-modal="false"
     >
       <el-form label-width="100px">
+        <el-form-item label="入库仓库" required>
+          <el-select
+            v-model="selectedWarehouseId"
+            placeholder="请选择仓库"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in warehouseList"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="系统SKU">
           <el-tag type="success">{{ stockInForm.sku }}</el-tag>
         </el-form-item>
@@ -406,13 +445,18 @@ onMounted(() => {
         <el-form-item label="建议数量">
           <span class="suggested-quantity">{{ stockInForm.suggested_quantity }}</span>
           <span class="quantity-hint">（待处理 + 待发货）</span>
+          <span class="stock-separator">|</span>
+          <span class="quantity-hint">可用库存：</span>
+          <span class="current-stock">{{ stockInForm.available_stock }}</span>
         </el-form-item>
         <el-form-item label="入库数量" required>
           <el-input-number
             v-model="stockInForm.quantity"
             :min="1"
             :max="99999"
+            :value-on-clear="1"
             controls-position="right"
+            @change="(val: number | undefined) => { if (!val || val < 1) stockInForm.quantity = 1 }"
           />
         </el-form-item>
       </el-form>
@@ -536,6 +580,17 @@ onMounted(() => {
   color: #409eff;
   font-weight: 600;
   font-size: 16px;
+}
+
+.current-stock {
+  color: #67c23a;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.stock-separator {
+  color: var(--border-color);
+  margin: 0 12px;
 }
 
 .quantity-hint {

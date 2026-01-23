@@ -294,7 +294,7 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="入库明细" min-width="300">
+        <el-table-column label="入库明细" width="900">
           <template #default="{ row }">
             <div class="items-cell">
               <div v-for="item in row.items?.slice(0, 3)" :key="item.id" class="item-row">
@@ -313,7 +313,7 @@ onMounted(() => {
             <span class="total-qty">{{ getTotalQuantity(row.items) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="remark" label="备注" width="200">
+        <el-table-column prop="remark" label="备注" width="300">
           <template #default="{ row }">
             <span class="remark-text">{{ row.remark || '-' }}</span>
           </template>
