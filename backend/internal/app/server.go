@@ -209,6 +209,7 @@ func (s *Server) setupRoutes() {
 				// 平台产品
 				productGroup.GET("/platform-products", product.ListPlatformProducts)
 				productGroup.POST("/sync", product.SyncPlatformProducts)
+				productGroup.POST("/sync-direct", product.SyncPlatformProductsDirect) // 直接同步，不走任务队列
 				productGroup.POST("/map", product.MapProduct)
 				productGroup.DELETE("/map/:id", product.UnmapProduct)
 

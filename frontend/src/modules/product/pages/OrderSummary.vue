@@ -9,8 +9,11 @@ import ImagePreview from '@/components/ImagePreview.vue'
 defineOptions({ name: 'OrderSummary' })
 
 const imagePreviewRef = ref<InstanceType<typeof ImagePreview>>()
-const showImagePreview = (src: string) => {
-  imagePreviewRef.value?.show(src)
+const showImagePreview = (src: string, event: MouseEvent) => {
+  imagePreviewRef.value?.show(src, event)
+}
+const hideImagePreview = () => {
+  imagePreviewRef.value?.hide()
 }
 
 const loading = ref(false)
@@ -345,7 +348,8 @@ onMounted(() => {
                 :src="row.platform_products[0].image"
                 fit="cover"
                 class="product-image"
-                @click="showImagePreview(row.platform_products[0].image)"
+                @mouseenter="showImagePreview(row.platform_products[0].image, $event)"
+                @mouseleave="hideImagePreview"
               />
               <div v-else class="product-image-placeholder">
                 <el-icon><Picture /></el-icon>

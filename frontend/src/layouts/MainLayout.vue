@@ -25,7 +25,7 @@ const productMenuItems = [
     icon: '📦', 
     label: '产品管理',
     children: [
-      { path: '/product/products', name: 'LocalProducts', label: '本地产品' },
+      { path: '/product/products', name: 'LocalProducts', label: '系统产品' },
       { path: '/product/platform-products', name: 'PlatformProducts', label: '平台产品' },
       { path: '/product/summary', name: 'OrderSummary', label: '订单汇总' },
     ]
@@ -103,7 +103,7 @@ const routeTitleMap: Record<string, string> = {
   'OrderDetail': '订单详情',
   'CashFlow': '财务报告',
   'Settlement': '结算报告',
-  'LocalProducts': '本地产品',
+  'LocalProducts': '系统产品',
   'PlatformProducts': '平台产品',
   'OrderSummary': '订单汇总',
   'StockInOrders': '入库单',

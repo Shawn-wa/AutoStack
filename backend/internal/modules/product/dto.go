@@ -2,6 +2,7 @@ package product
 
 // CreateProductRequest 创建产品请求
 type CreateProductRequest struct {
+	WID        uint    `json:"wid"`                         // 仓库ID
 	SKU        string  `json:"sku" binding:"required"`
 	Name       string  `json:"name" binding:"required"`
 	Image      string  `json:"image"`
@@ -12,6 +13,7 @@ type CreateProductRequest struct {
 
 // UpdateProductRequest 更新产品请求
 type UpdateProductRequest struct {
+	WID        uint    `json:"wid"`                         // 仓库ID
 	Name       string  `json:"name"`
 	Image      string  `json:"image"`
 	CostPrice  float64 `json:"cost_price"`
@@ -21,15 +23,17 @@ type UpdateProductRequest struct {
 
 // ProductResponse 产品响应
 type ProductResponse struct {
-	ID         uint    `json:"id"`
-	SKU        string  `json:"sku"`
-	Name       string  `json:"name"`
-	Image      string  `json:"image"`
-	CostPrice  float64 `json:"cost_price"`
-	Weight     float64 `json:"weight"`
-	Dimensions string  `json:"dimensions"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
+	ID            uint    `json:"id"`
+	WID           uint    `json:"wid"`
+	WarehouseName string  `json:"warehouse_name"`
+	SKU           string  `json:"sku"`
+	Name          string  `json:"name"`
+	Image         string  `json:"image"`
+	CostPrice     float64 `json:"cost_price"`
+	Weight        float64 `json:"weight"`
+	Dimensions    string  `json:"dimensions"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
 }
 
 // ProductListResponse 产品列表响应
@@ -77,6 +81,8 @@ type MappingResponse struct {
 type MapProductRequest struct {
 	PlatformProductID uint `json:"platform_product_id" binding:"required"`
 	ProductID         uint `json:"product_id" binding:"required"`
+	WID               uint `json:"wid"`                 // 仓库ID，可选，默认0
+	PlatformAccountID uint `json:"platform_account_id"` // 授权账户ID，可选，默认从平台产品获取
 }
 
 // SyncProductRequest 同步产品请求
@@ -93,7 +99,6 @@ type InitProductsRequest struct {
 type InitProductsResponse struct {
 	TotalPlatformProducts int `json:"total_platform_products"` // 平台产品总数
 	SkippedMapped         int `json:"skipped_mapped"`          // 跳过（已有映射）
-	SkippedExisting       int `json:"skipped_existing"`        // 跳过（SKU已存在但已关联）
 	CreatedProducts       int `json:"created_products"`        // 新创建的本地产品数
 	CreatedMappings       int `json:"created_mappings"`        // 新创建的映射数
 }

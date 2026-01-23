@@ -1,6 +1,7 @@
 package product
 
 import (
+	"autostack/internal/commonBase/database"
 	"autostack/pkg/response"
 	"net/http"
 	"strconv"
@@ -22,18 +23,37 @@ func ListProducts(c *gin.Context) {
 		return
 	}
 
+	// 获取仓库ID列表并批量查询仓库名称
+	db := database.GetDB()
+	warehouseMap := make(map[uint]string)
+	var wids []uint
+	for _, p := range products {
+		if p.WID > 0 {
+			wids = append(wids, p.WID)
+		}
+	}
+	if len(wids) > 0 {
+		var warehouses []Warehouse
+		db.Where("id IN ?", wids).Find(&warehouses)
+		for _, w := range warehouses {
+			warehouseMap[w.ID] = w.Name
+		}
+	}
+
 	var list []ProductResponse
 	for _, p := range products {
 		list = append(list, ProductResponse{
-			ID:         p.ID,
-			SKU:        p.SKU,
-			Name:       p.Name,
-			Image:      p.Image,
-			CostPrice:  p.CostPrice,
-			Weight:     p.Weight,
-			Dimensions: p.Dimensions,
-			CreatedAt:  p.CreatedAt.Format("2006-01-02 15:04:05"),
-			UpdatedAt:  p.UpdatedAt.Format("2006-01-02 15:04:05"),
+			ID:            p.ID,
+			WID:           p.WID,
+			WarehouseName: warehouseMap[p.WID],
+			SKU:           p.SKU,
+			Name:          p.Name,
+			Image:         p.Image,
+			CostPrice:     p.CostPrice,
+			Weight:        p.Weight,
+			Dimensions:    p.Dimensions,
+			CreatedAt:     p.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:     p.UpdatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -175,7 +195,7 @@ func UnmapProduct(c *gin.Context) {
 	response.Success(c, http.StatusOK, "解除关联成功", nil)
 }
 
-// SyncPlatformProducts 同步平台产品
+// SyncPlatformProducts 同步平台产品（通过任务队列）
 func SyncPlatformProducts(c *gin.Context) {
 	var req SyncProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -193,6 +213,23 @@ func SyncPlatformProducts(c *gin.Context) {
 	response.Success(c, http.StatusOK, "同步任务已创建", map[string]interface{}{
 		"task_id": task.ID,
 	})
+}
+
+// SyncPlatformProductsDirect 直接同步平台产品（不走任务队列）
+func SyncPlatformProductsDirect(c *gin.Context) {
+	var req SyncProductRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// 直接执行同步
+	if err := service.SyncPlatformProducts(req.PlatformAuthID); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "同步完成", nil)
 }
 
 // TriggerSyncTasks 手动触发执行待处理的同步任务

@@ -3,6 +3,8 @@ import request from '@/commonBase/api/request'
 // 产品接口
 export interface Product {
   id: number
+  wid: number              // 仓库ID
+  warehouse_name: string   // 仓库名称
   sku: string
   name: string
   image: string
@@ -63,6 +65,7 @@ export interface OrderSummaryItem {
 
 // 创建产品请求
 export interface CreateProductRequest {
+  wid?: number             // 仓库ID
   sku: string
   name: string
   image?: string
@@ -73,6 +76,7 @@ export interface CreateProductRequest {
 
 // 更新产品请求
 export interface UpdateProductRequest {
+  wid?: number             // 仓库ID
   name?: string
   image?: string
   cost_price?: number

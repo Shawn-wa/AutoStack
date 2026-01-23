@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Picture } from '@element-plus/icons-vue'
-import api, { type Product, type CreateProductRequest, type UpdateProductRequest } from '../api'
+import { Plus, Picture, CopyDocument } from '@element-plus/icons-vue'
+import api, { type Product, type CreateProductRequest, type UpdateProductRequest, type WarehouseResponse } from '../api'
 import { formatDateTime } from '@/utils/format'
 import ImagePreview from '@/components/ImagePreview.vue'
 
 defineOptions({ name: 'LocalProducts' })
 
 const imagePreviewRef = ref<InstanceType<typeof ImagePreview>>()
-const showImagePreview = (src: string) => {
-  imagePreviewRef.value?.show(src)
+const showImagePreview = (src: string, event: MouseEvent) => {
+  imagePreviewRef.value?.show(src, event)
+}
+const hideImagePreview = () => {
+  imagePreviewRef.value?.hide()
 }
 
 const loading = ref(false)
@@ -19,11 +22,18 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
 
+// 筛选条件
+const keyword = ref('')
+
+// 仓库列表
+const warehouseList = ref<WarehouseResponse[]>([])
+
 // 对话框控制
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const formLoading = ref(false)
 const formData = ref<CreateProductRequest & { id?: number }>({
+  wid: 0,
   sku: '',
   name: '',
   image: '',
@@ -32,14 +42,44 @@ const formData = ref<CreateProductRequest & { id?: number }>({
   dimensions: ''
 })
 
+// 获取仓库列表
+const fetchWarehouses = async () => {
+  try {
+    const res = await api.listAvailableWarehouses()
+    warehouseList.value = res.data.list || []
+  } catch (error) {
+    console.error('获取仓库列表失败', error)
+  }
+}
+
+// 获取仓库名称
+const getWarehouseName = (wid: number) => {
+  const warehouse = warehouseList.value.find(w => w.id === wid)
+  return warehouse?.name || '-'
+}
+
+// 复制 SKU
+const copySku = async (sku: string) => {
+  try {
+    await navigator.clipboard.writeText(sku)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
 // 获取产品列表
 const fetchProducts = async () => {
   loading.value = true
   try {
-    const res = await api.listProducts({
+    const params: any = {
       page: currentPage.value,
       page_size: pageSize.value
-    })
+    }
+    if (keyword.value) {
+      params.keyword = keyword.value
+    }
+    const res = await api.listProducts(params)
     tableData.value = res.data.list || []
     total.value = res.data.total || 0
   } catch (error) {
@@ -47,6 +87,19 @@ const fetchProducts = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 搜索
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchProducts()
+}
+
+// 重置筛选
+const handleReset = () => {
+  keyword.value = ''
+  currentPage.value = 1
+  fetchProducts()
 }
 
 // 分页变化
@@ -66,6 +119,7 @@ const handleSizeChange = (size: number) => {
 const handleCreate = () => {
   isEdit.value = false
   formData.value = {
+    wid: warehouseList.value.length > 0 ? warehouseList.value[0].id : 0,
     sku: '',
     name: '',
     image: '',
@@ -81,6 +135,7 @@ const handleEdit = (row: Product) => {
   isEdit.value = true
   formData.value = {
     id: row.id,
+    wid: row.wid,
     sku: row.sku,
     name: row.name,
     image: row.image,
@@ -141,6 +196,7 @@ const handleDelete = async (row: Product) => {
 
 onMounted(() => {
   fetchProducts()
+  fetchWarehouses()
 })
 </script>
 
@@ -148,14 +204,32 @@ onMounted(() => {
   <div class="local-products">
     <div class="page-header">
       <div class="header-left">
-        <h1 class="page-title">本地产品管理</h1>
-        <p class="page-desc">管理本地产品基础信息</p>
+        <h1 class="page-title">系统产品管理</h1>
+        <p class="page-desc">管理系统产品基础信息</p>
       </div>
       <div class="header-right">
         <el-button type="primary" :icon="Plus" @click="handleCreate">
           新增产品
         </el-button>
       </div>
+    </div>
+
+    <div class="filter-card">
+      <el-form inline>
+        <el-form-item label="关键词">
+          <el-input
+            v-model="keyword"
+            placeholder="SKU/名称"
+            clearable
+            style="width: 200px"
+            @keyup.enter="handleSearch"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">搜索</el-button>
+          <el-button @click="handleReset">重置</el-button>
+        </el-form-item>
+      </el-form>
     </div>
 
     <div class="content-card">
@@ -165,7 +239,21 @@ onMounted(() => {
         style="width: 100%"
         stripe
       >
-        <el-table-column prop="sku" label="SKU" width="180" />
+        <el-table-column label="仓库" width="120">
+          <template #default="{ row }">
+            <span>{{ row.warehouse_name || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="SKU" width="300">
+          <template #default="{ row }">
+            <div class="sku-cell">
+              <el-tooltip :content="row.sku" placement="top" :show-after="300">
+                <span class="sku-text">{{ row.sku }}</span>
+              </el-tooltip>
+              <el-icon class="copy-icon" @click.stop="copySku(row.sku)"><CopyDocument /></el-icon>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="image" label="图片" width="100">
           <template #default="{ row }">
             <el-image
@@ -173,7 +261,8 @@ onMounted(() => {
               style="width: 50px; height: 50px; cursor: pointer"
               :src="row.image"
               fit="cover"
-              @click="showImagePreview(row.image)"
+              @mouseenter="showImagePreview(row.image, $event)"
+              @mouseleave="hideImagePreview"
             />
             <div v-else class="image-placeholder">
               <el-icon><Picture /></el-icon>
@@ -222,27 +311,73 @@ onMounted(() => {
     <el-dialog
       v-model="dialogVisible"
       :title="isEdit ? '编辑产品' : '新增产品'"
-      width="500px"
+      width="520px"
       destroy-on-close
+      :close-on-click-modal="false"
     >
-      <el-form :model="formData" label-width="80px">
+      <el-form :model="formData" label-width="90px">
+        <el-form-item label="所属仓库" required>
+          <el-select v-model="formData.wid" placeholder="请选择仓库" style="width: 200px">
+            <el-option
+              v-for="wh in warehouseList"
+              :key="wh.id"
+              :label="wh.name"
+              :value="wh.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="SKU" required>
           <el-input v-model="formData.sku" :disabled="isEdit" placeholder="请输入SKU" />
         </el-form-item>
-        <el-form-item label="名称" required>
+        <el-form-item label="产品名称" required>
           <el-input v-model="formData.name" placeholder="请输入产品名称" />
         </el-form-item>
-        <el-form-item label="图片URL">
-          <el-input v-model="formData.image" placeholder="请输入图片URL" />
+        <el-form-item label="产品图片">
+          <div class="image-form-item">
+            <div 
+              class="image-preview-small" 
+              :class="{ 'has-image': formData.image }"
+              @mouseenter="formData.image && showImagePreview(formData.image, $event)"
+              @mouseleave="hideImagePreview"
+            >
+              <el-image
+                v-if="formData.image"
+                :src="formData.image"
+                fit="contain"
+              />
+              <el-icon v-else :size="24"><Picture /></el-icon>
+            </div>
+            <el-input 
+              v-model="formData.image" 
+              placeholder="请输入图片URL"
+              class="image-input"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="成本价">
-          <el-input-number v-model="formData.cost_price" :precision="2" :step="0.1" :min="0" style="width: 100%" />
+          <el-input-number
+            v-model="formData.cost_price"
+            :precision="2"
+            :step="0.1"
+            :min="0"
+            controls-position="right"
+            style="width: 160px"
+          />
+          <span class="form-unit">元</span>
         </el-form-item>
-        <el-form-item label="重量(kg)">
-          <el-input-number v-model="formData.weight" :precision="3" :step="0.01" :min="0" style="width: 100%" />
+        <el-form-item label="重量">
+          <el-input-number
+            v-model="formData.weight"
+            :precision="3"
+            :step="0.01"
+            :min="0"
+            controls-position="right"
+            style="width: 160px"
+          />
+          <span class="form-unit">kg</span>
         </el-form-item>
         <el-form-item label="尺寸">
-          <el-input v-model="formData.dimensions" placeholder="例如: 10*10*10" />
+          <el-input v-model="formData.dimensions" placeholder="例如: 10*10*10 cm" style="width: 200px" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -282,6 +417,14 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.filter-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 0;
+  margin-bottom: 24px;
+}
+
 .content-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -295,6 +438,38 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
+.sku-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.sku-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy-icon {
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+  
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.el-table__row:hover .copy-icon {
+  opacity: 1;
+}
+
 .image-placeholder {
   width: 50px;
   height: 50px;
@@ -305,5 +480,51 @@ onMounted(() => {
   justify-content: center;
   color: var(--text-secondary);
   font-size: 20px;
+}
+
+// 表单样式
+.image-form-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.image-preview-small {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-placeholder);
+  transition: border-color 0.2s;
+  
+  .el-image {
+    width: 100%;
+    height: 100%;
+  }
+  
+  &.has-image {
+    cursor: pointer;
+    
+    &:hover {
+      border-color: var(--color-primary);
+    }
+  }
+}
+
+.image-input {
+  flex: 1;
+}
+
+.form-unit {
+  margin-left: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 </style>

@@ -54,6 +54,7 @@ func (s *Service) CreateProduct(req CreateProductRequest) (*Product, error) {
 	}
 
 	product := &Product{
+		WID:        req.WID,
 		SKU:        req.SKU,
 		Name:       req.Name,
 		Image:      req.Image,
@@ -79,6 +80,7 @@ func (s *Service) UpdateProduct(id uint, req UpdateProductRequest) (*Product, er
 	}
 
 	updates := map[string]interface{}{
+		"wid":        req.WID,
 		"name":       req.Name,
 		"image":      req.Image,
 		"cost_price": req.CostPrice,
@@ -161,19 +163,27 @@ func (s *Service) MapProduct(req MapProductRequest) error {
 		return errors.New("本地产品不存在")
 	}
 
-	// 检查是否已有映射
+	// 如果未提供 PlatformAccountID，使用平台产品的 PlatformAccountID
+	platformAccountID := req.PlatformAccountID
+	if platformAccountID == 0 {
+		platformAccountID = platformProduct.PlatformAccountID
+	}
+
+	// 检查是否已有相同的映射（使用复合唯一键）
 	var mapping ProductMapping
-	err := db.Where("platform_product_id = ?", req.PlatformProductID).First(&mapping).Error
+	err := db.Where("wid = ? AND platform_account_id = ? AND product_id = ? AND platform_product_id = ?",
+		req.WID, platformAccountID, req.ProductID, req.PlatformProductID).First(&mapping).Error
 	if err == nil {
-		// 更新现有映射
-		mapping.ProductID = req.ProductID
-		return db.Save(&mapping).Error
+		// 已存在相同映射，无需更新
+		return nil
 	}
 
 	// 创建新映射
 	newMapping := ProductMapping{
-		PlatformProductID: req.PlatformProductID,
+		WID:               req.WID,
+		PlatformAccountID: platformAccountID,
 		ProductID:         req.ProductID,
+		PlatformProductID: req.PlatformProductID,
 	}
 
 	return db.Create(&newMapping).Error
@@ -274,29 +284,30 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 				totalStock += stock.Present
 			}
 
-			// 查找或创建
+			// 查找或创建：使用 platform_account_id + unique_code 作为唯一键
 			var pp PlatformProduct
-			err := db.Where("platform_auth_id = ? AND platform_sku = ?", platformAuthID, info.OfferID).First(&pp).Error
+			err := db.Where("platform_account_id = ? AND unique_code = ?", auth.UserID, info.OfferID).First(&pp).Error
 
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				pp = PlatformProduct{
-					Platform:       order.PlatformOzon,
-					PlatformAuthID: platformAuthID,
-					PlatformSKU:    info.OfferID,
+					Platform:          order.PlatformOzon,
+					PlatformAuthID:    platformAuthID,
+					PlatformAccountID: auth.UserID,
+					PlatformSKU:       info.OfferID,
+					UniqueCode:        info.OfferID,
 				}
 			}
 
 			// 更新字段
+			pp.PlatformAuthID = platformAuthID // 始终更新为最新的授权ID
+			pp.PlatformAccountID = auth.UserID
+			pp.UniqueCode = info.OfferID
 			pp.Name = info.Name
 			pp.Stock = totalStock
 			pp.Price = price
 			pp.Currency = info.CurrencyCode
-			// 保存主图：优先使用 primary_image，其次使用 images[0]
-			if info.PrimaryImage != "" {
-				pp.Image = info.PrimaryImage
-			} else if len(info.Images) > 0 {
-				pp.Image = info.Images[0]
-			}
+			// 保存主图：使用 GetPrimaryImageURL 方法获取
+			pp.Image = info.GetPrimaryImageURL()
 			// v3 API 无 status.state，使用 is_archived 判断状态
 			if info.IsArchived {
 				pp.Status = "archived"
@@ -477,6 +488,13 @@ func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsRe
 	db := database.GetDB()
 	result := &InitProductsResponse{}
 
+	// 获取默认仓库ID（取第一个可用仓库，如果没有则为0）
+	var defaultWarehouse Warehouse
+	var defaultWID uint = 0
+	if err := db.Where("status = ?", 1).First(&defaultWarehouse).Error; err == nil {
+		defaultWID = defaultWarehouse.ID
+	}
+
 	// 查询平台产品
 	query := db.Model(&PlatformProduct{})
 	if platformAuthID > 0 {
@@ -491,14 +509,8 @@ func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsRe
 	result.TotalPlatformProducts = len(platformProducts)
 
 	for _, pp := range platformProducts {
-		// 检查是否已有映射
-		var existingMapping ProductMapping
-		if err := db.Where("platform_product_id = ?", pp.ID).First(&existingMapping).Error; err == nil {
-			result.SkippedMapped++
-			continue
-		}
-
-		// 查找是否已存在相同SKU的本地产品
+		// 检查是否已有完全相同的映射（wid + platform_account_id + product_id + platform_product_id）
+		// 先查找或创建本地产品
 		var localProduct Product
 		err := db.Where("sku = ?", pp.PlatformSKU).First(&localProduct).Error
 
@@ -519,28 +531,31 @@ func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsRe
 			continue
 		}
 
-		// 再次检查该本地产品是否已被其他平台产品关联
-		var existingMappingForProduct ProductMapping
-		if err := db.Where("product_id = ?", localProduct.ID).First(&existingMappingForProduct).Error; err == nil {
-			// 本地产品已被关联，跳过
-			result.SkippedExisting++
+		// 检查是否已有相同的映射（使用复合唯一键）
+		var existingMapping ProductMapping
+		if err := db.Where("wid = ? AND platform_account_id = ? AND product_id = ? AND platform_product_id = ?",
+			defaultWID, pp.PlatformAccountID, localProduct.ID, pp.ID).First(&existingMapping).Error; err == nil {
+			result.SkippedMapped++
 			continue
 		}
 
 		// 创建映射关系
 		mapping := ProductMapping{
-			PlatformProductID: pp.ID,
+			WID:               defaultWID,
+			PlatformAccountID: pp.PlatformAccountID,
 			ProductID:         localProduct.ID,
+			PlatformProductID: pp.ID,
 		}
 		if err := db.Create(&mapping).Error; err != nil {
-			fmt.Printf("[InitProducts] 创建映射失败 %d -> %d: %v\n", pp.ID, localProduct.ID, err)
+			fmt.Printf("[InitProducts] 创建映射失败 wid=%d, account=%d, product=%d, platform=%d: %v\n",
+				defaultWID, pp.PlatformAccountID, localProduct.ID, pp.ID, err)
 			continue
 		}
 		result.CreatedMappings++
 	}
 
-	fmt.Printf("[InitProducts] 完成: 总数=%d, 跳过(已映射)=%d, 跳过(已关联)=%d, 新建产品=%d, 新建映射=%d\n",
-		result.TotalPlatformProducts, result.SkippedMapped, result.SkippedExisting,
+	fmt.Printf("[InitProducts] 完成: 总数=%d, 跳过(已映射)=%d, 新建产品=%d, 新建映射=%d\n",
+		result.TotalPlatformProducts, result.SkippedMapped,
 		result.CreatedProducts, result.CreatedMappings)
 
 	return result, nil

@@ -356,8 +356,27 @@ type ProductInfoItem struct {
 	TypeID                int64                    `json:"type_id"`
 	CreatedAt             string                   `json:"created_at"`
 	UpdatedAt             string                   `json:"updated_at"`
-	Images                []string                 `json:"images"`
-	PrimaryImage          string                   `json:"primary_image"` // 主图URL
+	Images       []string    `json:"images"`
+	PrimaryImage interface{} `json:"primary_image"` // 主图URL (可能是字符串或数组)
+}
+
+// GetPrimaryImageURL 获取主图URL
+func (p *ProductInfoItem) GetPrimaryImageURL() string {
+	switch v := p.PrimaryImage.(type) {
+	case string:
+		return v
+	case []interface{}:
+		if len(v) > 0 {
+			if s, ok := v[0].(string); ok {
+				return s
+			}
+		}
+	}
+	// 如果 primary_image 无效，使用 images[0]
+	if len(p.Images) > 0 {
+		return p.Images[0]
+	}
+	return ""
 }
 
 // ProductInfoStocks 商品库存信息 (v3 结构)

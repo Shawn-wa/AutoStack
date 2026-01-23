@@ -56,7 +56,7 @@ const routes: RouteRecordRaw[] = [
         path: 'product/products',
         name: 'LocalProducts',
         component: () => import('@/modules/product/pages/LocalProducts.vue'),
-        meta: { title: '本地产品' }
+        meta: { title: '系统产品' }
       },
       {
         path: 'product/platform-products',
