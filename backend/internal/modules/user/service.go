@@ -1,11 +1,13 @@
 package user
 
 import (
+	"context"
 	"errors"
 
 	"gorm.io/gorm"
 
-	"autostack/internal/commonBase/database"
+	"autostack/internal/repository"
+	userRepo "autostack/internal/repository/user"
 	"autostack/internal/utils"
 )
 
@@ -20,11 +22,17 @@ var (
 )
 
 // Service 用户服务
-type Service struct{}
+type Service struct {
+	txManager repository.TxManager
+	userRepo  userRepo.UserRepository
+}
 
 // NewService 创建用户服务实例
-func NewService() *Service {
-	return &Service{}
+func NewService(txManager repository.TxManager, userRepo userRepo.UserRepository) *Service {
+	return &Service{
+		txManager: txManager,
+		userRepo:  userRepo,
+	}
 }
 
 // CreateUser 创建用户（公开注册，只能创建普通用户）
@@ -34,11 +42,13 @@ func (s *Service) CreateUser(username, password, email, role string) (*User, err
 
 // CreateUserWithPermissions 创建用户（管理员创建，可指定角色和权限）
 func (s *Service) CreateUserWithPermissions(username, password, email, role string, permissions []string, createdBy *uint) (*User, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
 	// 检查用户名或邮箱是否已存在
-	var count int64
-	db.Model(&User{}).Where("username = ? OR email = ?", username, email).Count(&count)
+	count, err := s.userRepo.CountByUsernameOrEmail(ctx, username, email)
+	if err != nil {
+		return nil, err
+	}
 	if count > 0 {
 		return nil, ErrUserExists
 	}
@@ -65,7 +75,7 @@ func (s *Service) CreateUserWithPermissions(username, password, email, role stri
 		}
 	}
 
-	if err := db.Create(user).Error; err != nil {
+	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
@@ -74,59 +84,61 @@ func (s *Service) CreateUserWithPermissions(username, password, email, role stri
 
 // GetUserByID 根据ID获取用户
 func (s *Service) GetUserByID(id uint) (*User, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var user User
-	if err := db.First(&user, id).Error; err != nil {
+	user, err := s.userRepo.FindByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
 		return nil, err
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 // GetUserByUsername 根据用户名获取用户
 func (s *Service) GetUserByUsername(username string) (*User, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var user User
-	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+	user, err := s.userRepo.FindByUsername(ctx, username)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
 		return nil, err
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 // UpdateUser 更新用户信息
 func (s *Service) UpdateUser(id uint, updates map[string]interface{}) (*User, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var user User
-	if err := db.First(&user, id).Error; err != nil {
+	user, err := s.userRepo.FindByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
 		return nil, err
 	}
 
-	if err := db.Model(&user).Updates(updates).Error; err != nil {
+	if err := s.userRepo.UpdateFields(ctx, id, updates); err != nil {
 		return nil, err
 	}
 
-	return &user, nil
+	// 重新加载用户
+	user, _ = s.userRepo.FindByID(ctx, id)
+	return user, nil
 }
 
 // ChangePassword 修改密码
 func (s *Service) ChangePassword(id uint, oldPassword, newPassword string) error {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var user User
-	if err := db.First(&user, id).Error; err != nil {
+	user, err := s.userRepo.FindByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrUserNotFound
 		}
@@ -144,35 +156,30 @@ func (s *Service) ChangePassword(id uint, oldPassword, newPassword string) error
 		return err
 	}
 
-	return db.Model(&user).Update("password_hash", hashedPassword).Error
+	return s.userRepo.UpdateFields(ctx, id, map[string]interface{}{
+		"password_hash": hashedPassword,
+	})
 }
 
 // ListUsers 获取用户列表
 func (s *Service) ListUsers(page, pageSize int) ([]User, int64, error) {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	var users []User
-	var total int64
-
-	db.Model(&User{}).Count(&total)
-
-	offset := (page - 1) * pageSize
-	if err := db.Offset(offset).Limit(pageSize).Order("id DESC").Find(&users).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return users, total, nil
+	return s.userRepo.List(ctx, &userRepo.UserQuery{
+		Page:     page,
+		PageSize: pageSize,
+	})
 }
 
 // DeleteUser 删除用户
 func (s *Service) DeleteUser(id uint) error {
-	db := database.GetDB()
+	ctx := context.Background()
 
-	result := db.Delete(&User{}, id)
-	if result.Error != nil {
-		return result.Error
+	rowsAffected, err := s.userRepo.Delete(ctx, id)
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected == 0 {
+	if rowsAffected == 0 {
 		return ErrUserNotFound
 	}
 
@@ -180,21 +187,23 @@ func (s *Service) DeleteUser(id uint) error {
 }
 
 // InitDefaultSuperAdmin 初始化默认超级管理员
-func InitDefaultSuperAdmin() error {
-	db := database.GetDB()
+func (s *Service) InitDefaultSuperAdmin() error {
+	ctx := context.Background()
 
 	// 检查是否已存在超级管理员
-	var superAdmin User
-	if err := db.Where("role = ?", RoleSuperAdmin).First(&superAdmin).Error; err == nil {
+	_, err := s.userRepo.FindByRole(ctx, RoleSuperAdmin)
+	if err == nil {
 		// 已存在超级管理员，无需操作
 		return nil
 	}
 
 	// 检查是否存在旧版本的 admin 用户，升级为 super_admin
-	var oldAdmin User
-	if err := db.Where("username = ?", "admin").First(&oldAdmin).Error; err == nil {
+	oldAdmin, err := s.userRepo.FindByUsername(ctx, "admin")
+	if err == nil {
 		// 升级为超级管理员
-		return db.Model(&oldAdmin).Update("role", RoleSuperAdmin).Error
+		return s.userRepo.UpdateFields(ctx, oldAdmin.ID, map[string]interface{}{
+			"role": RoleSuperAdmin,
+		})
 	}
 
 	// 都不存在，创建新的超级管理员
@@ -203,14 +212,14 @@ func InitDefaultSuperAdmin() error {
 		return err
 	}
 
-	superAdmin = User{
+	superAdmin := &User{
 		Username:     "admin",
 		PasswordHash: hashedPassword,
 		Email:        "admin@autostack.local",
 		Role:         RoleSuperAdmin,
 		Status:       StatusActive,
 	}
-	return db.Create(&superAdmin).Error
+	return s.userRepo.Create(ctx, superAdmin)
 }
 
 // GetAllPermissions 获取所有权限定义
@@ -276,4 +285,15 @@ func (s *Service) CanManageUser(currentUser *User, targetUser *User) bool {
 		return false // 不能管理自己
 	}
 	return currentUser.CanManageRole(targetUser.Role)
+}
+
+// ========== 包级函数（保持向后兼容） ==========
+
+// InitDefaultSuperAdmin 初始化默认超级管理员（包级函数）
+// 需在 InitHandler 之后调用
+func InitDefaultSuperAdmin() error {
+	if userService == nil {
+		return errors.New("user service not initialized, call InitHandler first")
+	}
+	return userService.InitDefaultSuperAdmin()
 }

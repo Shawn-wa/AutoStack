@@ -57,12 +57,18 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
 
-	// 初始化默认超级管理员
+	// 初始化模块 Handler（依赖注入）
+	// 注意：初始化顺序很重要，user 必须在 auth 之前
+	user.InitHandler(database.GetDB())
+	order.InitHandler(database.GetDB())
+	product.InitHandler(database.GetDB())
+
+	// 初始化默认超级管理员（需在 user.InitHandler 之后）
 	if err := user.InitDefaultSuperAdmin(); err != nil {
 		return nil, fmt.Errorf("初始化超级管理员失败: %w", err)
 	}
 
-	// 初始化认证服务
+	// 初始化认证服务（需在 user.InitHandler 之后）
 	auth.InitService(cfg.JWT.Secret, cfg.JWT.ExpireHour)
 
 	// 初始化加密模块

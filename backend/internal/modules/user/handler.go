@@ -5,11 +5,30 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
+	"autostack/internal/repository"
+	userRepo "autostack/internal/repository/user"
 	"autostack/pkg/response"
 )
 
-var userService = NewService()
+// userService 用户服务实例
+var userService *Service
+
+// InitHandler 初始化 Handler，注入 Service 依赖
+// 应在服务器启动时调用
+func InitHandler(db *gorm.DB) {
+	txManager := repository.NewTxManager(db)
+	userService = NewService(
+		txManager,
+		userRepo.NewUserRepository(db),
+	)
+}
+
+// GetService 获取服务实例（用于外部调用）
+func GetService() *Service {
+	return userService
+}
 
 // GetProfile 获取当前用户信息
 func GetProfile(c *gin.Context) {

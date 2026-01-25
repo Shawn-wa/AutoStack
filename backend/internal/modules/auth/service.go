@@ -17,7 +17,6 @@ var (
 type Service struct {
 	jwtSecret     string
 	jwtExpireHour int
-	userService   *user.Service
 }
 
 // NewService 创建认证服务实例
@@ -25,14 +24,20 @@ func NewService(jwtSecret string, jwtExpireHour int) *Service {
 	return &Service{
 		jwtSecret:     jwtSecret,
 		jwtExpireHour: jwtExpireHour,
-		userService:   user.NewService(),
 	}
+}
+
+// getUserService 获取用户服务
+func (s *Service) getUserService() *user.Service {
+	return user.GetService()
 }
 
 // Login 用户登录
 func (s *Service) Login(username, password string) (*user.User, string, error) {
+	userSvc := s.getUserService()
+
 	// 获取用户
-	u, err := s.userService.GetUserByUsername(username)
+	u, err := userSvc.GetUserByUsername(username)
 	if err != nil {
 		if err == user.ErrUserNotFound {
 			return nil, "", ErrUserNotFound
@@ -68,5 +73,5 @@ func (s *Service) Login(username, password string) (*user.User, string, error) {
 
 // Register 用户注册
 func (s *Service) Register(username, password, email string) (*user.User, error) {
-	return s.userService.CreateUser(username, password, email, user.RoleUser)
+	return s.getUserService().CreateUser(username, password, email, user.RoleUser)
 }

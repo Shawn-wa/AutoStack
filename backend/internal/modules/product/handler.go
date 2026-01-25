@@ -1,15 +1,42 @@
 package product
 
 import (
-	"autostack/internal/commonBase/database"
 	"autostack/pkg/response"
+	"autostack/internal/repository"
+	inventoryRepo "autostack/internal/repository/inventory"
+	productRepo "autostack/internal/repository/product"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-var service = &Service{}
+// service 产品服务实例
+var service *Service
+
+// InitHandler 初始化 Handler，注入 Service 依赖
+// 应在服务器启动时调用
+func InitHandler(db *gorm.DB) {
+	txManager := repository.NewTxManager(db)
+	
+	service = NewService(
+		txManager,
+		productRepo.NewProductRepository(db),
+		productRepo.NewPlatformProductRepository(db),
+		productRepo.NewProductMappingRepository(db),
+		productRepo.NewSyncTaskRepository(db),
+		inventoryRepo.NewWarehouseRepository(db),
+		inventoryRepo.NewInventoryRepository(db),
+		inventoryRepo.NewStockInOrderRepository(db),
+		inventoryRepo.NewStockInOrderItemRepository(db),
+	)
+}
+
+// GetService 获取服务实例（用于外部调用，如定时任务）
+func GetService() *Service {
+	return service
+}
 
 // ListProducts 获取本地产品列表
 func ListProducts(c *gin.Context) {
@@ -24,20 +51,10 @@ func ListProducts(c *gin.Context) {
 	}
 
 	// 获取仓库ID列表并批量查询仓库名称
-	db := database.GetDB()
 	warehouseMap := make(map[uint]string)
-	var wids []uint
-	for _, p := range products {
-		if p.WID > 0 {
-			wids = append(wids, p.WID)
-		}
-	}
-	if len(wids) > 0 {
-		var warehouses []Warehouse
-		db.Where("id IN ?", wids).Find(&warehouses)
-		for _, w := range warehouses {
-			warehouseMap[w.ID] = w.Name
-		}
+	warehouses, _ := service.ListWarehouses()
+	for _, w := range warehouses {
+		warehouseMap[w.ID] = w.Name
 	}
 
 	var list []ProductResponse

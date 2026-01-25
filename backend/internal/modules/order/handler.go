@@ -6,11 +6,26 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"autostack/pkg/response"
 )
 
-var orderService = NewService()
+// orderService 订单服务实例
+var orderService *Service
+
+// InitHandler 初始化 Handler，注入 Service 依赖
+// 应在服务器启动时调用
+func InitHandler(db *gorm.DB) {
+	// 渐进式重构：当前 Service 仍使用 database.GetDB()
+	// Repository 层已建立，后续逐步替换
+	orderService = NewService()
+}
+
+// GetService 获取服务实例（用于外部调用）
+func GetService() *Service {
+	return orderService
+}
 
 // ListPlatforms 获取支持的平台列表
 func ListPlatforms(c *gin.Context) {

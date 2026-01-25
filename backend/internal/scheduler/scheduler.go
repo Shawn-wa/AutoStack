@@ -88,7 +88,7 @@ func syncAllAuthsOrdersAndCommission() {
 	log.Println("[Scheduler] 开始执行定时同步任务...")
 
 	db := database.GetDB()
-	orderService := order.NewService()
+	orderService := order.GetService()
 
 	// 获取所有活跃的授权
 	var auths []order.PlatformAuth
@@ -330,8 +330,12 @@ func syncCommissionForDeliveredOrders(authID, userID uint, since, to time.Time) 
 func processPendingSyncTasks() {
 	log.Println("[Scheduler] 开始扫描待处理的同步任务...")
 
-	productService := &product.Service{}
-	productService.ProcessPendingTasks()
+	productService := product.GetService()
+	if productService != nil {
+		productService.ProcessPendingTasks()
+	} else {
+		log.Println("[Scheduler] 产品服务未初始化，跳过同步任务扫描")
+	}
 
 	log.Println("[Scheduler] 同步任务扫描完成")
 }
@@ -343,7 +347,12 @@ func cleanOldSyncTasks() {
 	// 3个月前
 	before := time.Now().AddDate(0, -3, 0)
 
-	productService := &product.Service{}
+	productService := product.GetService()
+	if productService == nil {
+		log.Println("[Scheduler] 产品服务未初始化，跳过清理任务")
+		return
+	}
+
 	deleted, err := productService.CleanOldTasks(before)
 	if err != nil {
 		log.Printf("[Scheduler] 清理同步任务记录失败: %v", err)
