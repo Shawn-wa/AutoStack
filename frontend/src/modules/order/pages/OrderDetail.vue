@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 defineOptions({ name: 'OrderDetail' })
@@ -130,6 +130,15 @@ const handleSyncCommission = async () => {
     syncingCommission.value = false
   }
 }
+
+// 监听订单ID变化，重新获取数据（解决组件复用时数据不刷新的问题）
+watch(orderId, (newId, oldId) => {
+  if (newId !== oldId && newId) {
+    // 重置状态，避免显示旧数据
+    order.value = null
+    fetchOrder()
+  }
+})
 
 onMounted(() => {
   fetchPlatforms()

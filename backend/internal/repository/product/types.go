@@ -21,3 +21,12 @@ type SyncTaskQuery struct {
 	PageSize int
 	Status   string
 }
+
+// ProductSupplierQuery 产品供应商查询条件
+type ProductSupplierQuery struct {
+	Page      int
+	PageSize  int
+	ProductID uint   // 按产品ID筛选
+	Keyword   string // 按供应商名称搜索
+	Status    string // 按状态筛选
+}

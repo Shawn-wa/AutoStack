@@ -2,7 +2,7 @@ package product
 
 // CreateProductRequest 创建产品请求
 type CreateProductRequest struct {
-	WID        uint    `json:"wid"`                         // 仓库ID
+	WID        uint    `json:"wid"` // 仓库ID
 	SKU        string  `json:"sku" binding:"required"`
 	Name       string  `json:"name" binding:"required"`
 	Image      string  `json:"image"`
@@ -13,7 +13,7 @@ type CreateProductRequest struct {
 
 // UpdateProductRequest 更新产品请求
 type UpdateProductRequest struct {
-	WID        uint    `json:"wid"`                         // 仓库ID
+	WID        uint    `json:"wid"` // 仓库ID
 	Name       string  `json:"name"`
 	Image      string  `json:"image"`
 	CostPrice  float64 `json:"cost_price"`
@@ -153,7 +153,7 @@ type StockInOrderListResponse struct {
 type CreateWarehouseRequest struct {
 	Code    string `json:"code" binding:"required"`
 	Name    string `json:"name" binding:"required"`
-	Type    string `json:"type"`    // 仓库类型：local/overseas/fba/third/virtual
+	Type    string `json:"type"` // 仓库类型：local/overseas/fba/third/virtual
 	Address string `json:"address"`
 }
 
@@ -208,4 +208,62 @@ type UpdateInventoryRequest struct {
 	AvailableStock *int `json:"available_stock"`
 	LockedStock    *int `json:"locked_stock"`
 	InTransitStock *int `json:"in_transit_stock"`
+}
+
+// ========== 供应商/采购信息相关 ==========
+
+// CreateSupplierRequest 创建供应商请求
+type CreateSupplierRequest struct {
+	ProductID     uint    `json:"product_id" binding:"required"`
+	SupplierName  string  `json:"supplier_name" binding:"required"`
+	PurchaseLink  string  `json:"purchase_link"`
+	UnitPrice     float64 `json:"unit_price"`
+	Currency      string  `json:"currency"`
+	MinOrderQty   int     `json:"min_order_qty"`
+	LeadTime      int     `json:"lead_time"`
+	EstimatedDays int     `json:"estimated_days"`
+	Remark        string  `json:"remark"`
+	IsDefault     bool    `json:"is_default"`
+}
+
+// UpdateSupplierRequest 更新供应商请求
+type UpdateSupplierRequest struct {
+	SupplierName  string  `json:"supplier_name"`
+	PurchaseLink  string  `json:"purchase_link"`
+	UnitPrice     float64 `json:"unit_price"`
+	Currency      string  `json:"currency"`
+	MinOrderQty   int     `json:"min_order_qty"`
+	LeadTime      int     `json:"lead_time"`
+	EstimatedDays int     `json:"estimated_days"`
+	Remark        string  `json:"remark"`
+	IsDefault     bool    `json:"is_default"`
+	Status        string  `json:"status"`
+}
+
+// SupplierResponse 供应商响应
+type SupplierResponse struct {
+	ID            uint    `json:"id"`
+	ProductID     uint    `json:"product_id"`
+	ProductSKU    string  `json:"product_sku,omitempty"`
+	ProductName   string  `json:"product_name,omitempty"`
+	SupplierName  string  `json:"supplier_name"`
+	PurchaseLink  string  `json:"purchase_link"`
+	UnitPrice     float64 `json:"unit_price"`
+	Currency      string  `json:"currency"`
+	MinOrderQty   int     `json:"min_order_qty"`
+	LeadTime      int     `json:"lead_time"`
+	EstimatedDays int     `json:"estimated_days"`
+	Remark        string  `json:"remark"`
+	IsDefault     bool    `json:"is_default"`
+	Status        string  `json:"status"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
+}
+
+// SupplierListResponse 供应商列表响应
+type SupplierListResponse struct {
+	List     []SupplierResponse `json:"list"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
 }

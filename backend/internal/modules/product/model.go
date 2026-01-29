@@ -22,6 +22,9 @@ type ProductMapping = productRepo.ProductMapping
 // PlatformSyncTask 平台同步任务
 type PlatformSyncTask = productRepo.PlatformSyncTask
 
+// ProductSupplier 产品供应商/采购信息
+type ProductSupplier = productRepo.ProductSupplier
+
 // ========== 库存域类型别名 ==========
 
 // Warehouse 仓库
@@ -48,6 +51,13 @@ const (
 	SyncTaskStatusRunning = productRepo.SyncTaskStatusRunning
 	SyncTaskStatusSuccess = productRepo.SyncTaskStatusSuccess
 	SyncTaskStatusFailed  = productRepo.SyncTaskStatusFailed
+)
+
+// ========== 供应商常量别名 ==========
+
+const (
+	SupplierStatusActive   = productRepo.SupplierStatusActive
+	SupplierStatusInactive = productRepo.SupplierStatusInactive
 )
 
 // ========== 入库单状态常量别名 ==========

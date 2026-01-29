@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Picture, CopyDocument } from '@element-plus/icons-vue'
-import api, { type Product, type CreateProductRequest, type UpdateProductRequest, type WarehouseResponse } from '../api'
+import { Plus, Picture, CopyDocument, Link } from '@element-plus/icons-vue'
+import api, { type Product, type CreateProductRequest, type UpdateProductRequest, type WarehouseResponse, type Supplier, type CreateSupplierRequest, type UpdateSupplierRequest } from '../api'
 import { formatDateTime } from '@/utils/format'
 import ImagePreview from '@/components/ImagePreview.vue'
 
@@ -40,6 +40,27 @@ const formData = ref<CreateProductRequest & { id?: number }>({
   cost_price: 0,
   weight: 0,
   dimensions: ''
+})
+
+// 供应商对话框控制
+const supplierDialogVisible = ref(false)
+const supplierLoading = ref(false)
+const supplierList = ref<Supplier[]>([])
+const currentProduct = ref<Product | null>(null)
+const supplierFormVisible = ref(false)
+const supplierFormLoading = ref(false)
+const isEditSupplier = ref(false)
+const supplierFormData = ref<CreateSupplierRequest & { id?: number }>({
+  product_id: 0,
+  supplier_name: '',
+  purchase_link: '',
+  unit_price: 0,
+  currency: 'CNY',
+  min_order_qty: 1,
+  lead_time: 0,
+  estimated_days: 0,
+  remark: '',
+  is_default: false
 })
 
 // 获取仓库列表
@@ -194,6 +215,122 @@ const handleDelete = async (row: Product) => {
   }
 }
 
+// ========== 供应商/采购信息相关 ==========
+
+// 打开供应商管理对话框
+const handleSuppliers = async (row: Product) => {
+  currentProduct.value = row
+  supplierDialogVisible.value = true
+  await fetchSuppliers()
+}
+
+// 获取供应商列表
+const fetchSuppliers = async () => {
+  if (!currentProduct.value) return
+  supplierLoading.value = true
+  try {
+    const res = await api.getProductSuppliers(currentProduct.value.id)
+    supplierList.value = res.data || []
+  } catch (error) {
+    console.error('获取供应商列表失败', error)
+  } finally {
+    supplierLoading.value = false
+  }
+}
+
+// 打开添加供应商表单
+const handleAddSupplier = () => {
+  if (!currentProduct.value) return
+  isEditSupplier.value = false
+  supplierFormData.value = {
+    product_id: currentProduct.value.id,
+    supplier_name: '',
+    purchase_link: '',
+    unit_price: 0,
+    currency: 'CNY',
+    min_order_qty: 1,
+    lead_time: 0,
+    estimated_days: 0,
+    remark: '',
+    is_default: supplierList.value.length === 0
+  }
+  supplierFormVisible.value = true
+}
+
+// 编辑供应商
+const handleEditSupplier = (row: Supplier) => {
+  isEditSupplier.value = true
+  supplierFormData.value = {
+    id: row.id,
+    product_id: row.product_id,
+    supplier_name: row.supplier_name,
+    purchase_link: row.purchase_link,
+    unit_price: row.unit_price,
+    currency: row.currency,
+    min_order_qty: row.min_order_qty,
+    lead_time: row.lead_time,
+    estimated_days: row.estimated_days,
+    remark: row.remark,
+    is_default: row.is_default
+  }
+  supplierFormVisible.value = true
+}
+
+// 保存供应商
+const handleSaveSupplier = async () => {
+  if (!supplierFormData.value.supplier_name) {
+    ElMessage.warning('请填写供应商名称')
+    return
+  }
+
+  supplierFormLoading.value = true
+  try {
+    if (isEditSupplier.value && supplierFormData.value.id) {
+      await api.updateSupplier(supplierFormData.value.id, supplierFormData.value as UpdateSupplierRequest)
+      ElMessage.success('更新成功')
+    } else {
+      await api.createSupplier(supplierFormData.value)
+      ElMessage.success('添加成功')
+    }
+    supplierFormVisible.value = false
+    await fetchSuppliers()
+  } catch (error: any) {
+    console.error('保存供应商失败', error)
+  } finally {
+    supplierFormLoading.value = false
+  }
+}
+
+// 删除供应商
+const handleDeleteSupplier = async (row: Supplier) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除供应商 "${row.supplier_name}" 吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    await api.deleteSupplier(row.id)
+    ElMessage.success('删除成功')
+    await fetchSuppliers()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除供应商失败', error)
+    }
+  }
+}
+
+// 打开采购链接
+const openPurchaseLink = (url: string) => {
+  if (url) {
+    window.open(url, '_blank')
+  }
+}
+
 onMounted(() => {
   fetchProducts()
   fetchWarehouses()
@@ -282,10 +419,13 @@ onMounted(() => {
             {{ formatDateTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleEdit(row)">
               编辑
+            </el-button>
+            <el-button type="success" link size="small" @click="handleSuppliers(row)">
+              采购
             </el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">
               删除
@@ -383,6 +523,152 @@ onMounted(() => {
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="formLoading" @click="handleSave">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 供应商管理对话框 -->
+    <el-dialog
+      v-model="supplierDialogVisible"
+      :title="`采购信息 - ${currentProduct?.sku || ''}`"
+      width="1100px"
+      destroy-on-close
+    >
+      <div class="supplier-header">
+        <el-button type="primary" size="small" :icon="Plus" @click="handleAddSupplier">
+          添加采购渠道
+        </el-button>
+      </div>
+      
+      <el-table
+        v-loading="supplierLoading"
+        :data="supplierList"
+        style="width: 100%"
+        stripe
+        size="small"
+      >
+        <el-table-column label="供应商/店铺" prop="supplier_name" width="180" show-overflow-tooltip />
+        <el-table-column label="采购链接" width="100">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.purchase_link"
+              type="primary"
+              link
+              size="small"
+              :icon="Link"
+              @click="openPurchaseLink(row.purchase_link)"
+            >
+              打开链接
+            </el-button>
+            <span v-else class="text-secondary">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="采购单价" width="130" align="right">
+          <template #default="{ row }">
+            {{ row.unit_price?.toFixed(2) }} {{ row.currency }}
+          </template>
+        </el-table-column>
+        <el-table-column label="起订量" prop="min_order_qty" width="80" align="center" />
+        <el-table-column label="交货周期" width="90" align="center">
+          <template #default="{ row }">
+            {{ row.lead_time ? `${row.lead_time}天` : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="预估时效" width="90" align="center">
+          <template #default="{ row }">
+            {{ row.estimated_days ? `${row.estimated_days}天` : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="默认" width="60" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.is_default" type="success" size="small">是</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="备注" prop="remark" min-width="150" show-overflow-tooltip />
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="handleEditSupplier(row)">编辑</el-button>
+            <el-button type="danger" link size="small" @click="handleDeleteSupplier(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      
+      <template v-if="supplierList.length === 0 && !supplierLoading">
+        <el-empty description="暂无采购信息" :image-size="80" />
+      </template>
+    </el-dialog>
+
+    <!-- 添加/编辑供应商对话框 -->
+    <el-dialog
+      v-model="supplierFormVisible"
+      :title="isEditSupplier ? '编辑采购渠道' : '添加采购渠道'"
+      width="520px"
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <el-form :model="supplierFormData" label-width="100px">
+        <el-form-item label="供应商名称" required>
+          <el-input v-model="supplierFormData.supplier_name" placeholder="请输入供应商/店铺名称" />
+        </el-form-item>
+        <el-form-item label="采购链接">
+          <el-input v-model="supplierFormData.purchase_link" placeholder="请输入采购链接URL" />
+        </el-form-item>
+        <el-form-item label="采购单价">
+          <el-input-number
+            v-model="supplierFormData.unit_price"
+            :precision="2"
+            :step="0.1"
+            :min="0"
+            controls-position="right"
+            style="width: 140px"
+          />
+          <el-select v-model="supplierFormData.currency" style="width: 80px; margin-left: 8px">
+            <el-option label="CNY" value="CNY" />
+            <el-option label="USD" value="USD" />
+            <el-option label="RUB" value="RUB" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="最小起订量">
+          <el-input-number
+            v-model="supplierFormData.min_order_qty"
+            :min="1"
+            :step="1"
+            controls-position="right"
+            style="width: 140px"
+          />
+          <span class="form-unit">件</span>
+        </el-form-item>
+        <el-form-item label="交货周期">
+          <el-input-number
+            v-model="supplierFormData.lead_time"
+            :min="0"
+            :step="1"
+            controls-position="right"
+            style="width: 140px"
+          />
+          <span class="form-unit">天</span>
+        </el-form-item>
+        <el-form-item label="预估时效">
+          <el-input-number
+            v-model="supplierFormData.estimated_days"
+            :min="0"
+            :step="1"
+            controls-position="right"
+            style="width: 140px"
+          />
+          <span class="form-unit">天</span>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="supplierFormData.remark" type="textarea" :rows="2" placeholder="备注信息" />
+        </el-form-item>
+        <el-form-item label="设为默认">
+          <el-switch v-model="supplierFormData.is_default" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="supplierFormVisible = false">取消</el-button>
+        <el-button type="primary" :loading="supplierFormLoading" @click="handleSaveSupplier">
           保存
         </el-button>
       </template>
@@ -526,5 +812,16 @@ onMounted(() => {
   margin-left: 8px;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+// 供应商对话框样式
+.supplier-header {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
 }
 </style>

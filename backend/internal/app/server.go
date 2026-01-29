@@ -53,6 +53,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&product.StockInOrderItem{},
 		&product.Warehouse{},
 		&product.WarehouseCenterInventory{},
+		&product.ProductSupplier{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -210,7 +211,14 @@ func (s *Server) setupRoutes() {
 				productGroup.POST("/products", product.CreateProduct)
 				productGroup.PUT("/products/:id", product.UpdateProduct)
 				productGroup.DELETE("/products/:id", product.DeleteProduct)
-				productGroup.POST("/init", product.InitProducts) // 根据平台SKU初始化本地产品
+				productGroup.GET("/products/:id/suppliers", product.GetProductSuppliers) // 获取产品的供应商列表
+				productGroup.POST("/init", product.InitProducts)                         // 根据平台SKU初始化本地产品
+
+				// 供应商/采购信息
+				productGroup.GET("/suppliers", product.ListSuppliers)
+				productGroup.POST("/suppliers", product.CreateSupplier)
+				productGroup.PUT("/suppliers/:id", product.UpdateSupplier)
+				productGroup.DELETE("/suppliers/:id", product.DeleteSupplier)
 
 				// 平台产品
 				productGroup.GET("/platform-products", product.ListPlatformProducts)

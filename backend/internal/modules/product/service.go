@@ -25,6 +25,7 @@ type Service struct {
 	platformProductRepo productRepo.PlatformProductRepository
 	mappingRepo         productRepo.ProductMappingRepository
 	syncTaskRepo        productRepo.SyncTaskRepository
+	supplierRepo        productRepo.ProductSupplierRepository
 	warehouseRepo       inventoryRepo.WarehouseRepository
 	inventoryRepo       inventoryRepo.InventoryRepository
 	stockInOrderRepo    inventoryRepo.StockInOrderRepository
@@ -38,6 +39,7 @@ func NewService(
 	platformProductRepo productRepo.PlatformProductRepository,
 	mappingRepo productRepo.ProductMappingRepository,
 	syncTaskRepo productRepo.SyncTaskRepository,
+	supplierRepo productRepo.ProductSupplierRepository,
 	warehouseRepo inventoryRepo.WarehouseRepository,
 	inventoryRepo inventoryRepo.InventoryRepository,
 	stockInOrderRepo inventoryRepo.StockInOrderRepository,
@@ -49,6 +51,7 @@ func NewService(
 		platformProductRepo: platformProductRepo,
 		mappingRepo:         mappingRepo,
 		syncTaskRepo:        syncTaskRepo,
+		supplierRepo:        supplierRepo,
 		warehouseRepo:       warehouseRepo,
 		inventoryRepo:       inventoryRepo,
 		stockInOrderRepo:    stockInOrderRepo,
@@ -858,4 +861,121 @@ func (s *Service) InitInventoryFromProducts(warehouseID uint) (int, error) {
 	}
 
 	return created, nil
+}
+
+// ========== 供应商/采购信息相关 ==========
+
+// ListSuppliersByProductID 获取产品的供应商列表
+func (s *Service) ListSuppliersByProductID(productID uint) ([]ProductSupplier, error) {
+	ctx := context.Background()
+	return s.supplierRepo.FindByProductID(ctx, productID)
+}
+
+// ListSuppliers 分页获取供应商列表
+func (s *Service) ListSuppliers(productID uint, keyword, status string, page, pageSize int) ([]ProductSupplier, int64, error) {
+	ctx := context.Background()
+	return s.supplierRepo.List(ctx, &productRepo.ProductSupplierQuery{
+		Page:      page,
+		PageSize:  pageSize,
+		ProductID: productID,
+		Keyword:   keyword,
+		Status:    status,
+	})
+}
+
+// GetSupplier 获取供应商详情
+func (s *Service) GetSupplier(id uint) (*ProductSupplier, error) {
+	ctx := context.Background()
+	return s.supplierRepo.FindByID(ctx, id)
+}
+
+// CreateSupplier 创建供应商
+func (s *Service) CreateSupplier(req CreateSupplierRequest) (*ProductSupplier, error) {
+	ctx := context.Background()
+
+	// 验证产品是否存在
+	_, err := s.productRepo.FindByID(ctx, req.ProductID)
+	if err != nil {
+		return nil, errors.New("产品不存在")
+	}
+
+	currency := req.Currency
+	if currency == "" {
+		currency = "CNY"
+	}
+
+	supplier := &ProductSupplier{
+		ProductID:     req.ProductID,
+		SupplierName:  req.SupplierName,
+		PurchaseLink:  req.PurchaseLink,
+		UnitPrice:     req.UnitPrice,
+		Currency:      currency,
+		MinOrderQty:   req.MinOrderQty,
+		LeadTime:      req.LeadTime,
+		EstimatedDays: req.EstimatedDays,
+		Remark:        req.Remark,
+		IsDefault:     req.IsDefault,
+		Status:        SupplierStatusActive,
+	}
+
+	if err := s.supplierRepo.Create(ctx, supplier); err != nil {
+		return nil, err
+	}
+
+	// 如果设置为默认，则更新其他供应商的默认状态
+	if req.IsDefault {
+		_ = s.supplierRepo.SetDefault(ctx, req.ProductID, supplier.ID)
+	}
+
+	return supplier, nil
+}
+
+// UpdateSupplier 更新供应商
+func (s *Service) UpdateSupplier(id uint, req UpdateSupplierRequest) (*ProductSupplier, error) {
+	ctx := context.Background()
+
+	supplier, err := s.supplierRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, errors.New("供应商不存在")
+	}
+
+	if req.SupplierName != "" {
+		supplier.SupplierName = req.SupplierName
+	}
+	supplier.PurchaseLink = req.PurchaseLink
+	supplier.UnitPrice = req.UnitPrice
+	if req.Currency != "" {
+		supplier.Currency = req.Currency
+	}
+	supplier.MinOrderQty = req.MinOrderQty
+	supplier.LeadTime = req.LeadTime
+	supplier.EstimatedDays = req.EstimatedDays
+	supplier.Remark = req.Remark
+	supplier.IsDefault = req.IsDefault
+	if req.Status != "" {
+		supplier.Status = req.Status
+	}
+
+	if err := s.supplierRepo.Update(ctx, supplier); err != nil {
+		return nil, err
+	}
+
+	// 如果设置为默认，则更新其他供应商的默认状态
+	if req.IsDefault {
+		_ = s.supplierRepo.SetDefault(ctx, supplier.ProductID, supplier.ID)
+	}
+
+	return supplier, nil
+}
+
+// DeleteSupplier 删除供应商
+func (s *Service) DeleteSupplier(id uint) error {
+	ctx := context.Background()
+	return s.supplierRepo.Delete(ctx, id)
+}
+
+// SetDefaultSupplier 设置默认供应商
+func (s *Service) SetDefaultSupplier(productID, supplierID uint) error {
+	ctx := context.Background()
+	return s.supplierRepo.SetDefault(ctx, productID, supplierID)
 }

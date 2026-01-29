@@ -1,10 +1,10 @@
 package product
 
 import (
-	"autostack/pkg/response"
 	"autostack/internal/repository"
 	inventoryRepo "autostack/internal/repository/inventory"
 	productRepo "autostack/internal/repository/product"
+	"autostack/pkg/response"
 	"net/http"
 	"strconv"
 
@@ -19,13 +19,14 @@ var service *Service
 // 应在服务器启动时调用
 func InitHandler(db *gorm.DB) {
 	txManager := repository.NewTxManager(db)
-	
+
 	service = NewService(
 		txManager,
 		productRepo.NewProductRepository(db),
 		productRepo.NewPlatformProductRepository(db),
 		productRepo.NewProductMappingRepository(db),
 		productRepo.NewSyncTaskRepository(db),
+		productRepo.NewProductSupplierRepository(db),
 		inventoryRepo.NewWarehouseRepository(db),
 		inventoryRepo.NewInventoryRepository(db),
 		inventoryRepo.NewStockInOrderRepository(db),
@@ -474,7 +475,7 @@ func ListAvailableWarehouses(c *gin.Context) {
 // ListAllWarehouses 获取所有仓库（支持按类型筛选，用于仓库管理页面）
 func ListAllWarehouses(c *gin.Context) {
 	warehouseType := c.Query("type")
-	
+
 	warehouses, err := service.ListAllWarehouses(warehouseType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取仓库列表失败")
@@ -619,4 +620,162 @@ func InitInventory(c *gin.Context) {
 	response.Success(c, http.StatusOK, "初始化完成", map[string]int{
 		"created": created,
 	})
+}
+
+// ========== 供应商/采购信息相关 ==========
+
+// ListSuppliers 获取供应商列表
+func ListSuppliers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	productID, _ := strconv.Atoi(c.DefaultQuery("product_id", "0"))
+	keyword := c.Query("keyword")
+	status := c.Query("status")
+
+	suppliers, total, err := service.ListSuppliers(uint(productID), keyword, status, page, pageSize)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取供应商列表失败")
+		return
+	}
+
+	var list []SupplierResponse
+	for _, s := range suppliers {
+		resp := SupplierResponse{
+			ID:            s.ID,
+			ProductID:     s.ProductID,
+			SupplierName:  s.SupplierName,
+			PurchaseLink:  s.PurchaseLink,
+			UnitPrice:     s.UnitPrice,
+			Currency:      s.Currency,
+			MinOrderQty:   s.MinOrderQty,
+			LeadTime:      s.LeadTime,
+			EstimatedDays: s.EstimatedDays,
+			Remark:        s.Remark,
+			IsDefault:     s.IsDefault,
+			Status:        s.Status,
+			CreatedAt:     s.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:     s.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if s.Product != nil {
+			resp.ProductSKU = s.Product.SKU
+			resp.ProductName = s.Product.Name
+		}
+		list = append(list, resp)
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", SupplierListResponse{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+// GetProductSuppliers 获取产品的供应商列表
+func GetProductSuppliers(c *gin.Context) {
+	productID, _ := strconv.Atoi(c.Param("id"))
+
+	suppliers, err := service.ListSuppliersByProductID(uint(productID))
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取供应商列表失败")
+		return
+	}
+
+	var list []SupplierResponse
+	for _, s := range suppliers {
+		list = append(list, SupplierResponse{
+			ID:            s.ID,
+			ProductID:     s.ProductID,
+			SupplierName:  s.SupplierName,
+			PurchaseLink:  s.PurchaseLink,
+			UnitPrice:     s.UnitPrice,
+			Currency:      s.Currency,
+			MinOrderQty:   s.MinOrderQty,
+			LeadTime:      s.LeadTime,
+			EstimatedDays: s.EstimatedDays,
+			Remark:        s.Remark,
+			IsDefault:     s.IsDefault,
+			Status:        s.Status,
+			CreatedAt:     s.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:     s.UpdatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", list)
+}
+
+// CreateSupplier 创建供应商
+func CreateSupplier(c *gin.Context) {
+	var req CreateSupplierRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	supplier, err := service.CreateSupplier(req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, "创建成功", SupplierResponse{
+		ID:            supplier.ID,
+		ProductID:     supplier.ProductID,
+		SupplierName:  supplier.SupplierName,
+		PurchaseLink:  supplier.PurchaseLink,
+		UnitPrice:     supplier.UnitPrice,
+		Currency:      supplier.Currency,
+		MinOrderQty:   supplier.MinOrderQty,
+		LeadTime:      supplier.LeadTime,
+		EstimatedDays: supplier.EstimatedDays,
+		Remark:        supplier.Remark,
+		IsDefault:     supplier.IsDefault,
+		Status:        supplier.Status,
+		CreatedAt:     supplier.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:     supplier.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// UpdateSupplier 更新供应商
+func UpdateSupplier(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req UpdateSupplierRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	supplier, err := service.UpdateSupplier(uint(id), req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "更新成功", SupplierResponse{
+		ID:            supplier.ID,
+		ProductID:     supplier.ProductID,
+		SupplierName:  supplier.SupplierName,
+		PurchaseLink:  supplier.PurchaseLink,
+		UnitPrice:     supplier.UnitPrice,
+		Currency:      supplier.Currency,
+		MinOrderQty:   supplier.MinOrderQty,
+		LeadTime:      supplier.LeadTime,
+		EstimatedDays: supplier.EstimatedDays,
+		Remark:        supplier.Remark,
+		IsDefault:     supplier.IsDefault,
+		Status:        supplier.Status,
+		CreatedAt:     supplier.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:     supplier.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// DeleteSupplier 删除供应商
+func DeleteSupplier(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if err := service.DeleteSupplier(uint(id)); err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "删除成功", nil)
 }

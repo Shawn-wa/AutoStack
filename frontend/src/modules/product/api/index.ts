@@ -190,6 +190,56 @@ export interface ListInventoryRequest extends ListRequest {
   keyword?: string
 }
 
+// ========== 供应商/采购信息相关 ==========
+
+// 供应商接口
+export interface Supplier {
+  id: number
+  product_id: number
+  product_sku?: string
+  product_name?: string
+  supplier_name: string
+  purchase_link: string
+  unit_price: number
+  currency: string
+  min_order_qty: number
+  lead_time: number
+  estimated_days: number
+  remark: string
+  is_default: boolean
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+// 创建供应商请求
+export interface CreateSupplierRequest {
+  product_id: number
+  supplier_name: string
+  purchase_link?: string
+  unit_price?: number
+  currency?: string
+  min_order_qty?: number
+  lead_time?: number
+  estimated_days?: number
+  remark?: string
+  is_default?: boolean
+}
+
+// 更新供应商请求
+export interface UpdateSupplierRequest {
+  supplier_name?: string
+  purchase_link?: string
+  unit_price?: number
+  currency?: string
+  min_order_qty?: number
+  lead_time?: number
+  estimated_days?: number
+  remark?: string
+  is_default?: boolean
+  status?: string
+}
+
 const api = {
   // 本地产品
   listProducts: (params: ListRequest) => {
@@ -265,6 +315,23 @@ const api = {
   },
   initInventory: (warehouseId: number) => {
     return request.post('/product/inventory/init', null, { params: { warehouse_id: warehouseId } })
+  },
+
+  // 供应商/采购信息
+  listSuppliers: (params: ListRequest & { product_id?: number; status?: string }) => {
+    return request.get('/product/suppliers', { params })
+  },
+  getProductSuppliers: (productId: number) => {
+    return request.get<Supplier[]>(`/product/products/${productId}/suppliers`)
+  },
+  createSupplier: (data: CreateSupplierRequest) => {
+    return request.post<Supplier>('/product/suppliers', data)
+  },
+  updateSupplier: (id: number, data: UpdateSupplierRequest) => {
+    return request.put<Supplier>(`/product/suppliers/${id}`, data)
+  },
+  deleteSupplier: (id: number) => {
+    return request.delete(`/product/suppliers/${id}`)
   }
 }
 

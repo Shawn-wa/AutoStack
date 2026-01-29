@@ -78,3 +78,25 @@ type SyncTaskRepository interface {
 	// TryLock 尝试锁定任务（乐观锁）
 	TryLock(ctx context.Context, id uint, lockID string, lockTimeout time.Duration) (bool, error)
 }
+
+// ProductSupplierRepository 产品供应商仓储接口
+type ProductSupplierRepository interface {
+	// FindByID 根据ID查找供应商
+	FindByID(ctx context.Context, id uint) (*ProductSupplier, error)
+	// FindByProductID 根据产品ID查找所有供应商
+	FindByProductID(ctx context.Context, productID uint) ([]ProductSupplier, error)
+	// FindDefaultByProductID 查找产品的默认供应商
+	FindDefaultByProductID(ctx context.Context, productID uint) (*ProductSupplier, error)
+	// List 分页查询供应商列表
+	List(ctx context.Context, query *ProductSupplierQuery) ([]ProductSupplier, int64, error)
+	// Create 创建供应商
+	Create(ctx context.Context, supplier *ProductSupplier) error
+	// Update 更新供应商
+	Update(ctx context.Context, supplier *ProductSupplier) error
+	// Delete 删除供应商
+	Delete(ctx context.Context, id uint) error
+	// SetDefault 设置默认供应商（同时取消该产品其他供应商的默认状态）
+	SetDefault(ctx context.Context, productID uint, supplierID uint) error
+	// CountByProductID 统计产品的供应商数量
+	CountByProductID(ctx context.Context, productID uint) (int64, error)
+}

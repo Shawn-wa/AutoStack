@@ -48,14 +48,14 @@ func (PlatformSyncTask) TableName() string {
 // Product 本地产品模型
 type Product struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
-	WID        uint      `gorm:"column:wid;index;default:0" json:"wid"`          // 仓库ID
+	WID        uint      `gorm:"column:wid;index;default:0" json:"wid"` // 仓库ID
 	SKU        string    `gorm:"size:100;not null;uniqueIndex" json:"sku"`
 	Name       string    `gorm:"size:255;not null" json:"name"`
 	Image      string    `gorm:"size:500" json:"image"`
 	CostPrice  float64   `gorm:"type:decimal(10,2);default:0" json:"cost_price"`
-	Weight     float64   `gorm:"type:decimal(10,2);default:0" json:"weight"`     // kg
-	Dimensions string    `gorm:"size:50" json:"dimensions"`                      // L*W*H cm
-	Stock      int       `gorm:"default:0" json:"stock"`                         // 库存数量
+	Weight     float64   `gorm:"type:decimal(10,2);default:0" json:"weight"` // kg
+	Dimensions string    `gorm:"size:50" json:"dimensions"`                  // L*W*H cm
+	Stock      int       `gorm:"default:0" json:"stock"`                     // 库存数量
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -95,10 +95,10 @@ func (PlatformProduct) TableName() string {
 // ProductMapping 产品映射关系
 type ProductMapping struct {
 	ID                uint      `gorm:"primaryKey" json:"id"`
-	WID               uint      `gorm:"index:idx_mapping_unique,unique;not null;default:0" json:"wid"`                        // 仓库ID
-	PlatformAccountID uint      `gorm:"index:idx_mapping_unique,unique;not null;default:0" json:"platform_account_id"`        // 授权账户ID (platform_auths.user_id)
-	ProductID         uint      `gorm:"index:idx_mapping_unique,unique;index;not null" json:"product_id"`                     // 本地产品ID
-	PlatformProductID uint      `gorm:"index:idx_mapping_unique,unique;index;not null" json:"platform_product_id"`            // 平台产品ID
+	WID               uint      `gorm:"index:idx_mapping_unique,unique;not null;default:0" json:"wid"`                 // 仓库ID
+	PlatformAccountID uint      `gorm:"index:idx_mapping_unique,unique;not null;default:0" json:"platform_account_id"` // 授权账户ID (platform_auths.user_id)
+	ProductID         uint      `gorm:"index:idx_mapping_unique,unique;index;not null" json:"product_id"`              // 本地产品ID
+	PlatformProductID uint      `gorm:"index:idx_mapping_unique,unique;index;not null" json:"platform_product_id"`     // 平台产品ID
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 
@@ -111,3 +111,35 @@ type ProductMapping struct {
 func (ProductMapping) TableName() string {
 	return "product_mappings"
 }
+
+// ProductSupplier 产品供应商/采购信息（一个产品可以有多个采购来源）
+type ProductSupplier struct {
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	ProductID     uint      `gorm:"index;not null" json:"product_id"`               // 关联本地产品
+	SupplierName  string    `gorm:"size:255;not null" json:"supplier_name"`         // 供应商/采购店铺名称
+	PurchaseLink  string    `gorm:"size:1000" json:"purchase_link"`                 // 采购链接
+	UnitPrice     float64   `gorm:"type:decimal(10,2);default:0" json:"unit_price"` // 采购单价
+	Currency      string    `gorm:"size:10;default:'CNY'" json:"currency"`          // 货币（默认人民币）
+	MinOrderQty   int       `gorm:"default:1" json:"min_order_qty"`                 // 最小起订量
+	LeadTime      int       `gorm:"default:0" json:"lead_time"`                     // 交货周期（天）
+	EstimatedDays int       `gorm:"default:0" json:"estimated_days"`                // 预估时效（天）
+	Remark        string    `gorm:"size:500" json:"remark"`                         // 备注
+	IsDefault     bool      `gorm:"default:false;index" json:"is_default"`          // 是否默认供应商
+	Status        string    `gorm:"size:20;default:'active';index" json:"status"`   // 状态: active/inactive
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+
+	// 关联
+	Product *Product `gorm:"foreignKey:ProductID" json:"product,omitempty"`
+}
+
+// TableName 指定表名
+func (ProductSupplier) TableName() string {
+	return "product_suppliers"
+}
+
+// 供应商状态枚举
+const (
+	SupplierStatusActive   = "active"   // 启用
+	SupplierStatusInactive = "inactive" // 停用
+)

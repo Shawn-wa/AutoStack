@@ -337,6 +337,110 @@ func (r *gormSyncTaskRepository) TryLock(ctx context.Context, id uint, lockID st
 	return result.RowsAffected > 0, nil
 }
 
+// ========== ProductSupplierRepository 实现 ==========
+
+type gormProductSupplierRepository struct {
+	db *gorm.DB
+}
+
+// NewProductSupplierRepository 创建产品供应商仓储实例
+func NewProductSupplierRepository(db *gorm.DB) ProductSupplierRepository {
+	return &gormProductSupplierRepository{db: db}
+}
+
+func (r *gormProductSupplierRepository) getDB(ctx context.Context) *gorm.DB {
+	return repository.GetDB(ctx, r.db)
+}
+
+func (r *gormProductSupplierRepository) FindByID(ctx context.Context, id uint) (*ProductSupplier, error) {
+	var supplier ProductSupplier
+	if err := r.getDB(ctx).Preload("Product").First(&supplier, id).Error; err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+func (r *gormProductSupplierRepository) FindByProductID(ctx context.Context, productID uint) ([]ProductSupplier, error) {
+	var suppliers []ProductSupplier
+	if err := r.getDB(ctx).Where("product_id = ?", productID).
+		Order("is_default DESC, id ASC").Find(&suppliers).Error; err != nil {
+		return nil, err
+	}
+	return suppliers, nil
+}
+
+func (r *gormProductSupplierRepository) FindDefaultByProductID(ctx context.Context, productID uint) (*ProductSupplier, error) {
+	var supplier ProductSupplier
+	if err := r.getDB(ctx).Where("product_id = ? AND is_default = ?", productID, true).
+		First(&supplier).Error; err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+func (r *gormProductSupplierRepository) List(ctx context.Context, query *ProductSupplierQuery) ([]ProductSupplier, int64, error) {
+	var suppliers []ProductSupplier
+	var total int64
+	db := r.getDB(ctx)
+
+	q := db.Model(&ProductSupplier{})
+
+	if query.ProductID > 0 {
+		q = q.Where("product_id = ?", query.ProductID)
+	}
+	if query.Keyword != "" {
+		like := "%" + query.Keyword + "%"
+		q = q.Where("supplier_name LIKE ?", like)
+	}
+	if query.Status != "" {
+		q = q.Where("status = ?", query.Status)
+	}
+
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (query.Page - 1) * query.PageSize
+	if err := q.Preload("Product").Order("is_default DESC, id DESC").
+		Offset(offset).Limit(query.PageSize).Find(&suppliers).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return suppliers, total, nil
+}
+
+func (r *gormProductSupplierRepository) Create(ctx context.Context, supplier *ProductSupplier) error {
+	return r.getDB(ctx).Create(supplier).Error
+}
+
+func (r *gormProductSupplierRepository) Update(ctx context.Context, supplier *ProductSupplier) error {
+	return r.getDB(ctx).Save(supplier).Error
+}
+
+func (r *gormProductSupplierRepository) Delete(ctx context.Context, id uint) error {
+	return r.getDB(ctx).Delete(&ProductSupplier{}, id).Error
+}
+
+func (r *gormProductSupplierRepository) SetDefault(ctx context.Context, productID uint, supplierID uint) error {
+	db := r.getDB(ctx)
+	// 先取消该产品所有供应商的默认状态
+	if err := db.Model(&ProductSupplier{}).Where("product_id = ?", productID).
+		Update("is_default", false).Error; err != nil {
+		return err
+	}
+	// 再设置指定供应商为默认
+	return db.Model(&ProductSupplier{}).Where("id = ?", supplierID).
+		Update("is_default", true).Error
+}
+
+func (r *gormProductSupplierRepository) CountByProductID(ctx context.Context, productID uint) (int64, error) {
+	var count int64
+	if err := r.getDB(ctx).Model(&ProductSupplier{}).Where("product_id = ?", productID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // ========== 错误定义 ==========
 
 var (
@@ -344,4 +448,5 @@ var (
 	ErrPlatformProductNotFound = errors.New("平台产品不存在")
 	ErrMappingNotFound         = errors.New("映射关系不存在")
 	ErrTaskNotFound            = errors.New("任务不存在")
+	ErrSupplierNotFound        = errors.New("供应商不存在")
 )
