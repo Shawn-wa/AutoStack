@@ -52,12 +52,20 @@ func Start() {
 		return
 	}
 
+	// 每天凌晨2点同步所有平台产品
+	_, err = cronScheduler.AddFunc("0 0 2 * * *", syncAllPlatformProducts)
+	if err != nil {
+		log.Printf("[Scheduler] 添加平台产品同步任务失败: %v", err)
+		return
+	}
+
 	cronScheduler.Start()
 	log.Println("[Scheduler] 定时任务调度器已启动")
 	log.Println("[Scheduler] - 每小时第5分钟同步所有授权的订单和佣金")
 	log.Println("[Scheduler] - 每4小时第10分钟统计订单走势数据")
 	log.Println("[Scheduler] - 每1分钟扫描并执行待处理的同步任务")
 	log.Println("[Scheduler] - 每天凌晨1:20清理3个月前的同步任务记录")
+	log.Println("[Scheduler] - 每天凌晨2点同步所有平台产品")
 }
 
 // Stop 停止调度器
@@ -81,6 +89,11 @@ func TriggerTrendStats() {
 // TriggerSyncTasks 手动触发一次同步任务扫描（供 API 调用）
 func TriggerSyncTasks() {
 	go processPendingSyncTasks()
+}
+
+// TriggerProductSync 手动触发一次平台产品同步（供 API 调用）
+func TriggerProductSync() {
+	go syncAllPlatformProducts()
 }
 
 // syncAllAuthsOrdersAndCommission 同步所有活跃授权的订单和佣金
@@ -360,4 +373,45 @@ func cleanOldSyncTasks() {
 	}
 
 	log.Printf("[Scheduler] 同步任务记录清理完成: 删除 %d 条", deleted)
+}
+
+// syncAllPlatformProducts 同步所有活跃授权的平台产品
+func syncAllPlatformProducts() {
+	log.Println("[Scheduler] 开始执行平台产品同步任务...")
+
+	db := database.GetDB()
+	productService := product.GetService()
+
+	if productService == nil {
+		log.Println("[Scheduler] 产品服务未初始化，跳过平台产品同步")
+		return
+	}
+
+	// 获取所有活跃的授权
+	var auths []order.PlatformAuth
+	if err := db.Where("status = ?", order.AuthStatusActive).Find(&auths).Error; err != nil {
+		log.Printf("[Scheduler] 获取授权列表失败: %v", err)
+		return
+	}
+
+	log.Printf("[Scheduler] 找到 %d 个活跃授权需要同步产品", len(auths))
+
+	successCount := 0
+	failCount := 0
+
+	for _, auth := range auths {
+		log.Printf("[Scheduler] 同步产品 - 授权 ID=%d, 平台=%s, 店铺=%s", auth.ID, auth.Platform, auth.ShopName)
+
+		err := productService.SyncPlatformProducts(auth.ID)
+		if err != nil {
+			log.Printf("[Scheduler] 同步产品失败 (授权ID=%d): %v", auth.ID, err)
+			failCount++
+			continue
+		}
+
+		log.Printf("[Scheduler] 产品同步完成 (授权ID=%d)", auth.ID)
+		successCount++
+	}
+
+	log.Printf("[Scheduler] 平台产品同步任务完成: 成功=%d, 失败=%d", successCount, failCount)
 }
