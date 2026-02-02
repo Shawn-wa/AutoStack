@@ -29,7 +29,12 @@ request.interceptors.request.use(
 // 响应拦截器
 request.interceptors.response.use(
   (response: AxiosResponse) => {
-    const { data } = response
+    const { data, config } = response
+    
+    // blob 类型直接返回完整 response
+    if (config.responseType === 'blob') {
+      return response
+    }
     
     // 业务错误处理
     if (data.code !== 0) {

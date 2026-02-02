@@ -2,9 +2,10 @@ package product
 
 // ProductQuery 产品查询条件
 type ProductQuery struct {
-	Page     int
-	PageSize int
-	Keyword  string
+	Page        int
+	PageSize    int
+	Keyword     string
+	WarehouseID uint // 仓库ID筛选
 }
 
 // PlatformProductQuery 平台产品查询条件

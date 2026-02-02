@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -44,8 +45,9 @@ func ListProducts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	keyword := c.Query("keyword")
+	warehouseID, _ := strconv.Atoi(c.DefaultQuery("wid", "0"))
 
-	products, total, err := service.ListProducts(page, pageSize, keyword)
+	products, total, err := service.ListProducts(page, pageSize, keyword, uint(warehouseID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取产品列表失败")
 		return
@@ -646,6 +648,7 @@ func ListSuppliers(c *gin.Context) {
 			SupplierName:  s.SupplierName,
 			PurchaseLink:  s.PurchaseLink,
 			UnitPrice:     s.UnitPrice,
+			ShippingFee:   s.ShippingFee,
 			Currency:      s.Currency,
 			MinOrderQty:   s.MinOrderQty,
 			LeadTime:      s.LeadTime,
@@ -689,6 +692,7 @@ func GetProductSuppliers(c *gin.Context) {
 			SupplierName:  s.SupplierName,
 			PurchaseLink:  s.PurchaseLink,
 			UnitPrice:     s.UnitPrice,
+			ShippingFee:   s.ShippingFee,
 			Currency:      s.Currency,
 			MinOrderQty:   s.MinOrderQty,
 			LeadTime:      s.LeadTime,
@@ -724,6 +728,7 @@ func CreateSupplier(c *gin.Context) {
 		SupplierName:  supplier.SupplierName,
 		PurchaseLink:  supplier.PurchaseLink,
 		UnitPrice:     supplier.UnitPrice,
+		ShippingFee:   supplier.ShippingFee,
 		Currency:      supplier.Currency,
 		MinOrderQty:   supplier.MinOrderQty,
 		LeadTime:      supplier.LeadTime,
@@ -757,6 +762,7 @@ func UpdateSupplier(c *gin.Context) {
 		SupplierName:  supplier.SupplierName,
 		PurchaseLink:  supplier.PurchaseLink,
 		UnitPrice:     supplier.UnitPrice,
+		ShippingFee:   supplier.ShippingFee,
 		Currency:      supplier.Currency,
 		MinOrderQty:   supplier.MinOrderQty,
 		LeadTime:      supplier.LeadTime,
@@ -778,4 +784,173 @@ func DeleteSupplier(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "删除成功", nil)
+}
+
+// ========== 批量操作相关 ==========
+
+// ListProductsWithSupplier 获取产品列表（带默认供应商信息）
+func ListProductsWithSupplier(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	keyword := c.Query("keyword")
+	warehouseID, _ := strconv.Atoi(c.DefaultQuery("wid", "0"))
+
+	list, total, err := service.ListProductsWithSupplier(page, pageSize, keyword, uint(warehouseID))
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取产品列表失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", ProductWithSupplierListResponse{
+		List:     list,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+// BatchUpdateSuppliers 批量更新供应商
+func BatchUpdateSuppliers(c *gin.Context) {
+	var req BatchUpdateSupplierRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := service.BatchUpdateSuppliers(req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "批量更新完成", result)
+}
+
+// ExportSupplierTemplate 导出供应商导入模板
+func ExportSupplierTemplate(c *gin.Context) {
+	// 设置响应头
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename=supplier_import_template.xlsx")
+
+	// 创建 Excel 文件
+	f := excelize.NewFile()
+	sheetName := "Sheet1"
+
+	// 写入表头
+	headers := []string{"SKU", "供应商名称", "采购单价", "物流费", "货币", "采购链接", "备注"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetName, cell, h)
+	}
+
+	// 写入示例数据
+	exampleData := []string{"SKU001", "示例供应商", "10.00", "5.00", "CNY", "https://example.com", "示例备注"}
+	for i, v := range exampleData {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 2)
+		f.SetCellValue(sheetName, cell, v)
+	}
+
+	// 设置列宽
+	f.SetColWidth(sheetName, "A", "A", 20)
+	f.SetColWidth(sheetName, "B", "B", 20)
+	f.SetColWidth(sheetName, "C", "D", 12)
+	f.SetColWidth(sheetName, "E", "E", 8)
+	f.SetColWidth(sheetName, "F", "F", 40)
+	f.SetColWidth(sheetName, "G", "G", 30)
+
+	// 写入响应
+	if err := f.Write(c.Writer); err != nil {
+		response.Error(c, http.StatusInternalServerError, "生成模板失败")
+		return
+	}
+}
+
+// ImportSuppliers 导入供应商数据
+func ImportSuppliers(c *gin.Context) {
+	// 获取上传的文件
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "请上传文件")
+		return
+	}
+
+	// 打开文件
+	src, err := file.Open()
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "无法打开文件")
+		return
+	}
+	defer src.Close()
+
+	// 解析 Excel
+	f, err := excelize.OpenReader(src)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无法解析 Excel 文件")
+		return
+	}
+	defer f.Close()
+
+	// 读取数据
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无法读取 Sheet1")
+		return
+	}
+
+	if len(rows) < 2 {
+		response.Error(c, http.StatusBadRequest, "文件中没有数据")
+		return
+	}
+
+	// 解析数据（跳过表头）
+	var items []ImportSupplierItem
+	for i, row := range rows[1:] {
+		if len(row) < 1 || row[0] == "" {
+			continue // 跳过空行
+		}
+
+		item := ImportSupplierItem{
+			SKU: row[0],
+		}
+
+		if len(row) > 1 {
+			item.SupplierName = row[1]
+		}
+		if len(row) > 2 {
+			item.UnitPrice, _ = strconv.ParseFloat(row[2], 64)
+		}
+		if len(row) > 3 {
+			item.ShippingFee, _ = strconv.ParseFloat(row[3], 64)
+		}
+		if len(row) > 4 {
+			item.Currency = row[4]
+		}
+		if len(row) > 5 {
+			item.PurchaseLink = row[5]
+		}
+		if len(row) > 6 {
+			item.Remark = row[6]
+		}
+
+		items = append(items, item)
+
+		// 防止一次导入过多
+		if i >= 999 {
+			break
+		}
+	}
+
+	if len(items) == 0 {
+		response.Error(c, http.StatusBadRequest, "没有有效的数据行")
+		return
+	}
+
+	// 执行导入
+	result, err := service.ImportSuppliers(items)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "导入完成", result)
 }

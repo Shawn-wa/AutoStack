@@ -218,6 +218,7 @@ type CreateSupplierRequest struct {
 	SupplierName  string  `json:"supplier_name" binding:"required"`
 	PurchaseLink  string  `json:"purchase_link"`
 	UnitPrice     float64 `json:"unit_price"`
+	ShippingFee   float64 `json:"shipping_fee"`
 	Currency      string  `json:"currency"`
 	MinOrderQty   int     `json:"min_order_qty"`
 	LeadTime      int     `json:"lead_time"`
@@ -231,6 +232,7 @@ type UpdateSupplierRequest struct {
 	SupplierName  string  `json:"supplier_name"`
 	PurchaseLink  string  `json:"purchase_link"`
 	UnitPrice     float64 `json:"unit_price"`
+	ShippingFee   float64 `json:"shipping_fee"`
 	Currency      string  `json:"currency"`
 	MinOrderQty   int     `json:"min_order_qty"`
 	LeadTime      int     `json:"lead_time"`
@@ -249,6 +251,7 @@ type SupplierResponse struct {
 	SupplierName  string  `json:"supplier_name"`
 	PurchaseLink  string  `json:"purchase_link"`
 	UnitPrice     float64 `json:"unit_price"`
+	ShippingFee   float64 `json:"shipping_fee"`
 	Currency      string  `json:"currency"`
 	MinOrderQty   int     `json:"min_order_qty"`
 	LeadTime      int     `json:"lead_time"`
@@ -266,4 +269,74 @@ type SupplierListResponse struct {
 	Total    int64              `json:"total"`
 	Page     int                `json:"page"`
 	PageSize int                `json:"page_size"`
+}
+
+// ========== 批量操作相关 ==========
+
+// BatchUpdateSupplierItem 批量更新供应商项
+type BatchUpdateSupplierItem struct {
+	ProductID    uint    `json:"product_id" binding:"required"`
+	SupplierName string  `json:"supplier_name"` // 供应商名称，为空则使用默认供应商
+	UnitPrice    float64 `json:"unit_price"`
+	ShippingFee  float64 `json:"shipping_fee"`
+}
+
+// BatchUpdateSupplierRequest 批量更新供应商请求
+type BatchUpdateSupplierRequest struct {
+	Items []BatchUpdateSupplierItem `json:"items" binding:"required,min=1"`
+}
+
+// BatchUpdateSupplierResponse 批量更新供应商响应
+type BatchUpdateSupplierResponse struct {
+	SuccessCount int      `json:"success_count"`
+	FailCount    int      `json:"fail_count"`
+	FailReasons  []string `json:"fail_reasons,omitempty"`
+}
+
+// ImportSupplierItem Excel导入项
+type ImportSupplierItem struct {
+	SKU          string  `json:"sku"`
+	SupplierName string  `json:"supplier_name"`
+	UnitPrice    float64 `json:"unit_price"`
+	ShippingFee  float64 `json:"shipping_fee"`
+	Currency     string  `json:"currency"`
+	PurchaseLink string  `json:"purchase_link"`
+	Remark       string  `json:"remark"`
+}
+
+// ImportSupplierResponse 导入供应商响应
+type ImportSupplierResponse struct {
+	TotalCount   int      `json:"total_count"`
+	SuccessCount int      `json:"success_count"`
+	FailCount    int      `json:"fail_count"`
+	FailReasons  []string `json:"fail_reasons,omitempty"`
+}
+
+// ProductWithSupplierResponse 产品带供应商信息响应（用于列表展示）
+type ProductWithSupplierResponse struct {
+	ID            uint    `json:"id"`
+	WID           uint    `json:"wid"`
+	WarehouseName string  `json:"warehouse_name"`
+	SKU           string  `json:"sku"`
+	Name          string  `json:"name"`
+	Image         string  `json:"image"`
+	CostPrice     float64 `json:"cost_price"`
+	Weight        float64 `json:"weight"`
+	Dimensions    string  `json:"dimensions"`
+	// 默认供应商信息
+	SupplierID   uint    `json:"supplier_id,omitempty"`
+	SupplierName string  `json:"supplier_name,omitempty"`
+	UnitPrice    float64 `json:"unit_price"`
+	ShippingFee  float64 `json:"shipping_fee"`
+	Currency     string  `json:"currency,omitempty"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+}
+
+// ProductWithSupplierListResponse 产品带供应商信息列表响应
+type ProductWithSupplierListResponse struct {
+	List     []ProductWithSupplierResponse `json:"list"`
+	Total    int64                         `json:"total"`
+	Page     int                           `json:"page"`
+	PageSize int                           `json:"page_size"`
 }

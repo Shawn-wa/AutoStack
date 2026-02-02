@@ -89,6 +89,7 @@ export interface ListRequest {
   page?: number
   page_size?: number
   keyword?: string
+  wid?: number  // 仓库ID筛选
 }
 
 // 平台产品列表查询请求
@@ -201,6 +202,7 @@ export interface Supplier {
   supplier_name: string
   purchase_link: string
   unit_price: number
+  shipping_fee: number
   currency: string
   min_order_qty: number
   lead_time: number
@@ -218,6 +220,7 @@ export interface CreateSupplierRequest {
   supplier_name: string
   purchase_link?: string
   unit_price?: number
+  shipping_fee?: number
   currency?: string
   min_order_qty?: number
   lead_time?: number
@@ -231,6 +234,7 @@ export interface UpdateSupplierRequest {
   supplier_name?: string
   purchase_link?: string
   unit_price?: number
+  shipping_fee?: number
   currency?: string
   min_order_qty?: number
   lead_time?: number
@@ -238,6 +242,54 @@ export interface UpdateSupplierRequest {
   remark?: string
   is_default?: boolean
   status?: string
+}
+
+// 产品带供应商信息
+export interface ProductWithSupplier {
+  id: number
+  wid: number
+  warehouse_name: string
+  sku: string
+  name: string
+  image: string
+  cost_price: number
+  weight: number
+  dimensions: string
+  supplier_id?: number
+  supplier_name?: string
+  unit_price: number
+  shipping_fee: number
+  currency?: string
+  created_at: string
+  updated_at: string
+}
+
+// 批量更新供应商项
+export interface BatchUpdateSupplierItem {
+  product_id: number
+  supplier_name?: string
+  unit_price: number
+  shipping_fee: number
+}
+
+// 批量更新供应商请求
+export interface BatchUpdateSupplierRequest {
+  items: BatchUpdateSupplierItem[]
+}
+
+// 批量更新供应商响应
+export interface BatchUpdateSupplierResponse {
+  success_count: number
+  fail_count: number
+  fail_reasons?: string[]
+}
+
+// 导入供应商响应
+export interface ImportSupplierResponse {
+  total_count: number
+  success_count: number
+  fail_count: number
+  fail_reasons?: string[]
 }
 
 const api = {
@@ -332,6 +384,24 @@ const api = {
   },
   deleteSupplier: (id: number) => {
     return request.delete(`/product/suppliers/${id}`)
+  },
+
+  // 批量操作
+  listProductsWithSupplier: (params: ListRequest) => {
+    return request.get<{ list: ProductWithSupplier[]; total: number; page: number; page_size: number }>('/product/products-with-supplier', { params })
+  },
+  batchUpdateSuppliers: (data: BatchUpdateSupplierRequest) => {
+    return request.put<BatchUpdateSupplierResponse>('/product/suppliers/batch', data)
+  },
+  exportSupplierTemplate: () => {
+    return request.get('/product/suppliers/export-template', { responseType: 'blob' })
+  },
+  importSuppliers: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request.post<ImportSupplierResponse>('/product/suppliers/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
   }
 }
 

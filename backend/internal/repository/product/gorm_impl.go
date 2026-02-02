@@ -51,6 +51,9 @@ func (r *gormProductRepository) List(ctx context.Context, query *ProductQuery) (
 		like := "%" + query.Keyword + "%"
 		q = q.Where("sku LIKE ? OR name LIKE ?", like, like)
 	}
+	if query.WarehouseID > 0 {
+		q = q.Where("wid = ?", query.WarehouseID)
+	}
 
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -372,6 +375,27 @@ func (r *gormProductSupplierRepository) FindByProductID(ctx context.Context, pro
 func (r *gormProductSupplierRepository) FindDefaultByProductID(ctx context.Context, productID uint) (*ProductSupplier, error) {
 	var supplier ProductSupplier
 	if err := r.getDB(ctx).Where("product_id = ? AND is_default = ?", productID, true).
+		First(&supplier).Error; err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+func (r *gormProductSupplierRepository) FindDefaultByProductIDs(ctx context.Context, productIDs []uint) ([]ProductSupplier, error) {
+	if len(productIDs) == 0 {
+		return nil, nil
+	}
+	var suppliers []ProductSupplier
+	if err := r.getDB(ctx).Where("product_id IN ? AND is_default = ?", productIDs, true).
+		Find(&suppliers).Error; err != nil {
+		return nil, err
+	}
+	return suppliers, nil
+}
+
+func (r *gormProductSupplierRepository) FindByProductAndName(ctx context.Context, productID uint, supplierName string) (*ProductSupplier, error) {
+	var supplier ProductSupplier
+	if err := r.getDB(ctx).Where("product_id = ? AND supplier_name = ?", productID, supplierName).
 		First(&supplier).Error; err != nil {
 		return nil, err
 	}

@@ -60,12 +60,13 @@ func NewService(
 }
 
 // ListProducts 获取本地产品列表
-func (s *Service) ListProducts(page, pageSize int, keyword string) ([]Product, int64, error) {
+func (s *Service) ListProducts(page, pageSize int, keyword string, warehouseID uint) ([]Product, int64, error) {
 	ctx := context.Background()
 	return s.productRepo.List(ctx, &productRepo.ProductQuery{
-		Page:     page,
-		PageSize: pageSize,
-		Keyword:  keyword,
+		Page:        page,
+		PageSize:    pageSize,
+		Keyword:     keyword,
+		WarehouseID: warehouseID,
 	})
 }
 
@@ -909,6 +910,7 @@ func (s *Service) CreateSupplier(req CreateSupplierRequest) (*ProductSupplier, e
 		SupplierName:  req.SupplierName,
 		PurchaseLink:  req.PurchaseLink,
 		UnitPrice:     req.UnitPrice,
+		ShippingFee:   req.ShippingFee,
 		Currency:      currency,
 		MinOrderQty:   req.MinOrderQty,
 		LeadTime:      req.LeadTime,
@@ -944,6 +946,7 @@ func (s *Service) UpdateSupplier(id uint, req UpdateSupplierRequest) (*ProductSu
 	}
 	supplier.PurchaseLink = req.PurchaseLink
 	supplier.UnitPrice = req.UnitPrice
+	supplier.ShippingFee = req.ShippingFee
 	if req.Currency != "" {
 		supplier.Currency = req.Currency
 	}
@@ -978,4 +981,218 @@ func (s *Service) DeleteSupplier(id uint) error {
 func (s *Service) SetDefaultSupplier(productID, supplierID uint) error {
 	ctx := context.Background()
 	return s.supplierRepo.SetDefault(ctx, productID, supplierID)
+}
+
+// ========== 批量操作相关 ==========
+
+// ListProductsWithSupplier 获取产品列表（带默认供应商信息）
+func (s *Service) ListProductsWithSupplier(page, pageSize int, keyword string, warehouseID uint) ([]ProductWithSupplierResponse, int64, error) {
+	ctx := context.Background()
+
+	// 获取产品列表
+	products, total, err := s.productRepo.List(ctx, &productRepo.ProductQuery{
+		Page:        page,
+		PageSize:    pageSize,
+		Keyword:     keyword,
+		WarehouseID: warehouseID,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 获取仓库映射
+	warehouseMap := make(map[uint]string)
+	warehouses, _ := s.warehouseRepo.ListActive(ctx)
+	for _, w := range warehouses {
+		warehouseMap[w.ID] = w.Name
+	}
+
+	// 获取所有产品ID
+	productIDs := make([]uint, len(products))
+	for i, p := range products {
+		productIDs[i] = p.ID
+	}
+
+	// 批量获取默认供应商
+	defaultSuppliers, _ := s.supplierRepo.FindDefaultByProductIDs(ctx, productIDs)
+	supplierMap := make(map[uint]*ProductSupplier)
+	for i := range defaultSuppliers {
+		supplierMap[defaultSuppliers[i].ProductID] = &defaultSuppliers[i]
+	}
+
+	// 组装响应
+	var list []ProductWithSupplierResponse
+	for _, p := range products {
+		item := ProductWithSupplierResponse{
+			ID:            p.ID,
+			WID:           p.WID,
+			WarehouseName: warehouseMap[p.WID],
+			SKU:           p.SKU,
+			Name:          p.Name,
+			Image:         p.Image,
+			CostPrice:     p.CostPrice,
+			Weight:        p.Weight,
+			Dimensions:    p.Dimensions,
+			CreatedAt:     p.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:     p.UpdatedAt.Format("2006-01-02 15:04:05"),
+		}
+
+		// 添加默认供应商信息
+		if supplier, ok := supplierMap[p.ID]; ok {
+			item.SupplierID = supplier.ID
+			item.SupplierName = supplier.SupplierName
+			item.UnitPrice = supplier.UnitPrice
+			item.ShippingFee = supplier.ShippingFee
+			item.Currency = supplier.Currency
+		}
+
+		list = append(list, item)
+	}
+
+	return list, total, nil
+}
+
+// BatchUpdateSuppliers 批量更新供应商信息
+func (s *Service) BatchUpdateSuppliers(req BatchUpdateSupplierRequest) (*BatchUpdateSupplierResponse, error) {
+	ctx := context.Background()
+	result := &BatchUpdateSupplierResponse{}
+
+	for _, item := range req.Items {
+		// 检查产品是否存在
+		product, err := s.productRepo.FindByID(ctx, item.ProductID)
+		if err != nil {
+			result.FailCount++
+			result.FailReasons = append(result.FailReasons, fmt.Sprintf("产品ID %d 不存在", item.ProductID))
+			continue
+		}
+
+		// 查找默认供应商或指定名称的供应商
+		var supplier *ProductSupplier
+		if item.SupplierName != "" {
+			// 查找指定名称的供应商
+			supplier, err = s.supplierRepo.FindByProductAndName(ctx, item.ProductID, item.SupplierName)
+		} else {
+			// 查找默认供应商
+			supplier, err = s.supplierRepo.FindDefaultByProductID(ctx, item.ProductID)
+		}
+
+		if err != nil {
+			// 供应商不存在，创建新的
+			supplierName := item.SupplierName
+			if supplierName == "" {
+				supplierName = "默认供应商"
+			}
+			supplier = &ProductSupplier{
+				ProductID:    item.ProductID,
+				SupplierName: supplierName,
+				UnitPrice:    item.UnitPrice,
+				ShippingFee:  item.ShippingFee,
+				Currency:     "CNY",
+				MinOrderQty:  1,
+				IsDefault:    true,
+				Status:       SupplierStatusActive,
+			}
+			if err := s.supplierRepo.Create(ctx, supplier); err != nil {
+				result.FailCount++
+				result.FailReasons = append(result.FailReasons, fmt.Sprintf("SKU %s 创建供应商失败: %v", product.SKU, err))
+				continue
+			}
+		} else {
+			// 更新现有供应商
+			supplier.UnitPrice = item.UnitPrice
+			supplier.ShippingFee = item.ShippingFee
+			if err := s.supplierRepo.Update(ctx, supplier); err != nil {
+				result.FailCount++
+				result.FailReasons = append(result.FailReasons, fmt.Sprintf("SKU %s 更新失败: %v", product.SKU, err))
+				continue
+			}
+		}
+
+		result.SuccessCount++
+	}
+
+	return result, nil
+}
+
+// ImportSuppliers 导入供应商数据
+func (s *Service) ImportSuppliers(items []ImportSupplierItem) (*ImportSupplierResponse, error) {
+	ctx := context.Background()
+	result := &ImportSupplierResponse{
+		TotalCount: len(items),
+	}
+
+	for _, item := range items {
+		// 通过SKU查找产品
+		product, err := s.productRepo.FindBySKU(ctx, item.SKU)
+		if err != nil {
+			result.FailCount++
+			result.FailReasons = append(result.FailReasons, fmt.Sprintf("SKU %s 不存在", item.SKU))
+			continue
+		}
+
+		// 供应商名称
+		supplierName := item.SupplierName
+		if supplierName == "" {
+			supplierName = "默认供应商"
+		}
+
+		// 货币
+		currency := item.Currency
+		if currency == "" {
+			currency = "CNY"
+		}
+
+		// 查找是否已存在同名供应商
+		supplier, err := s.supplierRepo.FindByProductAndName(ctx, product.ID, supplierName)
+		if err != nil {
+			// 不存在，创建新的
+			supplier = &ProductSupplier{
+				ProductID:    product.ID,
+				SupplierName: supplierName,
+				UnitPrice:    item.UnitPrice,
+				ShippingFee:  item.ShippingFee,
+				Currency:     currency,
+				PurchaseLink: item.PurchaseLink,
+				Remark:       item.Remark,
+				MinOrderQty:  1,
+				IsDefault:    true,
+				Status:       SupplierStatusActive,
+			}
+			if err := s.supplierRepo.Create(ctx, supplier); err != nil {
+				result.FailCount++
+				result.FailReasons = append(result.FailReasons, fmt.Sprintf("SKU %s 创建供应商失败: %v", item.SKU, err))
+				continue
+			}
+			// 设为默认
+			_ = s.supplierRepo.SetDefault(ctx, product.ID, supplier.ID)
+		} else {
+			// 存在，更新
+			supplier.UnitPrice = item.UnitPrice
+			supplier.ShippingFee = item.ShippingFee
+			supplier.Currency = currency
+			if item.PurchaseLink != "" {
+				supplier.PurchaseLink = item.PurchaseLink
+			}
+			if item.Remark != "" {
+				supplier.Remark = item.Remark
+			}
+			if err := s.supplierRepo.Update(ctx, supplier); err != nil {
+				result.FailCount++
+				result.FailReasons = append(result.FailReasons, fmt.Sprintf("SKU %s 更新失败: %v", item.SKU, err))
+				continue
+			}
+		}
+
+		result.SuccessCount++
+	}
+
+	return result, nil
+}
+
+// GenerateSupplierTemplate 生成供应商导入模板数据
+func (s *Service) GenerateSupplierTemplate() [][]string {
+	return [][]string{
+		{"SKU", "供应商名称", "采购单价", "物流费", "货币", "采购链接", "备注"},
+		{"SKU001", "示例供应商", "10.00", "5.00", "CNY", "https://example.com", "示例备注"},
+	}
 }

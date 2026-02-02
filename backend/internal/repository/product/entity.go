@@ -115,17 +115,18 @@ func (ProductMapping) TableName() string {
 // ProductSupplier 产品供应商/采购信息（一个产品可以有多个采购来源）
 type ProductSupplier struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	ProductID     uint      `gorm:"index;not null" json:"product_id"`               // 关联本地产品
-	SupplierName  string    `gorm:"size:255;not null" json:"supplier_name"`         // 供应商/采购店铺名称
-	PurchaseLink  string    `gorm:"size:1000" json:"purchase_link"`                 // 采购链接
-	UnitPrice     float64   `gorm:"type:decimal(10,2);default:0" json:"unit_price"` // 采购单价
-	Currency      string    `gorm:"size:10;default:'CNY'" json:"currency"`          // 货币（默认人民币）
-	MinOrderQty   int       `gorm:"default:1" json:"min_order_qty"`                 // 最小起订量
-	LeadTime      int       `gorm:"default:0" json:"lead_time"`                     // 交货周期（天）
-	EstimatedDays int       `gorm:"default:0" json:"estimated_days"`                // 预估时效（天）
-	Remark        string    `gorm:"size:500" json:"remark"`                         // 备注
-	IsDefault     bool      `gorm:"default:false;index" json:"is_default"`          // 是否默认供应商
-	Status        string    `gorm:"size:20;default:'active';index" json:"status"`   // 状态: active/inactive
+	ProductID     uint      `gorm:"index;not null" json:"product_id"`                 // 关联本地产品
+	SupplierName  string    `gorm:"size:255;not null" json:"supplier_name"`           // 供应商/采购店铺名称
+	PurchaseLink  string    `gorm:"size:1000" json:"purchase_link"`                   // 采购链接
+	UnitPrice     float64   `gorm:"type:decimal(10,2);default:0" json:"unit_price"`   // 采购单价
+	ShippingFee   float64   `gorm:"type:decimal(10,2);default:0" json:"shipping_fee"` // 物流费（每件）
+	Currency      string    `gorm:"size:10;default:'CNY'" json:"currency"`            // 货币（默认人民币）
+	MinOrderQty   int       `gorm:"default:1" json:"min_order_qty"`                   // 最小起订量
+	LeadTime      int       `gorm:"default:0" json:"lead_time"`                       // 交货周期（天）
+	EstimatedDays int       `gorm:"default:0" json:"estimated_days"`                  // 预估时效（天）
+	Remark        string    `gorm:"size:500" json:"remark"`                           // 备注
+	IsDefault     bool      `gorm:"default:false;index" json:"is_default"`            // 是否默认供应商
+	Status        string    `gorm:"size:20;default:'active';index" json:"status"`     // 状态: active/inactive
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 

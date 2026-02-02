@@ -87,6 +87,10 @@ type ProductSupplierRepository interface {
 	FindByProductID(ctx context.Context, productID uint) ([]ProductSupplier, error)
 	// FindDefaultByProductID 查找产品的默认供应商
 	FindDefaultByProductID(ctx context.Context, productID uint) (*ProductSupplier, error)
+	// FindDefaultByProductIDs 批量查找产品的默认供应商
+	FindDefaultByProductIDs(ctx context.Context, productIDs []uint) ([]ProductSupplier, error)
+	// FindByProductAndName 根据产品ID和供应商名称查找
+	FindByProductAndName(ctx context.Context, productID uint, supplierName string) (*ProductSupplier, error)
 	// List 分页查询供应商列表
 	List(ctx context.Context, query *ProductSupplierQuery) ([]ProductSupplier, int64, error)
 	// Create 创建供应商

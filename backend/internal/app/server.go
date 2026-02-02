@@ -219,6 +219,12 @@ func (s *Server) setupRoutes() {
 				productGroup.POST("/suppliers", product.CreateSupplier)
 				productGroup.PUT("/suppliers/:id", product.UpdateSupplier)
 				productGroup.DELETE("/suppliers/:id", product.DeleteSupplier)
+				productGroup.PUT("/suppliers/batch", product.BatchUpdateSuppliers)             // 批量更新供应商
+				productGroup.GET("/suppliers/export-template", product.ExportSupplierTemplate) // 导出导入模板
+				productGroup.POST("/suppliers/import", product.ImportSuppliers)                // 导入供应商数据
+
+				// 产品带供应商信息
+				productGroup.GET("/products-with-supplier", product.ListProductsWithSupplier)
 
 				// 平台产品
 				productGroup.GET("/platform-products", product.ListPlatformProducts)

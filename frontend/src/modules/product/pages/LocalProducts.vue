@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Picture, CopyDocument, Link } from '@element-plus/icons-vue'
+import { Plus, Picture, CopyDocument, Upload, Download } from '@element-plus/icons-vue'
 import api, { type Product, type CreateProductRequest, type UpdateProductRequest, type WarehouseResponse, type Supplier, type CreateSupplierRequest, type UpdateSupplierRequest } from '../api'
 import { formatDateTime } from '@/utils/format'
 import ImagePreview from '@/components/ImagePreview.vue'
@@ -24,6 +24,7 @@ const pageSize = ref(10)
 
 // 筛选条件
 const keyword = ref('')
+const filterWarehouseId = ref<number | ''>('')
 
 // 仓库列表
 const warehouseList = ref<WarehouseResponse[]>([])
@@ -55,6 +56,7 @@ const supplierFormData = ref<CreateSupplierRequest & { id?: number }>({
   supplier_name: '',
   purchase_link: '',
   unit_price: 0,
+  shipping_fee: 0,
   currency: 'CNY',
   min_order_qty: 1,
   lead_time: 0,
@@ -89,6 +91,15 @@ const copySku = async (sku: string) => {
   }
 }
 
+// 格式化URL，确保有协议前缀
+const formatUrl = (url: string) => {
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+  return 'https://' + url
+}
+
 // 获取产品列表
 const fetchProducts = async () => {
   loading.value = true
@@ -99,6 +110,9 @@ const fetchProducts = async () => {
     }
     if (keyword.value) {
       params.keyword = keyword.value
+    }
+    if (filterWarehouseId.value) {
+      params.wid = filterWarehouseId.value
     }
     const res = await api.listProducts(params)
     tableData.value = res.data.list || []
@@ -119,6 +133,7 @@ const handleSearch = () => {
 // 重置筛选
 const handleReset = () => {
   keyword.value = ''
+  filterWarehouseId.value = ''
   currentPage.value = 1
   fetchProducts()
 }
@@ -247,6 +262,7 @@ const handleAddSupplier = () => {
     supplier_name: '',
     purchase_link: '',
     unit_price: 0,
+    shipping_fee: 0,
     currency: 'CNY',
     min_order_qty: 1,
     lead_time: 0,
@@ -266,6 +282,7 @@ const handleEditSupplier = (row: Supplier) => {
     supplier_name: row.supplier_name,
     purchase_link: row.purchase_link,
     unit_price: row.unit_price,
+    shipping_fee: row.shipping_fee,
     currency: row.currency,
     min_order_qty: row.min_order_qty,
     lead_time: row.lead_time,
@@ -324,10 +341,61 @@ const handleDeleteSupplier = async (row: Supplier) => {
   }
 }
 
-// 打开采购链接
-const openPurchaseLink = (url: string) => {
-  if (url) {
-    window.open(url, '_blank')
+// ========== 批量导入相关 ==========
+const importDialogVisible = ref(false)
+const importLoading = ref(false)
+const importFile = ref<File | null>(null)
+const importResult = ref<{ total_count: number; success_count: number; fail_count: number; fail_reasons?: string[] } | null>(null)
+
+// 打开导入对话框
+const handleOpenImport = () => {
+  importFile.value = null
+  importResult.value = null
+  importDialogVisible.value = true
+}
+
+// 下载导入模板
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await api.exportSupplierTemplate()
+    const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'supplier_import_template.xlsx'
+    link.click()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('下载模板失败', error)
+    ElMessage.error('下载模板失败')
+  }
+}
+
+// 处理文件选择
+const handleFileChange = (file: any) => {
+  importFile.value = file.raw
+}
+
+// 执行导入
+const handleImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请选择要导入的文件')
+    return
+  }
+
+  importLoading.value = true
+  try {
+    const res = await api.importSuppliers(importFile.value)
+    importResult.value = res.data
+    ElMessage.success(`导入完成：成功 ${res.data.success_count} 条，失败 ${res.data.fail_count} 条`)
+    if (res.data.success_count > 0) {
+      fetchProducts()
+    }
+  } catch (error: any) {
+    console.error('导入失败', error)
+    ElMessage.error('导入失败')
+  } finally {
+    importLoading.value = false
   }
 }
 
@@ -345,6 +413,9 @@ onMounted(() => {
         <p class="page-desc">管理系统产品基础信息</p>
       </div>
       <div class="header-right">
+        <el-button :icon="Upload" @click="handleOpenImport">
+          批量导入采购信息
+        </el-button>
         <el-button type="primary" :icon="Plus" @click="handleCreate">
           新增产品
         </el-button>
@@ -353,6 +424,22 @@ onMounted(() => {
 
     <div class="filter-card">
       <el-form inline>
+        <el-form-item label="仓库">
+          <el-select
+            v-model="filterWarehouseId"
+            placeholder="全部仓库"
+            clearable
+            style="width: 150px"
+            @change="handleSearch"
+          >
+            <el-option
+              v-for="wh in warehouseList"
+              :key="wh.id"
+              :label="wh.name"
+              :value="wh.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="关键词">
           <el-input
             v-model="keyword"
@@ -531,9 +618,10 @@ onMounted(() => {
     <!-- 供应商管理对话框 -->
     <el-dialog
       v-model="supplierDialogVisible"
-      :title="`采购信息 - ${currentProduct?.sku || ''}`"
-      width="1100px"
+      :title="`采购信息 - ${currentProduct?.sku}（${currentProduct?.name || ''}）`"
+      width="1300px"
       destroy-on-close
+      class="supplier-dialog"
     >
       <div class="supplier-header">
         <el-button type="primary" size="small" :icon="Plus" @click="handleAddSupplier">
@@ -546,21 +634,17 @@ onMounted(() => {
         :data="supplierList"
         style="width: 100%"
         stripe
-        size="small"
       >
-        <el-table-column label="供应商/店铺" prop="supplier_name" width="180" show-overflow-tooltip />
-        <el-table-column label="采购链接" width="100">
+        <el-table-column label="供应商/店铺" prop="supplier_name" min-width="180" show-overflow-tooltip />
+        <el-table-column label="采购链接" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-button
+            <a
               v-if="row.purchase_link"
-              type="primary"
-              link
-              size="small"
-              :icon="Link"
-              @click="openPurchaseLink(row.purchase_link)"
-            >
-              打开链接
-            </el-button>
+              :href="formatUrl(row.purchase_link)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="purchase-link"
+            >{{ row.purchase_link }}</a>
             <span v-else class="text-secondary">-</span>
           </template>
         </el-table-column>
@@ -569,27 +653,32 @@ onMounted(() => {
             {{ row.unit_price?.toFixed(2) }} {{ row.currency }}
           </template>
         </el-table-column>
-        <el-table-column label="起订量" prop="min_order_qty" width="80" align="center" />
-        <el-table-column label="交货周期" width="90" align="center">
+        <el-table-column label="物流费" width="120" align="right">
+          <template #default="{ row }">
+            {{ row.shipping_fee?.toFixed(2) }} {{ row.currency }}
+          </template>
+        </el-table-column>
+        <el-table-column label="起订量" prop="min_order_qty" width="90" align="center" />
+        <el-table-column label="交货周期" width="100" align="center">
           <template #default="{ row }">
             {{ row.lead_time ? `${row.lead_time}天` : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="预估时效" width="90" align="center">
+        <el-table-column label="预估时效" width="100" align="center">
           <template #default="{ row }">
             {{ row.estimated_days ? `${row.estimated_days}天` : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="默认" width="60" align="center">
+        <el-table-column label="默认" width="70" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.is_default" type="success" size="small">是</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="备注" prop="remark" min-width="150" show-overflow-tooltip />
-        <el-table-column label="操作" width="120">
+        <el-table-column label="备注" prop="remark" min-width="180" show-overflow-tooltip />
+        <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleEditSupplier(row)">编辑</el-button>
-            <el-button type="danger" link size="small" @click="handleDeleteSupplier(row)">删除</el-button>
+            <el-button type="primary" link @click="handleEditSupplier(row)">编辑</el-button>
+            <el-button type="danger" link @click="handleDeleteSupplier(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -628,6 +717,17 @@ onMounted(() => {
             <el-option label="USD" value="USD" />
             <el-option label="RUB" value="RUB" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="物流费">
+          <el-input-number
+            v-model="supplierFormData.shipping_fee"
+            :precision="2"
+            :step="0.1"
+            :min="0"
+            controls-position="right"
+            style="width: 140px"
+          />
+          <span class="form-unit">元/件</span>
         </el-form-item>
         <el-form-item label="最小起订量">
           <el-input-number
@@ -670,6 +770,81 @@ onMounted(() => {
         <el-button @click="supplierFormVisible = false">取消</el-button>
         <el-button type="primary" :loading="supplierFormLoading" @click="handleSaveSupplier">
           保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog
+      v-model="importDialogVisible"
+      title="批量导入采购信息"
+      width="520px"
+      destroy-on-close
+    >
+      <div class="import-content">
+        <div class="import-step">
+          <div class="step-header">
+            <span class="step-num">1</span>
+            <span class="step-title">下载导入模板</span>
+          </div>
+          <div class="step-body">
+            <el-button :icon="Download" @click="handleDownloadTemplate">
+              下载模板
+            </el-button>
+            <p class="step-tip">请按照模板格式填写数据，SKU 必须与系统中已有产品匹配</p>
+          </div>
+        </div>
+        
+        <div class="import-step">
+          <div class="step-header">
+            <span class="step-num">2</span>
+            <span class="step-title">上传文件</span>
+          </div>
+          <div class="step-body">
+            <el-upload
+              class="upload-area"
+              drag
+              :auto-upload="false"
+              :limit="1"
+              accept=".xlsx,.xls"
+              :on-change="handleFileChange"
+            >
+              <el-icon class="el-icon--upload"><Upload /></el-icon>
+              <div class="el-upload__text">
+                拖拽文件到此处，或 <em>点击上传</em>
+              </div>
+              <template #tip>
+                <div class="el-upload__tip">
+                  仅支持 .xlsx / .xls 格式
+                </div>
+              </template>
+            </el-upload>
+          </div>
+        </div>
+        
+        <div v-if="importResult" class="import-result">
+          <div class="result-header">导入结果</div>
+          <div class="result-stats">
+            <span class="stat-item success">成功：{{ importResult.success_count }}</span>
+            <span class="stat-item fail">失败：{{ importResult.fail_count }}</span>
+            <span class="stat-item total">总计：{{ importResult.total_count }}</span>
+          </div>
+          <div v-if="importResult.fail_reasons && importResult.fail_reasons.length > 0" class="result-errors">
+            <div class="error-title">失败原因：</div>
+            <div v-for="(reason, index) in importResult.fail_reasons.slice(0, 10)" :key="index" class="error-item">
+              {{ reason }}
+            </div>
+            <div v-if="importResult.fail_reasons.length > 10" class="error-more">
+              ... 还有 {{ importResult.fail_reasons.length - 10 }} 条错误
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <template #footer>
+        <el-button @click="importDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="importLoading" @click="handleImport">
+          开始导入
         </el-button>
       </template>
     </el-dialog>
@@ -815,6 +990,12 @@ onMounted(() => {
 }
 
 // 供应商对话框样式
+:deep(.supplier-dialog) {
+  .el-dialog__body {
+    padding: 16px 24px 24px;
+  }
+}
+
 .supplier-header {
   margin-bottom: 16px;
   display: flex;
@@ -823,5 +1004,122 @@ onMounted(() => {
 
 .text-secondary {
   color: var(--text-secondary);
+}
+
+.purchase-link {
+  color: var(--el-color-primary);
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// 导入对话框样式
+.import-content {
+  padding: 0 8px;
+}
+
+.import-step {
+  margin-bottom: 24px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.step-title {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.step-body {
+  padding-left: 36px;
+}
+
+.step-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.upload-area {
+  width: 100%;
+}
+
+.import-result {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg-page);
+  border-radius: var(--radius-md);
+}
+
+.result-header {
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.result-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.stat-item {
+  font-size: 14px;
+  
+  &.success {
+    color: var(--el-color-success);
+  }
+  
+  &.fail {
+    color: var(--el-color-danger);
+  }
+  
+  &.total {
+    color: var(--text-secondary);
+  }
+}
+
+.result-errors {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.error-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.error-item {
+  font-size: 12px;
+  color: var(--el-color-danger);
+  padding: 4px 0;
+}
+
+.error-more {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
 }
 </style>
