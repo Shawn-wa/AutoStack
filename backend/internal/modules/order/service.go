@@ -403,6 +403,101 @@ func (s *Service) SyncOrderCommission(userID, orderID uint) (*Order, error) {
 	return &ord, nil
 }
 
+// SyncSingleOrder 同步单个订单信息（从平台获取最新状态）
+// 优先使用订单详情接口（/v3/posting/fbs/get），效率更高
+func (s *Service) SyncSingleOrder(userID, orderID uint) (*Order, error) {
+	db := database.GetDB()
+
+	// 获取订单信息
+	var ord Order
+	if err := db.Where("id = ? AND user_id = ?", orderID, userID).First(&ord).Error; err != nil {
+		return nil, ErrOrderNotFound
+	}
+
+	// 获取授权信息
+	var auth PlatformAuth
+	if err := db.Where("id = ? AND user_id = ?", ord.PlatformAuthID, userID).First(&auth).Error; err != nil {
+		return nil, ErrAuthNotFound
+	}
+
+	// 获取适配器
+	adapter := GetAdapter(auth.Platform)
+	if adapter == nil {
+		return nil, ErrPlatformNotFound
+	}
+
+	// 解密凭证
+	credentials, err := Decrypt(auth.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("凭证解密失败: %w", err)
+	}
+
+	var matchedOrder *Order
+
+	// 优先使用订单详情接口（更高效）
+	if adapterWithDetail, ok := adapter.(PlatformAdapterWithOrderDetail); ok {
+		matchedOrder, err = adapterWithDetail.GetOrderDetail(credentials, ord.PlatformOrderNo, auth.ID)
+		if err != nil {
+			log.Printf("[SyncSingleOrder] 订单详情接口失败，回退到列表接口: %v", err)
+			matchedOrder = nil // 清空，使用回退逻辑
+		}
+	}
+
+	// 如果订单详情接口不可用或失败，回退到列表接口
+	if matchedOrder == nil {
+		// 使用订单时间前后各1天作为同步范围
+		var since, to time.Time
+		if ord.OrderTime != nil {
+			since = ord.OrderTime.Add(-24 * time.Hour)
+			to = ord.OrderTime.Add(24 * time.Hour)
+		} else {
+			to = time.Now()
+			since = to.AddDate(0, 0, -7)
+		}
+
+		var orders []*Order
+		if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
+			orders, err = adapterWithLog.SyncOrdersWithLog(credentials, since, to, auth.ID)
+		} else {
+			orders, err = adapter.SyncOrders(credentials, since, to)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("从平台获取订单失败: %w", err)
+		}
+
+		// 查找匹配的订单
+		for _, o := range orders {
+			if o.PlatformOrderNo == ord.PlatformOrderNo {
+				matchedOrder = o
+				break
+			}
+		}
+
+		if matchedOrder == nil {
+			return nil, fmt.Errorf("平台未返回该订单信息")
+		}
+	}
+
+	// 更新订单信息
+	updates := map[string]interface{}{
+		"status":          matchedOrder.Status,
+		"platform_status": matchedOrder.PlatformStatus,
+		"total_amount":    matchedOrder.TotalAmount,
+		"ship_time":       matchedOrder.ShipTime,
+		"ship_deadline":   matchedOrder.ShipDeadline,
+	}
+	if err := db.Model(&ord).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("更新订单失败: %w", err)
+	}
+
+	// 重新加载更新后的订单
+	db.Where("id = ?", orderID).Preload("Items").First(&ord)
+
+	log.Printf("[SyncSingleOrder] 订单 %s 同步成功，状态: %s -> %s", ord.PlatformOrderNo, ord.Status, matchedOrder.Status)
+
+	return &ord, nil
+}
+
 // ListOrders 获取订单列表
 func (s *Service) ListOrders(userID uint, req *OrderListRequest) ([]Order, int64, error) {
 	db := database.GetDB()
@@ -452,6 +547,27 @@ func (s *Service) ListOrders(userID uint, req *OrderListRequest) ([]Order, int64
 			endTimeStr = endTimeStr + " 23:59:59"
 		}
 		query = query.Where(fmt.Sprintf("order_time <= '%s'", endTimeStr))
+	}
+
+	// 发货截止时间筛选
+	if req.DeadlineFilter != "" {
+		now := time.Now()
+		switch req.DeadlineFilter {
+		case "overdue":
+			// 已逾期：截止时间已过且订单未发货
+			query = query.Where("ship_deadline IS NOT NULL AND ship_deadline < ? AND status IN ?",
+				now, []string{OrderStatusPending, OrderStatusReadyToShip})
+		case "within_1d":
+			// 1天内：截止时间在当前到1天后之间
+			deadline := now.Add(24 * time.Hour)
+			query = query.Where("ship_deadline IS NOT NULL AND ship_deadline >= ? AND ship_deadline < ? AND status IN ?",
+				now, deadline, []string{OrderStatusPending, OrderStatusReadyToShip})
+		case "within_3d":
+			// 3天内：截止时间在当前到3天后之间
+			deadline := now.Add(72 * time.Hour)
+			query = query.Where("ship_deadline IS NOT NULL AND ship_deadline >= ? AND ship_deadline < ? AND status IN ?",
+				now, deadline, []string{OrderStatusPending, OrderStatusReadyToShip})
+		}
 	}
 
 	query.Count(&total)
@@ -773,8 +889,18 @@ func (s *Service) GetDashboardStats(userID uint) (*DashboardStatsResponse, error
 	// 待处理订单数（待处理+待发货状态）
 	db.Model(&Order{}).Where("user_id = ? AND status IN ?", userID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders)
 
-	// 今日订单数（使用本地时区的今天零点）
+	// 已发货订单数
+	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusShipped).Count(&stats.ShippedOrders)
+
+	// 即将超时订单数（待处理+待发货状态，且发货截止时间距当前不足1天）
 	now := time.Now()
+	deadline := now.Add(24 * time.Hour) // 1天后
+	db.Model(&Order{}).Where(
+		"user_id = ? AND status IN ? AND ship_deadline IS NOT NULL AND ship_deadline < ?",
+		userID, []string{OrderStatusPending, OrderStatusReadyToShip}, deadline,
+	).Count(&stats.TimeoutOrders)
+
+	// 今日订单数（使用本地时区的今天零点）
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	db.Model(&Order{}).Where("user_id = ? AND order_time >= ?", userID, today).Count(&stats.TodayOrders)
 

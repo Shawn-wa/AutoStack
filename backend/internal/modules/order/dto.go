@@ -66,14 +66,15 @@ type SyncOrdersResponse struct {
 
 // OrderListRequest 订单列表请求
 type OrderListRequest struct {
-	Page      int    `form:"page" binding:"omitempty,min=1"`
-	PageSize  int    `form:"page_size" binding:"omitempty,min=1,max=100"`
-	Platform  string `form:"platform"`
-	AuthID    uint   `form:"auth_id"`
-	Status    string `form:"status"`
-	Keyword   string `form:"keyword"`
-	StartTime string `form:"start_time"`
-	EndTime   string `form:"end_time"`
+	Page              int    `form:"page" binding:"omitempty,min=1"`
+	PageSize          int    `form:"page_size" binding:"omitempty,min=1,max=100"`
+	Platform          string `form:"platform"`
+	AuthID            uint   `form:"auth_id"`
+	Status            string `form:"status"`
+	Keyword           string `form:"keyword"`
+	StartTime         string `form:"start_time"`
+	EndTime           string `form:"end_time"`
+	DeadlineFilter    string `form:"deadline_filter"` // 发货截止时间筛选: overdue(已逾期), within_1d(1天内), within_3d(3天内)
 }
 
 // OrderResponse 订单响应
@@ -94,32 +95,40 @@ type OrderResponse struct {
 	Address         string     `json:"address"`
 	OrderTime       *time.Time `json:"order_time"`
 	ShipTime        *time.Time `json:"ship_time"`
+	ShipDeadline    *time.Time `json:"ship_deadline"` // 发货截止时间
 	// 佣金信息
-	AccrualsForSale         float64             `json:"accruals_for_sale"`
-	SaleCommission          float64             `json:"sale_commission"`
-	ProcessingAndDelivery   float64             `json:"processing_and_delivery"`
-	RefundsAndCancellations float64             `json:"refunds_and_cancellations"`
-	ServicesAmount          float64             `json:"services_amount"`
-	CompensationAmount      float64             `json:"compensation_amount"`
-	MoneyTransfer           float64             `json:"money_transfer"`
-	OthersAmount            float64             `json:"others_amount"`
-	ProfitAmount            float64             `json:"profit_amount"`
-	CommissionCurrency      string              `json:"commission_currency"`
-	CommissionSyncedAt      *time.Time          `json:"commission_synced_at"`
-	Items                []OrderItemResponse `json:"items,omitempty"`
-	CreatedAt            string              `json:"created_at"`
-	UpdatedAt            string              `json:"updated_at"`
+	AccrualsForSale         float64    `json:"accruals_for_sale"`
+	SaleCommission          float64    `json:"sale_commission"`
+	ProcessingAndDelivery   float64    `json:"processing_and_delivery"`
+	RefundsAndCancellations float64    `json:"refunds_and_cancellations"`
+	ServicesAmount          float64    `json:"services_amount"`
+	CompensationAmount      float64    `json:"compensation_amount"`
+	MoneyTransfer           float64    `json:"money_transfer"`
+	OthersAmount            float64    `json:"others_amount"`
+	ProfitAmount            float64    `json:"profit_amount"`
+	CommissionCurrency      string     `json:"commission_currency"`
+	CommissionSyncedAt      *time.Time `json:"commission_synced_at"`
+	// 物流费用估算
+	EstimatedShippingFee      float64             `json:"estimated_shipping_fee"`
+	EstimatedShippingCurrency string              `json:"estimated_shipping_currency"`
+	ShippingTemplateID        uint                `json:"shipping_template_id"`
+	ShippingEstimatedAt       *time.Time          `json:"shipping_estimated_at"`
+	Items                     []OrderItemResponse `json:"items,omitempty"`
+	CreatedAt                 string              `json:"created_at"`
+	UpdatedAt                 string              `json:"updated_at"`
 }
 
 // OrderItemResponse 订单商品响应
 type OrderItemResponse struct {
-	ID          uint    `json:"id"`
-	PlatformSku string  `json:"platform_sku"`
-	Sku         string  `json:"sku"`
-	Name        string  `json:"name"`
-	Quantity    int     `json:"quantity"`
-	Price       float64 `json:"price"`
-	Currency    string  `json:"currency"`
+	ID                        uint    `json:"id"`
+	PlatformSku               string  `json:"platform_sku"`
+	Sku                       string  `json:"sku"`
+	Name                      string  `json:"name"`
+	Quantity                  int     `json:"quantity"`
+	Price                     float64 `json:"price"`
+	Currency                  string  `json:"currency"`
+	EstimatedShippingFee      float64 `json:"estimated_shipping_fee"`
+	EstimatedShippingCurrency string  `json:"estimated_shipping_currency"`
 }
 
 // OrderListResponse 订单列表响应
@@ -183,6 +192,8 @@ type DashboardStatsResponse struct {
 	DeliveredOrders int64            `json:"delivered_orders"` // 已签收订单数
 	PendingOrders   int64            `json:"pending_orders"`   // 待处理订单数
 	TodayOrders     int64            `json:"today_orders"`     // 今日订单数
+	ShippedOrders   int64            `json:"shipped_orders"`   // 已发货订单数
+	TimeoutOrders   int64            `json:"timeout_orders"`   // 即将超时订单数（发货时效<1天）
 	TotalAmounts    []CurrencyAmount `json:"total_amounts"`    // 订单总金额（多币种）
 	// 佣金统计
 	TotalProfit     float64 `json:"total_profit"`      // 总利润
@@ -213,8 +224,8 @@ type RecentOrderResponse struct {
 
 // OrderTrendItem 订单趋势数据项
 type OrderTrendItem struct {
-	Date   string `json:"date"`   // 日期 YYYY-MM-DD
-	Count  int64  `json:"count"`  // 订单数量
+	Date   string  `json:"date"`   // 日期 YYYY-MM-DD
+	Count  int64   `json:"count"`  // 订单数量
 	Amount float64 `json:"amount"` // 订单金额
 }
 
@@ -253,11 +264,11 @@ type OrderSummaryPlatformSKU struct {
 type OrderSummaryItem struct {
 	LocalSKU         string                     `json:"local_sku"`
 	ProductName      string                     `json:"product_name"`
-	PlatformSKUs     []string                   `json:"platform_skus"`      // 保持兼容
-	PlatformProducts []OrderSummaryPlatformSKU  `json:"platform_products"`  // 平台产品详情
+	PlatformSKUs     []string                   `json:"platform_skus"`     // 保持兼容
+	PlatformProducts []OrderSummaryPlatformSKU  `json:"platform_products"` // 平台产品详情
 	Quantity         int                        `json:"quantity"`
 	Amount           float64                    `json:"amount"`
 	Currency         string                     `json:"currency"`
 	StatusDetails    []OrderSummaryStatusDetail `json:"status_details"`
-	AvailableStock   int                        `json:"available_stock"`    // 系统可用库存
+	AvailableStock   int                        `json:"available_stock"` // 系统可用库存
 }

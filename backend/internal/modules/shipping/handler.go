@@ -322,3 +322,161 @@ func BatchCalculateShippingHandler(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "计算成功", BatchCalculateResponse{Results: results})
 }
+
+// ========== 本地产品运费模版关联处理 ==========
+
+// BindProductShippingTemplate 绑定本地产品运费模版
+func BindProductShippingTemplate(c *gin.Context) {
+	var req BindProductShippingTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	pst, err := service.BindProductShippingTemplate(&req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, "绑定成功", ConvertProductShippingTemplateToResponse(pst))
+}
+
+// UnbindProductShippingTemplate 解绑本地产品运费模版
+func UnbindProductShippingTemplate(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	if err := service.UnbindProductShippingTemplate(uint(id)); err != nil {
+		response.Error(c, http.StatusInternalServerError, "解绑失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "解绑成功", nil)
+}
+
+// GetProductShippingTemplates 获取本地产品的运费模版列表
+func GetProductShippingTemplates(c *gin.Context) {
+	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的产品ID")
+		return
+	}
+
+	list, err := service.GetProductShippingTemplates(uint(productID))
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取失败")
+		return
+	}
+
+	var respList []ProductShippingTemplateResponse
+	for _, pst := range list {
+		respList = append(respList, *ConvertProductShippingTemplateToResponse(&pst))
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", respList)
+}
+
+// SetProductDefaultShippingTemplate 设置本地产品的默认运费模版
+func SetProductDefaultShippingTemplate(c *gin.Context) {
+	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的产品ID")
+		return
+	}
+
+	var req SetDefaultShippingTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := service.SetProductDefaultShippingTemplate(uint(productID), req.ShippingTemplateID); err != nil {
+		response.Error(c, http.StatusInternalServerError, "设置失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "设置成功", nil)
+}
+
+// ========== 平台产品运费模版关联处理 ==========
+
+// BindPlatformProductShippingTemplate 绑定平台产品运费模版
+func BindPlatformProductShippingTemplate(c *gin.Context) {
+	var req BindPlatformProductShippingTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ppst, err := service.BindPlatformProductShippingTemplate(&req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, "绑定成功", ConvertPlatformProductShippingTemplateToResponse(ppst))
+}
+
+// UnbindPlatformProductShippingTemplate 解绑平台产品运费模版
+func UnbindPlatformProductShippingTemplate(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的ID")
+		return
+	}
+
+	if err := service.UnbindPlatformProductShippingTemplate(uint(id)); err != nil {
+		response.Error(c, http.StatusInternalServerError, "解绑失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "解绑成功", nil)
+}
+
+// GetPlatformProductShippingTemplates 获取平台产品的运费模版列表
+func GetPlatformProductShippingTemplates(c *gin.Context) {
+	platformProductID, err := strconv.ParseUint(c.Param("platformProductId"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的平台产品ID")
+		return
+	}
+
+	list, err := service.GetPlatformProductShippingTemplates(uint(platformProductID))
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取失败")
+		return
+	}
+
+	var respList []PlatformProductShippingTemplateResponse
+	for _, ppst := range list {
+		respList = append(respList, *ConvertPlatformProductShippingTemplateToResponse(&ppst))
+	}
+
+	response.Success(c, http.StatusOK, "获取成功", respList)
+}
+
+// SetPlatformProductDefaultShippingTemplate 设置平台产品的默认运费模版
+func SetPlatformProductDefaultShippingTemplate(c *gin.Context) {
+	platformProductID, err := strconv.ParseUint(c.Param("platformProductId"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的平台产品ID")
+		return
+	}
+
+	var req SetDefaultShippingTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := service.SetPlatformProductDefaultShippingTemplate(uint(platformProductID), req.ShippingTemplateID); err != nil {
+		response.Error(c, http.StatusInternalServerError, "设置失败")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "设置成功", nil)
+}

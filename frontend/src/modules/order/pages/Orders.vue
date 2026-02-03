@@ -32,7 +32,8 @@ const filters = ref({
   status: '',
   keyword: '',
   start_time: '',
-  end_time: ''
+  end_time: '',
+  deadline_filter: ''  // 发货截止时间筛选: overdue, within_1d, within_3d
 })
 
 // 日期范围选择器值
@@ -46,7 +47,8 @@ const resetFilters = () => {
     status: '',
     keyword: '',
     start_time: '',
-    end_time: ''
+    end_time: '',
+    deadline_filter: ''
   }
   dateRange.value = null
   currentPage.value = 1
@@ -109,6 +111,7 @@ const initFiltersFromQuery = () => {
   if (query.keyword) filters.value.keyword = query.keyword as string
   if (query.start_time) filters.value.start_time = query.start_time as string
   if (query.end_time) filters.value.end_time = query.end_time as string
+  if (query.deadline_filter) filters.value.deadline_filter = query.deadline_filter as string
   if (query.page) currentPage.value = Number(query.page)
   if (query.page_size) pageSize.value = Number(query.page_size)
   
@@ -130,6 +133,7 @@ const updateQueryParams = () => {
   if (filters.value.keyword) query.keyword = filters.value.keyword
   if (filters.value.start_time) query.start_time = filters.value.start_time
   if (filters.value.end_time) query.end_time = filters.value.end_time
+  if (filters.value.deadline_filter) query.deadline_filter = filters.value.deadline_filter
   if (currentPage.value > 1) query.page = String(currentPage.value)
   if (pageSize.value !== 20) query.page_size = String(pageSize.value)
   
@@ -151,6 +155,14 @@ const statusOptions = [
   { label: '已发货', value: 'shipped' },
   { label: '已签收', value: 'delivered' },
   { label: '已取消', value: 'cancelled' }
+]
+
+// 发货截止时间筛选选项
+const deadlineOptions = [
+  { label: '全部', value: '' },
+  { label: '已逾期', value: 'overdue' },
+  { label: '1天内到期', value: 'within_1d' },
+  { label: '3天内到期', value: 'within_3d' }
 ]
 
 // 获取平台列表
@@ -185,7 +197,8 @@ const fetchOrders = async () => {
       status: filters.value.status,
       keyword: filters.value.keyword,
       start_time: filters.value.start_time,
-      end_time: filters.value.end_time
+      end_time: filters.value.end_time,
+      deadline_filter: filters.value.deadline_filter
     })
     tableData.value = res.data.list
     total.value = res.data.total
@@ -382,6 +395,16 @@ onMounted(() => {
             <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 120px">
               <el-option
                 v-for="option in statusOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="发货截止">
+            <el-select v-model="filters.deadline_filter" placeholder="全部" clearable style="width: 120px">
+              <el-option
+                v-for="option in deadlineOptions"
                 :key="option.value"
                 :label="option.label"
                 :value="option.value"

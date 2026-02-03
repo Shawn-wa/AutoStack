@@ -303,6 +303,7 @@ func ListOrders(c *gin.Context) {
 			Address:                 ord.Address,
 			OrderTime:               ord.OrderTime,
 			ShipTime:                ord.ShipTime,
+			ShipDeadline:            ord.ShipDeadline,
 			AccrualsForSale:         ord.AccrualsForSale,
 			SaleCommission:          ord.SaleCommission,
 			ProcessingAndDelivery:   ord.ProcessingAndDelivery,
@@ -364,47 +365,54 @@ func GetOrder(c *gin.Context) {
 	items := make([]OrderItemResponse, len(ord.Items))
 	for j, item := range ord.Items {
 		items[j] = OrderItemResponse{
-			ID:          item.ID,
-			PlatformSku: item.PlatformSku,
-			Sku:         item.Sku,
-			Name:        item.Name,
-			Quantity:    item.Quantity,
-			Price:       item.Price,
-			Currency:    item.Currency,
+			ID:                        item.ID,
+			PlatformSku:               item.PlatformSku,
+			Sku:                       item.Sku,
+			Name:                      item.Name,
+			Quantity:                  item.Quantity,
+			Price:                     item.Price,
+			Currency:                  item.Currency,
+			EstimatedShippingFee:      item.EstimatedShippingFee,
+			EstimatedShippingCurrency: item.EstimatedShippingCurrency,
 		}
 	}
 
 	response.Success(c, http.StatusOK, "获取成功", OrderResponse{
-		ID:                      ord.ID,
-		Platform:                ord.Platform,
-		PlatformOrderNo:         ord.PlatformOrderNo,
-		Status:                  ord.Status,
-		PlatformStatus:          ord.PlatformStatus,
-		TotalAmount:             ord.TotalAmount,
-		Currency:                ord.Currency,
-		RecipientName:           ord.RecipientName,
-		RecipientPhone:          ord.RecipientPhone,
-		Country:                 ord.Country,
-		Province:                ord.Province,
-		City:                    ord.City,
-		ZipCode:                 ord.ZipCode,
-		Address:                 ord.Address,
-		OrderTime:               ord.OrderTime,
-		ShipTime:                ord.ShipTime,
-		AccrualsForSale:         ord.AccrualsForSale,
-		SaleCommission:          ord.SaleCommission,
-		ProcessingAndDelivery:   ord.ProcessingAndDelivery,
-		RefundsAndCancellations: ord.RefundsAndCancellations,
-		ServicesAmount:          ord.ServicesAmount,
-		CompensationAmount:      ord.CompensationAmount,
-		MoneyTransfer:           ord.MoneyTransfer,
-		OthersAmount:            ord.OthersAmount,
-		ProfitAmount:            ord.ProfitAmount,
-		CommissionCurrency:      ord.CommissionCurrency,
-		CommissionSyncedAt:      ord.CommissionSyncedAt,
-		Items:                   items,
-		CreatedAt:               ord.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt:               ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:                        ord.ID,
+		Platform:                  ord.Platform,
+		PlatformOrderNo:           ord.PlatformOrderNo,
+		Status:                    ord.Status,
+		PlatformStatus:            ord.PlatformStatus,
+		TotalAmount:               ord.TotalAmount,
+		Currency:                  ord.Currency,
+		RecipientName:             ord.RecipientName,
+		RecipientPhone:            ord.RecipientPhone,
+		Country:                   ord.Country,
+		Province:                  ord.Province,
+		City:                      ord.City,
+		ZipCode:                   ord.ZipCode,
+		Address:                   ord.Address,
+		OrderTime:                 ord.OrderTime,
+		ShipTime:                  ord.ShipTime,
+		ShipDeadline:              ord.ShipDeadline,
+		AccrualsForSale:           ord.AccrualsForSale,
+		SaleCommission:            ord.SaleCommission,
+		ProcessingAndDelivery:     ord.ProcessingAndDelivery,
+		RefundsAndCancellations:   ord.RefundsAndCancellations,
+		ServicesAmount:            ord.ServicesAmount,
+		CompensationAmount:        ord.CompensationAmount,
+		MoneyTransfer:             ord.MoneyTransfer,
+		OthersAmount:              ord.OthersAmount,
+		ProfitAmount:              ord.ProfitAmount,
+		CommissionCurrency:        ord.CommissionCurrency,
+		CommissionSyncedAt:        ord.CommissionSyncedAt,
+		EstimatedShippingFee:      ord.EstimatedShippingFee,
+		EstimatedShippingCurrency: ord.EstimatedShippingCurrency,
+		ShippingTemplateID:        ord.ShippingTemplateID,
+		ShippingEstimatedAt:       ord.ShippingEstimatedAt,
+		Items:                     items,
+		CreatedAt:                 ord.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:                 ord.UpdatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -523,6 +531,7 @@ func SyncOrderCommission(c *gin.Context) {
 		Address:                 ord.Address,
 		OrderTime:               ord.OrderTime,
 		ShipTime:                ord.ShipTime,
+		ShipDeadline:            ord.ShipDeadline,
 		AccrualsForSale:         ord.AccrualsForSale,
 		SaleCommission:          ord.SaleCommission,
 		ProcessingAndDelivery:   ord.ProcessingAndDelivery,
@@ -537,6 +546,93 @@ func SyncOrderCommission(c *gin.Context) {
 		Items:                   items,
 		CreatedAt:               ord.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:               ord.UpdatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// SyncSingleOrder 同步单个订单信息（从平台获取最新状态）
+func SyncSingleOrder(c *gin.Context) {
+	userID := getUserID(c)
+	if userID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的订单ID")
+		return
+	}
+
+	ord, err := orderService.SyncSingleOrder(userID, uint(id))
+	if err != nil {
+		if err == ErrOrderNotFound {
+			response.Error(c, http.StatusNotFound, "订单不存在")
+			return
+		}
+		if err == ErrAuthNotFound {
+			response.Error(c, http.StatusNotFound, "授权不存在")
+			return
+		}
+		if err == ErrPlatformNotFound {
+			response.Error(c, http.StatusBadRequest, "不支持的平台")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "同步订单失败: "+err.Error())
+		return
+	}
+
+	// 转换为响应格式
+	items := make([]OrderItemResponse, len(ord.Items))
+	for i, item := range ord.Items {
+		items[i] = OrderItemResponse{
+			ID:                        item.ID,
+			PlatformSku:               item.PlatformSku,
+			Sku:                       item.Sku,
+			Name:                      item.Name,
+			Quantity:                  item.Quantity,
+			Price:                     item.Price,
+			Currency:                  item.Currency,
+			EstimatedShippingFee:      item.EstimatedShippingFee,
+			EstimatedShippingCurrency: item.EstimatedShippingCurrency,
+		}
+	}
+
+	response.Success(c, http.StatusOK, "同步成功", OrderResponse{
+		ID:                        ord.ID,
+		Platform:                  ord.Platform,
+		PlatformOrderNo:           ord.PlatformOrderNo,
+		Status:                    ord.Status,
+		PlatformStatus:            ord.PlatformStatus,
+		TotalAmount:               ord.TotalAmount,
+		Currency:                  ord.Currency,
+		RecipientName:             ord.RecipientName,
+		RecipientPhone:            ord.RecipientPhone,
+		Country:                   ord.Country,
+		Province:                  ord.Province,
+		City:                      ord.City,
+		ZipCode:                   ord.ZipCode,
+		Address:                   ord.Address,
+		OrderTime:                 ord.OrderTime,
+		ShipTime:                  ord.ShipTime,
+		ShipDeadline:              ord.ShipDeadline,
+		AccrualsForSale:           ord.AccrualsForSale,
+		SaleCommission:            ord.SaleCommission,
+		ProcessingAndDelivery:     ord.ProcessingAndDelivery,
+		RefundsAndCancellations:   ord.RefundsAndCancellations,
+		ServicesAmount:            ord.ServicesAmount,
+		CompensationAmount:        ord.CompensationAmount,
+		MoneyTransfer:             ord.MoneyTransfer,
+		OthersAmount:              ord.OthersAmount,
+		ProfitAmount:              ord.ProfitAmount,
+		CommissionCurrency:        ord.CommissionCurrency,
+		CommissionSyncedAt:        ord.CommissionSyncedAt,
+		EstimatedShippingFee:      ord.EstimatedShippingFee,
+		EstimatedShippingCurrency: ord.EstimatedShippingCurrency,
+		ShippingTemplateID:        ord.ShippingTemplateID,
+		ShippingEstimatedAt:       ord.ShippingEstimatedAt,
+		Items:                     items,
+		CreatedAt:                 ord.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:                 ord.UpdatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 

@@ -33,6 +33,15 @@ type PlatformAdapterWithLog interface {
 	GetSingleOrderCommission(credentials string, postingNumber string, platformAuthID uint) (*CommissionData, error)
 }
 
+// PlatformAdapterWithOrderDetail 支持获取单个订单详情的适配器接口
+type PlatformAdapterWithOrderDetail interface {
+	PlatformAdapter
+	// GetOrderDetail 获取单个订单详情
+	// API: POST /v3/posting/fbs/get (Ozon)
+	// 文档: https://docs.ozon.ru/api/seller/zh/#operation/PostingAPI_GetFbsPostingV3
+	GetOrderDetail(credentials string, postingNumber string, platformAuthID uint) (*Order, error)
+}
+
 // PlatformAdapterWithOrders 支持按订单号列表获取佣金的适配器接口
 type PlatformAdapterWithOrders interface {
 	PlatformAdapter

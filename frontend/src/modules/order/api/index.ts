@@ -91,6 +91,7 @@ export interface Order {
   address: string
   order_time: string | null
   ship_time: string | null
+  ship_deadline: string | null  // 发货截止时间
   // 佣金信息
   sale_commission: number
   accruals_for_sale: number
@@ -118,6 +119,7 @@ export interface OrderListParams {
   keyword?: string
   start_time?: string
   end_time?: string
+  deadline_filter?: string  // 发货截止时间筛选: overdue, within_1d, within_3d
 }
 
 // 订单列表响应
@@ -199,6 +201,11 @@ export function syncOrderCommission(orderId: number) {
   return request.post<any, { data: Order }>(`/order/orders/${orderId}/sync-commission`)
 }
 
+// 同步单个订单信息（从平台获取最新状态）
+export function syncSingleOrder(orderId: number) {
+  return request.post<any, { data: Order }>(`/order/orders/${orderId}/sync`)
+}
+
 // ========== 现金流报表相关 ==========
 
 // 现金流报表
@@ -264,6 +271,8 @@ export interface DashboardStats {
   delivered_orders: number
   pending_orders: number
   today_orders: number
+  shipped_orders: number   // 已发货订单数
+  timeout_orders: number   // 即将超时订单数
   total_amounts: Array<{ currency: string; amount: number }>
   total_profit: number
   total_commission: number

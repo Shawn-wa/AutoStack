@@ -48,6 +48,31 @@ func (api *OrderAPI) GetOrderList(since, to time.Time, offset, limit int) (*Orde
 	return &result, nil
 }
 
+// GetOrderDetail 获取单个订单详情
+// API: POST /v3/posting/fbs/get
+// 文档: https://docs.ozon.ru/api/seller/zh/#operation/PostingAPI_GetFbsPostingV3
+func (api *OrderAPI) GetOrderDetail(postingNumber string) (*OrderDetailResponse, error) {
+	req := OrderDetailRequest{
+		PostingNumber: postingNumber,
+		With: OrderListWith{
+			AnalyticsData: true,
+			FinancialData: true,
+		},
+	}
+
+	resp, err := api.client.DoRequest("POST", "/v3/posting/fbs/get", req, platform.RequestTypeOrderList)
+	if err != nil {
+		return nil, err
+	}
+
+	var result OrderDetailResponse
+	if err := json.Unmarshal(resp.Body, &result); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	return &result, nil
+}
+
 // TestConnection 测试连接
 // 使用获取订单列表API验证凭证
 func (api *OrderAPI) TestConnection() error {
@@ -72,4 +97,3 @@ func (api *OrderAPI) TestConnection() error {
 
 	return nil
 }
-

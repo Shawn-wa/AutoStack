@@ -204,6 +204,26 @@ func (a *OzonAdapter) GetSingleOrderCommission(credentials string, postingNumber
 	}, nil
 }
 
+// GetOrderDetail 获取单个订单详情
+// API: POST /v3/posting/fbs/get
+// 文档: https://docs.ozon.ru/api/seller/zh/#operation/PostingAPI_GetFbsPostingV3
+func (a *OzonAdapter) GetOrderDetail(credentials string, postingNumber string, platformAuthID uint) (*order.Order, error) {
+	client, err := a.createClient(credentials, platformAuthID)
+	if err != nil {
+		return nil, err
+	}
+
+	orderAPI := ozon.NewOrderAPI(client)
+	resp, err := orderAPI.GetOrderDetail(postingNumber)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换为统一订单格式
+	ord := a.convertToOrder(&resp.Result)
+	return ord, nil
+}
+
 // GetCashFlowStatements 获取现金流报表
 func (a *OzonAdapter) GetCashFlowStatements(credentials string, since, to time.Time, platformAuthID uint) ([]order.CashFlowStatement, error) {
 	client, err := a.createClient(credentials, platformAuthID)
@@ -302,9 +322,21 @@ func (a *OzonAdapter) convertToOrder(posting *ozon.Posting) *order.Order {
 		}
 	}
 
-	// 解析发货时间
-	if posting.ShipmentDate != "" {
+	// 解析发货截止时间（Ozon 的 shipment_date_without_delay 是最后逾期发货时间）
+	if posting.ShipmentDateWithoutDelay != "" {
+		if t, err := time.Parse(time.RFC3339, posting.ShipmentDateWithoutDelay); err == nil {
+			ord.ShipDeadline = &t
+		}
+	} else if posting.ShipmentDate != "" {
+		// 如果没有 shipment_date_without_delay，使用 shipment_date 作为备选
 		if t, err := time.Parse(time.RFC3339, posting.ShipmentDate); err == nil {
+			ord.ShipDeadline = &t
+		}
+	}
+
+	// 解析实际发货时间（配送开始时间）
+	if posting.DeliveringDate != "" {
+		if t, err := time.Parse(time.RFC3339, posting.DeliveringDate); err == nil {
 			ord.ShipTime = &t
 		}
 	}
@@ -357,17 +389,17 @@ func init() {
 	// Ozon 订单状态映射
 	// 文档参考: https://docs.ozon.ru/api/seller/#operation/PostingAPI_GetFbsPostingListV3
 	order.RegisterPlatformStatusMapping(order.PlatformOzon, map[string]string{
-		"awaiting_packaging":  order.OrderStatusPending,     // 等待包装
-		"awaiting_deliver":    order.OrderStatusReadyToShip, // 等待交付
-		"ready_to_ship":       order.OrderStatusReadyToShip, // 准备发货
-		"arbitration":         order.OrderStatusPending,     // 仲裁中
-		"client_arbitration":  order.OrderStatusPending,     // 客户仲裁
-		"delivering":          order.OrderStatusShipped,     // 配送中
-		"driver_pickup":       order.OrderStatusShipped,     // 司机取货
-		"delivered":           order.OrderStatusDelivered,   // 已送达
-		"cancelled":           order.OrderStatusCancelled,   // 已取消
-		"not_accepted":        order.OrderStatusCancelled,   // 未接受
-		"sent_by_seller":      order.OrderStatusShipped,     // 卖家已发货
+		"awaiting_packaging": order.OrderStatusPending,     // 等待包装
+		"awaiting_deliver":   order.OrderStatusReadyToShip, // 等待交付
+		"ready_to_ship":      order.OrderStatusReadyToShip, // 准备发货
+		"arbitration":        order.OrderStatusPending,     // 仲裁中
+		"client_arbitration": order.OrderStatusPending,     // 客户仲裁
+		"delivering":         order.OrderStatusShipped,     // 配送中
+		"driver_pickup":      order.OrderStatusShipped,     // 司机取货
+		"delivered":          order.OrderStatusDelivered,   // 已送达
+		"cancelled":          order.OrderStatusCancelled,   // 已取消
+		"not_accepted":       order.OrderStatusCancelled,   // 未接受
+		"sent_by_seller":     order.OrderStatusShipped,     // 卖家已发货
 	})
 
 	// 自动注册适配器

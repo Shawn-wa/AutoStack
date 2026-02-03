@@ -24,6 +24,7 @@ type Order struct {
 	Address         string     `gorm:"size:500" json:"address"`
 	OrderTime       *time.Time `json:"order_time"`
 	ShipTime        *time.Time `json:"ship_time"`
+	ShipDeadline    *time.Time `json:"ship_deadline"` // 发货截止时间
 	// ========== 佣金相关字段 ==========
 	AccrualsForSale         float64    `gorm:"type:decimal(10,2);default:0" json:"accruals_for_sale"`
 	SaleCommission          float64    `gorm:"type:decimal(10,2);default:0" json:"sale_commission"`
@@ -37,9 +38,14 @@ type Order struct {
 	CommissionCurrency      string     `gorm:"size:10" json:"commission_currency"`
 	CommissionSyncedAt      *time.Time `json:"commission_synced_at"`
 	RawData                 string     `gorm:"type:longtext" json:"-"`
-	CreatedAt               time.Time  `json:"created_at"`
-	UpdatedAt               time.Time  `json:"updated_at"`
-	Items                   []OrderItem `gorm:"foreignKey:OrderID" json:"items,omitempty"`
+	// ========== 物流费用估算字段 ==========
+	EstimatedShippingFee      float64     `gorm:"type:decimal(10,2);default:0" json:"estimated_shipping_fee"` // 估算物流费用
+	EstimatedShippingCurrency string      `gorm:"size:10" json:"estimated_shipping_currency"`                 // 物流费用货币
+	ShippingTemplateID        uint        `gorm:"default:0" json:"shipping_template_id"`                      // 使用的运费模版ID
+	ShippingEstimatedAt       *time.Time  `json:"shipping_estimated_at"`                                      // 物流费用估算时间
+	CreatedAt                 time.Time   `json:"created_at"`
+	UpdatedAt                 time.Time   `json:"updated_at"`
+	Items                     []OrderItem `gorm:"foreignKey:OrderID" json:"items,omitempty"`
 }
 
 // TableName 指定表名
@@ -57,6 +63,9 @@ type OrderItem struct {
 	Quantity    int     `gorm:"not null" json:"quantity"`
 	Price       float64 `gorm:"type:decimal(10,2)" json:"price"`
 	Currency    string  `gorm:"size:10" json:"currency"`
+	// 物流费用估算
+	EstimatedShippingFee      float64 `gorm:"type:decimal(10,2);default:0" json:"estimated_shipping_fee"` // 单品估算物流费用
+	EstimatedShippingCurrency string  `gorm:"size:10" json:"estimated_shipping_currency"`                 // 物流费用货币
 }
 
 // TableName 指定表名

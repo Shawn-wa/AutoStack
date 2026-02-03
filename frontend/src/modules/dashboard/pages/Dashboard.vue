@@ -66,6 +66,14 @@ const statCards = computed(() => {
       filter: { status: 'delivered' }
     },
     { 
+      label: '已发货', 
+      value: stats.value.shipped_orders, 
+      icon: '🚚', 
+      color: 'cyan',
+      suffix: '单',
+      filter: { status: 'shipped' }
+    },
+    { 
       label: '今日新增', 
       value: stats.value.today_orders, 
       icon: '📈', 
@@ -80,6 +88,14 @@ const statCards = computed(() => {
       color: 'warning',
       suffix: '单',
       filter: { status: 'pending,ready_to_ship' } // 待处理+待发货
+    },
+    { 
+      label: '即将超时', 
+      value: stats.value.timeout_orders, 
+      icon: '⚠️', 
+      color: 'danger',
+      suffix: '单',
+      filter: { status: 'pending,ready_to_ship' } // 跳转到待处理订单列表
     },
   ]
 })
@@ -480,7 +496,7 @@ onUnmounted(() => {
           <span class="title-icon">📊</span>
           订单统计
         </h2>
-        <div class="stats-grid stats-grid-2">
+        <div class="stats-grid stats-grid-3">
           <div 
             v-for="stat in statCards" 
             :key="stat.label" 
@@ -675,6 +691,10 @@ onUnmounted(() => {
   &.stats-section-half {
     flex: 1;
     min-width: 0;
+    
+    &:first-child {
+      flex: 1.5; // 订单统计区域占更大比例
+    }
   }
 }
 
@@ -689,6 +709,11 @@ onUnmounted(() => {
   
   &.stats-grid-2 {
     grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  &.stats-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
   }
 }
@@ -1121,6 +1146,10 @@ onUnmounted(() => {
     &.stats-grid-2 {
       grid-template-columns: repeat(2, 1fr);
     }
+    
+    &.stats-grid-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
   }
   
   .bottom-section {
@@ -1137,6 +1166,18 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
     
     &.stats-grid-2 {
+      grid-template-columns: 1fr;
+    }
+    
+    &.stats-grid-3 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    &.stats-grid-3 {
       grid-template-columns: 1fr;
     }
   }

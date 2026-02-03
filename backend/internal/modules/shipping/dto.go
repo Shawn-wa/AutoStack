@@ -121,3 +121,85 @@ type BatchCalculateRequest struct {
 type BatchCalculateResponse struct {
 	Results []CalculateShippingResponse `json:"results"`
 }
+
+// ========== 产品运费模版关联 DTO ==========
+
+// BindProductShippingTemplateRequest 绑定本地产品运费模版请求
+type BindProductShippingTemplateRequest struct {
+	ProductID          uint `json:"product_id" binding:"required"`
+	ShippingTemplateID uint `json:"shipping_template_id" binding:"required"`
+	IsDefault          bool `json:"is_default"`
+	SortOrder          int  `json:"sort_order"`
+}
+
+// BindPlatformProductShippingTemplateRequest 绑定平台产品运费模版请求
+type BindPlatformProductShippingTemplateRequest struct {
+	PlatformProductID  uint `json:"platform_product_id" binding:"required"`
+	ShippingTemplateID uint `json:"shipping_template_id" binding:"required"`
+	IsDefault          bool `json:"is_default"`
+	SortOrder          int  `json:"sort_order"`
+}
+
+// SetDefaultShippingTemplateRequest 设置默认运费模版请求
+type SetDefaultShippingTemplateRequest struct {
+	ShippingTemplateID uint `json:"shipping_template_id" binding:"required"`
+}
+
+// ProductShippingTemplateResponse 产品运费模版关联响应
+type ProductShippingTemplateResponse struct {
+	ID                 uint   `json:"id"`
+	ProductID          uint   `json:"product_id"`
+	ShippingTemplateID uint   `json:"shipping_template_id"`
+	TemplateName       string `json:"template_name"`
+	Carrier            string `json:"carrier"`
+	IsDefault          bool   `json:"is_default"`
+	SortOrder          int    `json:"sort_order"`
+	Status             string `json:"status"`
+	CreatedAt          string `json:"created_at"`
+}
+
+// PlatformProductShippingTemplateResponse 平台产品运费模版关联响应
+type PlatformProductShippingTemplateResponse struct {
+	ID                 uint   `json:"id"`
+	PlatformProductID  uint   `json:"platform_product_id"`
+	ShippingTemplateID uint   `json:"shipping_template_id"`
+	TemplateName       string `json:"template_name"`
+	Carrier            string `json:"carrier"`
+	IsDefault          bool   `json:"is_default"`
+	SortOrder          int    `json:"sort_order"`
+	Status             string `json:"status"`
+	CreatedAt          string `json:"created_at"`
+}
+
+// ========== 订单运费估算 DTO ==========
+
+// EstimateOrderShippingRequest 估算订单运费请求
+type EstimateOrderShippingRequest struct {
+	OrderID uint `json:"order_id" binding:"required"`
+}
+
+// EstimateOrderShippingResponse 估算订单运费响应
+type EstimateOrderShippingResponse struct {
+	OrderID          uint                        `json:"order_id"`
+	TotalShippingFee float64                     `json:"total_shipping_fee"`
+	Currency         string                      `json:"currency"`
+	Items            []OrderItemShippingEstimate `json:"items"`
+	EstimatedAt      string                      `json:"estimated_at"`
+}
+
+// OrderItemShippingEstimate 订单项运费估算
+type OrderItemShippingEstimate struct {
+	OrderItemID      uint    `json:"order_item_id"`
+	PlatformSku      string  `json:"platform_sku"`
+	LocalSku         string  `json:"local_sku"`
+	Quantity         int     `json:"quantity"`
+	Weight           int     `json:"weight"`             // 单件重量(g)
+	TotalWeight      int     `json:"total_weight"`       // 总重量(g)
+	ShippingFee      float64 `json:"shipping_fee"`       // 单件运费
+	TotalShippingFee float64 `json:"total_shipping_fee"` // 总运费
+	Currency         string  `json:"currency"`
+	TemplateID       uint    `json:"template_id"`
+	TemplateName     string  `json:"template_name"`
+	EstimatedDays    int     `json:"estimated_days"`
+	Source           string  `json:"source"` // 运费模版来源: platform_product/product/none
+}

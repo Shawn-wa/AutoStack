@@ -58,6 +58,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&product.ProductSupplier{},
 		&shippingRepo.ShippingTemplate{},
 		&shippingRepo.ShippingTemplateRule{},
+		&shippingRepo.ProductShippingTemplate{},
+		&shippingRepo.PlatformProductShippingTemplate{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -70,6 +72,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	shipping.InitService(
 		shippingRepo.NewShippingTemplateRepository(database.GetDB()),
 		shippingRepo.NewShippingTemplateRuleRepository(database.GetDB()),
+		shippingRepo.NewProductShippingTemplateRepository(database.GetDB()),
+		shippingRepo.NewPlatformProductShippingTemplateRepository(database.GetDB()),
 	)
 
 	// 初始化默认超级管理员（需在 user.InitHandler 之后）
@@ -204,6 +208,7 @@ func (s *Server) setupRoutes() {
 				// 订单管理
 				orderGroup.GET("/orders", order.ListOrders)
 				orderGroup.GET("/orders/:id", order.GetOrder)
+				orderGroup.POST("/orders/:id/sync", order.SyncSingleOrder)
 				orderGroup.POST("/orders/:id/sync-commission", order.SyncOrderCommission)
 
 				// 现金流报表
@@ -282,6 +287,18 @@ func (s *Server) setupRoutes() {
 				// 运费计算
 				shippingGroup.POST("/calculate", shipping.CalculateShippingHandler)
 				shippingGroup.POST("/calculate/batch", shipping.BatchCalculateShippingHandler)
+
+				// 本地产品运费模版绑定
+				shippingGroup.POST("/product-templates", shipping.BindProductShippingTemplate)
+				shippingGroup.DELETE("/product-templates/:id", shipping.UnbindProductShippingTemplate)
+				shippingGroup.GET("/products/:productId/templates", shipping.GetProductShippingTemplates)
+				shippingGroup.PUT("/products/:productId/default-template", shipping.SetProductDefaultShippingTemplate)
+
+				// 平台产品运费模版绑定
+				shippingGroup.POST("/platform-product-templates", shipping.BindPlatformProductShippingTemplate)
+				shippingGroup.DELETE("/platform-product-templates/:id", shipping.UnbindPlatformProductShippingTemplate)
+				shippingGroup.GET("/platform-products/:platformProductId/templates", shipping.GetPlatformProductShippingTemplates)
+				shippingGroup.PUT("/platform-products/:platformProductId/default-template", shipping.SetPlatformProductDefaultShippingTemplate)
 			}
 		}
 	}

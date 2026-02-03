@@ -38,19 +38,33 @@ type OrderListResponse struct {
 	} `json:"result"`
 }
 
+// OrderDetailRequest 订单详情请求
+// API: POST /v3/posting/fbs/get
+// 文档: https://docs.ozon.ru/api/seller/zh/#operation/PostingAPI_GetFbsPostingV3
+type OrderDetailRequest struct {
+	PostingNumber string        `json:"posting_number"`
+	With          OrderListWith `json:"with"`
+}
+
+// OrderDetailResponse 订单详情响应
+type OrderDetailResponse struct {
+	Result Posting `json:"result"`
+}
+
 // Posting 发货单
 type Posting struct {
-	PostingNumber  string         `json:"posting_number"`
-	OrderID        int64          `json:"order_id"`
-	OrderNumber    string         `json:"order_number"`
-	Status         string         `json:"status"`
-	InProcessAt    string         `json:"in_process_at"`
-	ShipmentDate   string         `json:"shipment_date"`
-	DeliveringDate string         `json:"delivering_date"`
-	Products       []Product      `json:"products"`
-	Customer       *Customer      `json:"customer,omitempty"`
-	AddressInfo    *AddressInfo   `json:"addressee,omitempty"`
-	FinancialData  *FinancialData `json:"financial_data,omitempty"`
+	PostingNumber            string         `json:"posting_number"`
+	OrderID                  int64          `json:"order_id"`
+	OrderNumber              string         `json:"order_number"`
+	Status                   string         `json:"status"`
+	InProcessAt              string         `json:"in_process_at"`
+	ShipmentDate             string         `json:"shipment_date"`               // 预计发货日期
+	ShipmentDateWithoutDelay string         `json:"shipment_date_without_delay"` // 发货截止时间（逾期时间）
+	DeliveringDate           string         `json:"delivering_date"`
+	Products                 []Product      `json:"products"`
+	Customer                 *Customer      `json:"customer,omitempty"`
+	AddressInfo              *AddressInfo   `json:"addressee,omitempty"`
+	FinancialData            *FinancialData `json:"financial_data,omitempty"`
 }
 
 // Product 商品
@@ -356,8 +370,8 @@ type ProductInfoItem struct {
 	TypeID                int64                    `json:"type_id"`
 	CreatedAt             string                   `json:"created_at"`
 	UpdatedAt             string                   `json:"updated_at"`
-	Images       []string    `json:"images"`
-	PrimaryImage interface{} `json:"primary_image"` // 主图URL (可能是字符串或数组)
+	Images                []string                 `json:"images"`
+	PrimaryImage          interface{}              `json:"primary_image"` // 主图URL (可能是字符串或数组)
 }
 
 // GetPrimaryImageURL 获取主图URL

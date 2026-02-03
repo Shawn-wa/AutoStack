@@ -9,6 +9,7 @@ import {
   getOrder,
   getPlatforms,
   syncOrderCommission,
+  syncSingleOrder,
   type Order,
   type PlatformInfo
 } from '@/modules/order/api'
@@ -18,6 +19,7 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(true)
+const syncingOrder = ref(false)
 const syncingCommission = ref(false)
 const order = ref<Order | null>(null)
 const platforms = ref<PlatformInfo[]>([])
@@ -53,6 +55,36 @@ const getStatusText = (status: string) => {
     case 'cancelled': return '已取消'
     default: return status
   }
+}
+
+// 获取平台状态显示文字（Ozon等平台原始状态的中文映射）
+const getPlatformStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    // Ozon 平台状态
+    'awaiting_packaging': '等待包装',
+    'awaiting_deliver': '等待交付',
+    'ready_to_ship': '准备发货',
+    'arbitration': '仲裁中',
+    'client_arbitration': '客户仲裁',
+    'delivering': '配送中',
+    'driver_pickup': '司机取货',
+    'delivered': '已送达',
+    'cancelled': '已取消',
+    'not_accepted': '未接受',
+    'sent_by_seller': '卖家已发货',
+  }
+  return statusMap[status] || status
+}
+
+// 判断发货截止时间是否临近或已逾期（距当前时间<=2天，或已过期）
+const isDeadlineNear = (deadline: string | null | undefined) => {
+  if (!deadline) return false
+  const deadlineDate = new Date(deadline)
+  const now = new Date()
+  const diffMs = deadlineDate.getTime() - now.getTime()
+  const diffHours = diffMs / (1000 * 60 * 60)
+  // 已逾期（diffHours < 0）或2天内到期（diffHours <= 48）
+  return diffHours <= 48
 }
 
 // 佣金货币（优先使用佣金货币，否则使用订单货币）
@@ -115,6 +147,23 @@ const handleRefresh = () => {
   fetchOrder()
 }
 
+// 同步订单信息（从平台获取最新状态）
+const handleSyncOrder = async () => {
+  if (!order.value) return
+  
+  syncingOrder.value = true
+  try {
+    const res = await syncSingleOrder(order.value.id)
+    order.value = res.data
+    ElMessage.success('订单信息同步成功')
+  } catch (error) {
+    console.error('同步订单失败', error)
+    ElMessage.error('同步订单失败')
+  } finally {
+    syncingOrder.value = false
+  }
+}
+
 // 同步佣金
 const handleSyncCommission = async () => {
   if (!order.value) return
@@ -157,6 +206,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="header-right">
+        <el-button type="primary" @click="handleSyncOrder" :loading="syncingOrder">同步订单</el-button>
         <el-button :icon="Refresh" @click="handleRefresh" :loading="loading">刷新</el-button>
       </div>
     </div>
@@ -183,7 +233,7 @@ onMounted(() => {
             <el-descriptions-item label="平台">
               <el-tag type="primary" size="small">{{ getPlatformLabel(order.platform) }}</el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="平台状态">{{ order.platform_status }}</el-descriptions-item>
+            <el-descriptions-item label="平台状态">{{ getPlatformStatusText(order.platform_status) }}</el-descriptions-item>
             <el-descriptions-item label="订单金额">
               <span class="amount">{{ order.total_amount?.toFixed(2) }} {{ order.currency }}</span>
             </el-descriptions-item>
@@ -192,6 +242,11 @@ onMounted(() => {
             </el-descriptions-item>
             <el-descriptions-item label="发货时间">
               {{ order.ship_time ? formatDateTime(order.ship_time) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="发货截止时间">
+              <span :class="{ 'deadline-warning': isDeadlineNear(order.ship_deadline) }">
+                {{ order.ship_deadline ? formatDateTime(order.ship_deadline) : '-' }}
+              </span>
             </el-descriptions-item>
           </el-descriptions>
         </div>
@@ -422,6 +477,11 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: var(--el-color-primary);
+}
+
+.deadline-warning {
+  color: var(--el-color-danger);
+  font-weight: 600;
 }
 
 .order-no-wrapper {

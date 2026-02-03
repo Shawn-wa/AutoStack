@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Link, Delete, Search, Picture } from '@element-plus/icons-vue'
+import { Refresh, Link, Delete, Search, Picture, Van } from '@element-plus/icons-vue'
 import api, { type PlatformProduct, type Product } from '../api'
 import { getAuths, type AuthResponse } from '@/modules/order/api'
 import { formatDateTime } from '@/utils/format'
 import ImagePreview from '@/components/ImagePreview.vue'
+import ShippingTemplateBindDialog from '@/modules/shipping/components/ShippingTemplateBindDialog.vue'
 
 defineOptions({ name: 'PlatformProducts' })
 
@@ -34,6 +35,16 @@ const currentPlatformProduct = ref<PlatformProduct | null>(null)
 const selectedProductId = ref<number | undefined>(undefined)
 const productOptions = ref<Product[]>([])
 const productLoading = ref(false)
+
+// 运费模版绑定
+const shippingDialogVisible = ref(false)
+const shippingPlatformProduct = ref<PlatformProduct | null>(null)
+
+// 打开运费模版绑定对话框
+const handleShippingTemplates = (row: PlatformProduct) => {
+  shippingPlatformProduct.value = row
+  shippingDialogVisible.value = true
+}
 
 // 获取授权列表
 const fetchAuths = async () => {
@@ -282,10 +293,13 @@ onMounted(() => {
             <span v-else class="text-secondary">未关联</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" :icon="Link" @click="handleMap(row)">
               {{ row.product_mapping ? '修改关联' : '关联' }}
+            </el-button>
+            <el-button type="warning" link size="small" @click="handleShippingTemplates(row)">
+              运费
             </el-button>
             <el-button 
               v-if="row.product_mapping" 
@@ -354,6 +368,14 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 运费模版绑定对话框 -->
+    <ShippingTemplateBindDialog
+      v-model="shippingDialogVisible"
+      type="platform_product"
+      :target-id="shippingPlatformProduct?.id || 0"
+      :target-name="shippingPlatformProduct?.platform_sku"
+    />
 
     <!-- 图片预览 -->
     <ImagePreview ref="imagePreviewRef" />

@@ -116,6 +116,55 @@ export interface ListTemplateParams {
   status?: string
 }
 
+// ========== 产品运费模版绑定 ==========
+
+// 本地产品运费模版关联
+export interface ProductShippingTemplate {
+  id: number
+  product_id: number
+  shipping_template_id: number
+  template_name: string
+  carrier: string
+  is_default: boolean
+  sort_order: number
+  status: string
+  created_at: string
+}
+
+// 平台产品运费模版关联
+export interface PlatformProductShippingTemplate {
+  id: number
+  platform_product_id: number
+  shipping_template_id: number
+  template_name: string
+  carrier: string
+  is_default: boolean
+  sort_order: number
+  status: string
+  created_at: string
+}
+
+// 绑定本地产品运费模版请求
+export interface BindProductShippingTemplateRequest {
+  product_id: number
+  shipping_template_id: number
+  is_default?: boolean
+  sort_order?: number
+}
+
+// 绑定平台产品运费模版请求
+export interface BindPlatformProductShippingTemplateRequest {
+  platform_product_id: number
+  shipping_template_id: number
+  is_default?: boolean
+  sort_order?: number
+}
+
+// 设置默认运费模版请求
+export interface SetDefaultShippingTemplateRequest {
+  shipping_template_id: number
+}
+
 // ========== API 接口 ==========
 
 export default {
@@ -177,5 +226,49 @@ export default {
   // 批量计算运费
   batchCalculateShipping: (items: CalculateShippingRequest[]) => {
     return request.post<{ results: CalculateShippingResponse[] }>('/shipping/calculate/batch', { items })
+  },
+
+  // ========== 本地产品运费模版绑定 ==========
+
+  // 绑定本地产品运费模版
+  bindProductShippingTemplate: (data: BindProductShippingTemplateRequest) => {
+    return request.post<ProductShippingTemplate>('/shipping/product-templates', data)
+  },
+
+  // 解绑本地产品运费模版
+  unbindProductShippingTemplate: (id: number) => {
+    return request.delete(`/shipping/product-templates/${id}`)
+  },
+
+  // 获取本地产品的运费模版列表
+  getProductShippingTemplates: (productId: number) => {
+    return request.get<ProductShippingTemplate[]>(`/shipping/products/${productId}/templates`)
+  },
+
+  // 设置本地产品的默认运费模版
+  setProductDefaultShippingTemplate: (productId: number, shippingTemplateId: number) => {
+    return request.put(`/shipping/products/${productId}/default-template`, { shipping_template_id: shippingTemplateId })
+  },
+
+  // ========== 平台产品运费模版绑定 ==========
+
+  // 绑定平台产品运费模版
+  bindPlatformProductShippingTemplate: (data: BindPlatformProductShippingTemplateRequest) => {
+    return request.post<PlatformProductShippingTemplate>('/shipping/platform-product-templates', data)
+  },
+
+  // 解绑平台产品运费模版
+  unbindPlatformProductShippingTemplate: (id: number) => {
+    return request.delete(`/shipping/platform-product-templates/${id}`)
+  },
+
+  // 获取平台产品的运费模版列表
+  getPlatformProductShippingTemplates: (platformProductId: number) => {
+    return request.get<PlatformProductShippingTemplate[]>(`/shipping/platform-products/${platformProductId}/templates`)
+  },
+
+  // 设置平台产品的默认运费模版
+  setPlatformProductDefaultShippingTemplate: (platformProductId: number, shippingTemplateId: number) => {
+    return request.put(`/shipping/platform-products/${platformProductId}/default-template`, { shipping_template_id: shippingTemplateId })
   }
 }

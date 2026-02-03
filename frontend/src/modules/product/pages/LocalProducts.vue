@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Picture, CopyDocument, Upload, Download } from '@element-plus/icons-vue'
+import { Plus, Picture, CopyDocument, Upload, Download, Van } from '@element-plus/icons-vue'
 import api, { type Product, type CreateProductRequest, type UpdateProductRequest, type WarehouseResponse, type Supplier, type CreateSupplierRequest, type UpdateSupplierRequest } from '../api'
 import { formatDateTime } from '@/utils/format'
 import ImagePreview from '@/components/ImagePreview.vue'
+import ShippingTemplateBindDialog from '@/modules/shipping/components/ShippingTemplateBindDialog.vue'
 
 defineOptions({ name: 'LocalProducts' })
 
@@ -341,6 +342,16 @@ const handleDeleteSupplier = async (row: Supplier) => {
   }
 }
 
+// ========== 运费模版绑定相关 ==========
+const shippingDialogVisible = ref(false)
+const shippingProduct = ref<Product | null>(null)
+
+// 打开运费模版绑定对话框
+const handleShippingTemplates = (row: Product) => {
+  shippingProduct.value = row
+  shippingDialogVisible.value = true
+}
+
 // ========== 批量导入相关 ==========
 const importDialogVisible = ref(false)
 const importLoading = ref(false)
@@ -506,13 +517,16 @@ onMounted(() => {
             {{ formatDateTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleEdit(row)">
               编辑
             </el-button>
             <el-button type="success" link size="small" @click="handleSuppliers(row)">
               采购
+            </el-button>
+            <el-button type="warning" link size="small" @click="handleShippingTemplates(row)">
+              运费
             </el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">
               删除
@@ -848,6 +862,14 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 运费模版绑定对话框 -->
+    <ShippingTemplateBindDialog
+      v-model="shippingDialogVisible"
+      type="product"
+      :target-id="shippingProduct?.id || 0"
+      :target-name="shippingProduct?.sku"
+    />
 
     <!-- 图片预览 -->
     <ImagePreview ref="imagePreviewRef" />

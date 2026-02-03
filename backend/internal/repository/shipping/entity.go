@@ -51,3 +51,43 @@ const (
 	TemplateStatusActive   = "active"   // 启用
 	TemplateStatusInactive = "inactive" // 停用
 )
+
+// ProductShippingTemplate 本地产品运费模版关联
+type ProductShippingTemplate struct {
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	ProductID          uint      `gorm:"index:idx_product_shipping,unique;not null" json:"product_id"`           // 本地产品ID
+	ShippingTemplateID uint      `gorm:"index:idx_product_shipping,unique;not null" json:"shipping_template_id"` // 运费模版ID
+	IsDefault          bool      `gorm:"default:false;index" json:"is_default"`                                  // 是否默认
+	SortOrder          int       `gorm:"default:0" json:"sort_order"`                                            // 排序（越小越靠前）
+	Status             string    `gorm:"size:20;default:'active';index" json:"status"`                           // 状态: active/inactive
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+
+	// 关联
+	ShippingTemplate *ShippingTemplate `gorm:"foreignKey:ShippingTemplateID" json:"shipping_template,omitempty"`
+}
+
+// TableName 指定表名
+func (ProductShippingTemplate) TableName() string {
+	return "product_shipping_templates"
+}
+
+// PlatformProductShippingTemplate 平台产品运费模版关联
+type PlatformProductShippingTemplate struct {
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	PlatformProductID  uint      `gorm:"index:idx_platform_product_shipping,unique;not null" json:"platform_product_id"`  // 平台产品ID
+	ShippingTemplateID uint      `gorm:"index:idx_platform_product_shipping,unique;not null" json:"shipping_template_id"` // 运费模版ID
+	IsDefault          bool      `gorm:"default:false;index" json:"is_default"`                                           // 是否默认
+	SortOrder          int       `gorm:"default:0" json:"sort_order"`                                                     // 排序（越小越靠前）
+	Status             string    `gorm:"size:20;default:'active';index" json:"status"`                                    // 状态: active/inactive
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+
+	// 关联
+	ShippingTemplate *ShippingTemplate `gorm:"foreignKey:ShippingTemplateID" json:"shipping_template,omitempty"`
+}
+
+// TableName 指定表名
+func (PlatformProductShippingTemplate) TableName() string {
+	return "platform_product_shipping_templates"
+}

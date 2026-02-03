@@ -152,3 +152,151 @@ func (r *gormShippingTemplateRuleRepository) FindMatchingRule(ctx context.Contex
 	}
 	return &rule, nil
 }
+
+// ========== ProductShippingTemplate Repository ==========
+
+type gormProductShippingTemplateRepository struct {
+	db *gorm.DB
+}
+
+func NewProductShippingTemplateRepository(db *gorm.DB) ProductShippingTemplateRepository {
+	return &gormProductShippingTemplateRepository{db: db}
+}
+
+func (r *gormProductShippingTemplateRepository) getDB(ctx context.Context) *gorm.DB {
+	return repository.GetDB(ctx, r.db)
+}
+
+func (r *gormProductShippingTemplateRepository) Create(ctx context.Context, pst *ProductShippingTemplate) error {
+	return r.getDB(ctx).Create(pst).Error
+}
+
+func (r *gormProductShippingTemplateRepository) Update(ctx context.Context, pst *ProductShippingTemplate) error {
+	return r.getDB(ctx).Save(pst).Error
+}
+
+func (r *gormProductShippingTemplateRepository) Delete(ctx context.Context, id uint) error {
+	return r.getDB(ctx).Delete(&ProductShippingTemplate{}, id).Error
+}
+
+func (r *gormProductShippingTemplateRepository) DeleteByProductID(ctx context.Context, productID uint) error {
+	return r.getDB(ctx).Where("product_id = ?", productID).Delete(&ProductShippingTemplate{}).Error
+}
+
+func (r *gormProductShippingTemplateRepository) FindByID(ctx context.Context, id uint) (*ProductShippingTemplate, error) {
+	var pst ProductShippingTemplate
+	if err := r.getDB(ctx).Preload("ShippingTemplate").First(&pst, id).Error; err != nil {
+		return nil, err
+	}
+	return &pst, nil
+}
+
+func (r *gormProductShippingTemplateRepository) FindByProductID(ctx context.Context, productID uint) ([]ProductShippingTemplate, error) {
+	var list []ProductShippingTemplate
+	if err := r.getDB(ctx).Preload("ShippingTemplate").
+		Where("product_id = ? AND status = ?", productID, TemplateStatusActive).
+		Order("is_default DESC, sort_order ASC, id ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (r *gormProductShippingTemplateRepository) FindDefaultByProductID(ctx context.Context, productID uint) (*ProductShippingTemplate, error) {
+	var pst ProductShippingTemplate
+	// 优先查找标记为默认的，否则取排序最前的
+	if err := r.getDB(ctx).Preload("ShippingTemplate").
+		Where("product_id = ? AND status = ?", productID, TemplateStatusActive).
+		Order("is_default DESC, sort_order ASC, id ASC").
+		First(&pst).Error; err != nil {
+		return nil, err
+	}
+	return &pst, nil
+}
+
+func (r *gormProductShippingTemplateRepository) SetDefault(ctx context.Context, productID uint, shippingTemplateID uint) error {
+	// 先取消所有默认
+	if err := r.getDB(ctx).Model(&ProductShippingTemplate{}).
+		Where("product_id = ?", productID).
+		Update("is_default", false).Error; err != nil {
+		return err
+	}
+	// 设置新的默认
+	return r.getDB(ctx).Model(&ProductShippingTemplate{}).
+		Where("product_id = ? AND shipping_template_id = ?", productID, shippingTemplateID).
+		Update("is_default", true).Error
+}
+
+// ========== PlatformProductShippingTemplate Repository ==========
+
+type gormPlatformProductShippingTemplateRepository struct {
+	db *gorm.DB
+}
+
+func NewPlatformProductShippingTemplateRepository(db *gorm.DB) PlatformProductShippingTemplateRepository {
+	return &gormPlatformProductShippingTemplateRepository{db: db}
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) getDB(ctx context.Context) *gorm.DB {
+	return repository.GetDB(ctx, r.db)
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) Create(ctx context.Context, ppst *PlatformProductShippingTemplate) error {
+	return r.getDB(ctx).Create(ppst).Error
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) Update(ctx context.Context, ppst *PlatformProductShippingTemplate) error {
+	return r.getDB(ctx).Save(ppst).Error
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) Delete(ctx context.Context, id uint) error {
+	return r.getDB(ctx).Delete(&PlatformProductShippingTemplate{}, id).Error
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) DeleteByPlatformProductID(ctx context.Context, platformProductID uint) error {
+	return r.getDB(ctx).Where("platform_product_id = ?", platformProductID).Delete(&PlatformProductShippingTemplate{}).Error
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) FindByID(ctx context.Context, id uint) (*PlatformProductShippingTemplate, error) {
+	var ppst PlatformProductShippingTemplate
+	if err := r.getDB(ctx).Preload("ShippingTemplate").First(&ppst, id).Error; err != nil {
+		return nil, err
+	}
+	return &ppst, nil
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) FindByPlatformProductID(ctx context.Context, platformProductID uint) ([]PlatformProductShippingTemplate, error) {
+	var list []PlatformProductShippingTemplate
+	if err := r.getDB(ctx).Preload("ShippingTemplate").
+		Where("platform_product_id = ? AND status = ?", platformProductID, TemplateStatusActive).
+		Order("is_default DESC, sort_order ASC, id ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) FindDefaultByPlatformProductID(ctx context.Context, platformProductID uint) (*PlatformProductShippingTemplate, error) {
+	var ppst PlatformProductShippingTemplate
+	// 优先查找标记为默认的，否则取排序最前的
+	if err := r.getDB(ctx).Preload("ShippingTemplate").
+		Where("platform_product_id = ? AND status = ?", platformProductID, TemplateStatusActive).
+		Order("is_default DESC, sort_order ASC, id ASC").
+		First(&ppst).Error; err != nil {
+		return nil, err
+	}
+	return &ppst, nil
+}
+
+func (r *gormPlatformProductShippingTemplateRepository) SetDefault(ctx context.Context, platformProductID uint, shippingTemplateID uint) error {
+	// 先取消所有默认
+	if err := r.getDB(ctx).Model(&PlatformProductShippingTemplate{}).
+		Where("platform_product_id = ?", platformProductID).
+		Update("is_default", false).Error; err != nil {
+		return err
+	}
+	// 设置新的默认
+	return r.getDB(ctx).Model(&PlatformProductShippingTemplate{}).
+		Where("platform_product_id = ? AND shipping_template_id = ?", platformProductID, shippingTemplateID).
+		Update("is_default", true).Error
+}

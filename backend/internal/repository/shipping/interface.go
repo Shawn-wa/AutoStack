@@ -26,3 +26,27 @@ type ShippingTemplateRuleRepository interface {
 	FindByTemplateID(ctx context.Context, templateID uint) ([]ShippingTemplateRule, error)
 	FindMatchingRule(ctx context.Context, templateID uint, toRegion string, weight int) (*ShippingTemplateRule, error)
 }
+
+// ProductShippingTemplateRepository 本地产品运费模版关联仓库接口
+type ProductShippingTemplateRepository interface {
+	Create(ctx context.Context, pst *ProductShippingTemplate) error
+	Update(ctx context.Context, pst *ProductShippingTemplate) error
+	Delete(ctx context.Context, id uint) error
+	DeleteByProductID(ctx context.Context, productID uint) error
+	FindByID(ctx context.Context, id uint) (*ProductShippingTemplate, error)
+	FindByProductID(ctx context.Context, productID uint) ([]ProductShippingTemplate, error)
+	FindDefaultByProductID(ctx context.Context, productID uint) (*ProductShippingTemplate, error)
+	SetDefault(ctx context.Context, productID uint, shippingTemplateID uint) error
+}
+
+// PlatformProductShippingTemplateRepository 平台产品运费模版关联仓库接口
+type PlatformProductShippingTemplateRepository interface {
+	Create(ctx context.Context, ppst *PlatformProductShippingTemplate) error
+	Update(ctx context.Context, ppst *PlatformProductShippingTemplate) error
+	Delete(ctx context.Context, id uint) error
+	DeleteByPlatformProductID(ctx context.Context, platformProductID uint) error
+	FindByID(ctx context.Context, id uint) (*PlatformProductShippingTemplate, error)
+	FindByPlatformProductID(ctx context.Context, platformProductID uint) ([]PlatformProductShippingTemplate, error)
+	FindDefaultByPlatformProductID(ctx context.Context, platformProductID uint) (*PlatformProductShippingTemplate, error)
+	SetDefault(ctx context.Context, platformProductID uint, shippingTemplateID uint) error
+}
