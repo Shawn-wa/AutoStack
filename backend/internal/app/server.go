@@ -15,8 +15,10 @@ import (
 	_ "autostack/internal/modules/order/platforms" // 注册平台适配器
 	"autostack/internal/modules/product"
 	"autostack/internal/modules/project"
+	"autostack/internal/modules/shipping"
 	"autostack/internal/modules/template"
 	"autostack/internal/modules/user"
+	shippingRepo "autostack/internal/repository/shipping"
 	"autostack/internal/scheduler"
 )
 
@@ -54,6 +56,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&product.Warehouse{},
 		&product.WarehouseCenterInventory{},
 		&product.ProductSupplier{},
+		&shippingRepo.ShippingTemplate{},
+		&shippingRepo.ShippingTemplateRule{},
 	); err != nil {
 		return nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
@@ -63,6 +67,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	user.InitHandler(database.GetDB())
 	order.InitHandler(database.GetDB())
 	product.InitHandler(database.GetDB())
+	shipping.InitService(
+		shippingRepo.NewShippingTemplateRepository(database.GetDB()),
+		shippingRepo.NewShippingTemplateRuleRepository(database.GetDB()),
+	)
 
 	// 初始化默认超级管理员（需在 user.InitHandler 之后）
 	if err := user.InitDefaultSuperAdmin(); err != nil {
@@ -252,6 +260,28 @@ func (s *Server) setupRoutes() {
 				productGroup.GET("/inventory", product.ListInventory)
 				productGroup.PUT("/inventory", product.UpdateInventory)
 				productGroup.POST("/inventory/init", product.InitInventory)
+			}
+
+			// 物流管理模块
+			shippingGroup := authorized.Group("/shipping")
+			{
+				// 运费模板
+				shippingGroup.GET("/templates", shipping.ListTemplates)
+				shippingGroup.GET("/templates/all", shipping.ListAllTemplates) // 获取所有启用模板（下拉选择）
+				shippingGroup.POST("/templates", shipping.CreateTemplate)
+				shippingGroup.GET("/templates/:id", shipping.GetTemplate)
+				shippingGroup.PUT("/templates/:id", shipping.UpdateTemplate)
+				shippingGroup.DELETE("/templates/:id", shipping.DeleteTemplate)
+
+				// 运费规则
+				shippingGroup.GET("/templates/:id/rules", shipping.GetTemplateRules)
+				shippingGroup.POST("/templates/:id/rules", shipping.CreateRule)
+				shippingGroup.PUT("/templates/:id/rules/:ruleId", shipping.UpdateRule)
+				shippingGroup.DELETE("/templates/:id/rules/:ruleId", shipping.DeleteRule)
+
+				// 运费计算
+				shippingGroup.POST("/calculate", shipping.CalculateShippingHandler)
+				shippingGroup.POST("/calculate/batch", shipping.BatchCalculateShippingHandler)
 			}
 		}
 	}

@@ -1,0 +1,181 @@
+import request from '@/commonBase/api/request'
+
+// ========== 类型定义 ==========
+
+// 运费模板
+export interface ShippingTemplate {
+  id: number
+  name: string
+  carrier: string
+  from_region: string
+  description: string
+  status: string
+  rule_count: number
+  rules?: ShippingTemplateRule[]
+  created_at: string
+  updated_at: string
+}
+
+// 运费规则
+export interface ShippingTemplateRule {
+  id: number
+  template_id: number
+  to_region: string
+  min_weight: number
+  max_weight: number
+  first_weight: number
+  first_price: number
+  additional_unit: number
+  additional_price: number
+  currency: string
+  estimated_days: number
+  created_at: string
+}
+
+// 模板选项（下拉框）
+export interface TemplateOption {
+  id: number
+  name: string
+}
+
+// 创建模板请求
+export interface CreateTemplateRequest {
+  name: string
+  carrier?: string
+  from_region?: string
+  description?: string
+  rules?: CreateRuleRequest[]
+}
+
+// 更新模板请求
+export interface UpdateTemplateRequest {
+  name?: string
+  carrier?: string
+  from_region?: string
+  description?: string
+  status?: string
+}
+
+// 创建规则请求
+export interface CreateRuleRequest {
+  to_region: string
+  min_weight?: number
+  max_weight?: number
+  first_weight?: number
+  first_price?: number
+  additional_unit?: number
+  additional_price?: number
+  currency?: string
+  estimated_days?: number
+}
+
+// 更新规则请求
+export interface UpdateRuleRequest {
+  to_region?: string
+  min_weight?: number
+  max_weight?: number
+  first_weight?: number
+  first_price?: number
+  additional_unit?: number
+  additional_price?: number
+  currency?: string
+  estimated_days?: number
+}
+
+// 计算运费请求
+export interface CalculateShippingRequest {
+  template_id: number
+  to_region: string
+  weight: number
+}
+
+// 计算运费响应
+export interface CalculateShippingResponse {
+  template_id: number
+  template_name: string
+  to_region: string
+  weight: number
+  shipping_fee: number
+  currency: string
+  estimated_days: number
+}
+
+// 列表响应
+export interface TemplateListResponse {
+  list: ShippingTemplate[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// 列表查询参数
+export interface ListTemplateParams {
+  page?: number
+  page_size?: number
+  keyword?: string
+  status?: string
+}
+
+// ========== API 接口 ==========
+
+export default {
+  // 获取运费模板列表
+  listTemplates: (params?: ListTemplateParams) => {
+    return request.get<TemplateListResponse>('/shipping/templates', { params })
+  },
+
+  // 获取所有启用的模板（下拉选择）
+  listAllTemplates: () => {
+    return request.get<TemplateOption[]>('/shipping/templates/all')
+  },
+
+  // 获取模板详情
+  getTemplate: (id: number) => {
+    return request.get<ShippingTemplate>(`/shipping/templates/${id}`)
+  },
+
+  // 创建模板
+  createTemplate: (data: CreateTemplateRequest) => {
+    return request.post<ShippingTemplate>('/shipping/templates', data)
+  },
+
+  // 更新模板
+  updateTemplate: (id: number, data: UpdateTemplateRequest) => {
+    return request.put(`/shipping/templates/${id}`, data)
+  },
+
+  // 删除模板
+  deleteTemplate: (id: number) => {
+    return request.delete(`/shipping/templates/${id}`)
+  },
+
+  // 获取模板规则列表
+  getTemplateRules: (templateId: number) => {
+    return request.get<ShippingTemplateRule[]>(`/shipping/templates/${templateId}/rules`)
+  },
+
+  // 创建规则
+  createRule: (templateId: number, data: CreateRuleRequest) => {
+    return request.post<ShippingTemplateRule>(`/shipping/templates/${templateId}/rules`, data)
+  },
+
+  // 更新规则
+  updateRule: (templateId: number, ruleId: number, data: UpdateRuleRequest) => {
+    return request.put(`/shipping/templates/${templateId}/rules/${ruleId}`, data)
+  },
+
+  // 删除规则
+  deleteRule: (templateId: number, ruleId: number) => {
+    return request.delete(`/shipping/templates/${templateId}/rules/${ruleId}`)
+  },
+
+  // 计算运费
+  calculateShipping: (data: CalculateShippingRequest) => {
+    return request.post<CalculateShippingResponse>('/shipping/calculate', data)
+  },
+
+  // 批量计算运费
+  batchCalculateShipping: (items: CalculateShippingRequest[]) => {
+    return request.post<{ results: CalculateShippingResponse[] }>('/shipping/calculate/batch', { items })
+  }
+}

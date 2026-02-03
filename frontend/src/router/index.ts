@@ -117,6 +117,12 @@ const routes: RouteRecordRaw[] = [
         name: 'WarehouseList',
         component: () => import('@/modules/product/pages/WarehouseList.vue'),
         meta: { title: '仓库列表' }
+      },
+      {
+        path: 'shipping/templates',
+        name: 'ShippingTemplates',
+        component: () => import('@/modules/shipping/pages/ShippingTemplates.vue'),
+        meta: { title: '运费模板' }
       }
     ]
   },

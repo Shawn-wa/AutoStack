@@ -59,6 +59,17 @@ const warehouseMenuItems = [
   },
 ]
 
+// 物流管理菜单项
+const shippingMenuItems = [
+  { 
+    icon: '🚚', 
+    label: '物流',
+    children: [
+      { path: '/shipping/templates', name: 'ShippingTemplates', label: '运费模板' },
+    ]
+  },
+]
+
 // 展开的菜单
 const expandedMenus = ref<string[]>(['报表'])
 
@@ -88,7 +99,7 @@ const adminMenuItems = [
 
 // 计算显示的菜单项
 const menuItems = computed(() => {
-  let items = [...baseMenuItems, ...productMenuItems, ...orderMenuItems, ...warehouseMenuItems]
+  let items = [...baseMenuItems, ...productMenuItems, ...orderMenuItems, ...warehouseMenuItems, ...shippingMenuItems]
   if (userStore.isAdmin) {
     items = [...items, ...adminMenuItems]
   }
@@ -109,6 +120,7 @@ const routeTitleMap: Record<string, string> = {
   'StockInOrders': '入库单',
   'InventoryList': '库存明细',
   'WarehouseList': '仓库列表',
+  'ShippingTemplates': '运费模板',
   'UserManagement': '用户管理',
 }
 
