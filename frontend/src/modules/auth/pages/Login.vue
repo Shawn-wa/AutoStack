@@ -194,9 +194,6 @@ const toggleMode = () => {
           </button>
         </div>
 
-        <div v-if="isLogin" class="demo-account">
-          <p>演示账号：admin / autoStack123</p>
-        </div>
       </form>
 
       <div class="features">
@@ -352,21 +349,6 @@ const toggleMode = () => {
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-}
-
-.demo-account {
-  margin-top: 16px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-secondary);
-  opacity: 0.8;
-  
-  p {
-    margin: 0;
-    padding: 8px;
-    background: rgba(0, 212, 255, 0.1);
-    border-radius: var(--radius-sm);
   }
 }
 
