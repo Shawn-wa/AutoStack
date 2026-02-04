@@ -79,3 +79,8 @@ docker-compose.override.yml
 # =====================
 autostack.tar.gz
 
+# =====================
+# 部署版本记录
+# =====================
+.deployed_version
+.deployed_version.previous
