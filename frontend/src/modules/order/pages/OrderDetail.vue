@@ -372,6 +372,43 @@ onMounted(() => {
           </el-table>
         </div>
 
+        <!-- 物流费用估算卡片 -->
+        <div class="info-card" v-if="order.estimated_shipping_fee > 0 || order.shipping_template_id">
+          <div class="card-header">
+            <h2 class="card-title">物流费用估算</h2>
+            <span v-if="order.shipping_estimated_at" class="sync-time">
+              估算时间：{{ formatDateTime(order.shipping_estimated_at) }}
+            </span>
+          </div>
+          <div class="shipping-estimate-summary">
+            <div class="estimate-item main">
+              <span class="label">
+                估算物流费用
+                <el-tooltip content="基于物流模板计算的预估费用" placement="top">
+                  <el-icon class="info-icon"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </span>
+              <span class="value warning">
+                {{ order.estimated_shipping_fee?.toFixed(2) || '0.00' }} {{ order.estimated_shipping_currency || order.currency }}
+              </span>
+            </div>
+          </div>
+          <el-descriptions :column="2" border v-if="order.items && order.items.length > 0">
+            <el-descriptions-item label="商品明细" :span="2">
+              <div class="item-shipping-list">
+                <div v-for="item in order.items" :key="item.id" class="item-shipping-row">
+                  <span class="item-name">{{ item.name }}</span>
+                  <span class="item-qty">x{{ item.quantity }}</span>
+                  <span class="item-fee" v-if="item.estimated_shipping_fee">
+                    {{ (item.estimated_shipping_fee * item.quantity).toFixed(2) }} {{ item.estimated_shipping_currency || order.currency }}
+                  </span>
+                  <span class="item-fee no-data" v-else>-</span>
+                </div>
+              </div>
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+
         <!-- 收件人信息卡片 -->
         <div class="info-card">
           <div class="card-header">
@@ -712,6 +749,78 @@ onMounted(() => {
   .fee-amount {
     font-size: 18px;
     font-weight: 600;
+  }
+}
+
+.shipping-estimate-summary {
+  display: flex;
+  gap: 40px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: var(--radius-md);
+}
+
+.estimate-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+  }
+
+  .value {
+    font-size: 20px;
+    font-weight: 600;
+
+    &.warning {
+      color: var(--el-color-warning);
+    }
+  }
+}
+
+.item-shipping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.item-shipping-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--el-fill-color-lighter);
+  border-radius: var(--radius-sm);
+
+  .item-name {
+    flex: 1;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item-qty {
+    color: var(--text-secondary);
+    font-size: 13px;
+    min-width: 40px;
+  }
+
+  .item-fee {
+    font-weight: 500;
+    color: var(--el-color-warning);
+    min-width: 80px;
+    text-align: right;
+
+    &.no-data {
+      color: var(--text-secondary);
+    }
   }
 }
 </style>

@@ -276,6 +276,7 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOr
 				"platform_status": ord.PlatformStatus,
 				"total_amount":    ord.TotalAmount,
 				"ship_time":       ord.ShipTime,
+				"ship_deadline":   ord.ShipDeadline,
 			}
 			if err := db.Model(&existingOrder).Updates(updates).Error; err != nil {
 				continue

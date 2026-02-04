@@ -71,6 +71,8 @@ export interface OrderItem {
   quantity: number
   price: number
   currency: string
+  estimated_shipping_fee: number
+  estimated_shipping_currency: string
 }
 
 // 订单
@@ -104,6 +106,11 @@ export interface Order {
   profit_amount: number                // 订单利润额
   commission_currency: string
   commission_synced_at: string | null
+  // 物流费用估算
+  estimated_shipping_fee: number
+  estimated_shipping_currency: string
+  shipping_template_id: number
+  shipping_estimated_at: string | null
   items: OrderItem[]
   created_at: string
   updated_at: string
