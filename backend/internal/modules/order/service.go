@@ -893,6 +893,9 @@ func (s *Service) GetDashboardStats(userID uint) (*DashboardStatsResponse, error
 	// 已发货订单数
 	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusShipped).Count(&stats.ShippedOrders)
 
+	// 已取消订单数
+	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusCancelled).Count(&stats.CancelledOrders)
+
 	// 即将超时订单数（待处理+待发货状态，且发货截止时间距当前不足1天）
 	now := time.Now()
 	deadline := now.Add(24 * time.Hour) // 1天后

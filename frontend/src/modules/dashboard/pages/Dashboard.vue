@@ -97,6 +97,14 @@ const statCards = computed(() => {
       suffix: '单',
       filter: { status: 'pending,ready_to_ship' } // 跳转到待处理订单列表
     },
+    { 
+      label: '已取消', 
+      value: stats.value.cancelled_orders ?? 0, 
+      icon: '🚫', 
+      color: 'default',
+      suffix: '单',
+      filter: { status: 'cancelled' }
+    },
   ]
 })
 
@@ -496,7 +504,7 @@ onUnmounted(() => {
           <span class="title-icon">📊</span>
           订单统计
         </h2>
-        <div class="stats-grid stats-grid-3">
+        <div class="stats-grid stats-grid-4">
           <div 
             v-for="stat in statCards" 
             :key="stat.label" 
@@ -788,6 +796,10 @@ onUnmounted(() => {
 
 .stat-danger .stat-icon {
   background: rgba(255, 77, 79, 0.1);
+}
+
+.stat-default .stat-icon {
+  background: rgba(128, 128, 128, 0.1);
 }
 
 .stat-content {
@@ -1150,6 +1162,10 @@ onUnmounted(() => {
     &.stats-grid-3 {
       grid-template-columns: repeat(3, 1fr);
     }
+
+    &.stats-grid-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
   
   .bottom-section {
@@ -1172,12 +1188,20 @@ onUnmounted(() => {
     &.stats-grid-3 {
       grid-template-columns: repeat(2, 1fr);
     }
+
+    &.stats-grid-4 {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 }
 
 @media (max-width: 480px) {
   .stats-grid {
     &.stats-grid-3 {
+      grid-template-columns: 1fr;
+    }
+
+    &.stats-grid-4 {
       grid-template-columns: 1fr;
     }
   }

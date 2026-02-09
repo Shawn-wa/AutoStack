@@ -280,6 +280,7 @@ export interface DashboardStats {
   today_orders: number
   shipped_orders: number   // 已发货订单数
   timeout_orders: number   // 即将超时订单数
+  cancelled_orders?: number // 已取消订单数（可选，兼容旧接口/缓存）
   total_amounts: Array<{ currency: string; amount: number }>
   total_profit: number
   total_commission: number

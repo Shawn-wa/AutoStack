@@ -194,6 +194,7 @@ type DashboardStatsResponse struct {
 	TodayOrders     int64            `json:"today_orders"`     // 今日订单数
 	ShippedOrders   int64            `json:"shipped_orders"`   // 已发货订单数
 	TimeoutOrders   int64            `json:"timeout_orders"`   // 即将超时订单数（发货时效<1天）
+	CancelledOrders int64            `json:"cancelled_orders"` // 已取消订单数
 	TotalAmounts    []CurrencyAmount `json:"total_amounts"`    // 订单总金额（多币种）
 	// 佣金统计
 	TotalProfit     float64 `json:"total_profit"`      // 总利润
