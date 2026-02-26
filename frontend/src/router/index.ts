@@ -107,6 +107,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '入库单' }
       },
       {
+        path: 'warehouse/stock-in/create',
+        name: 'StockInCreate',
+        component: () => import('@/modules/product/pages/StockInCreate.vue'),
+        meta: { title: '新建入库单' }
+      },
+      {
         path: 'warehouse/inventory',
         name: 'InventoryList',
         component: () => import('@/modules/product/pages/InventoryList.vue'),

@@ -674,6 +674,59 @@ func (s *Service) GetStockInOrder(id uint) (*StockInOrder, error) {
 	return order, nil
 }
 
+// ImportStockInOrders 批量导入入库单
+func (s *Service) ImportStockInOrders(warehouseID uint, remark string, items []ImportStockInItem) (*ImportStockInResponse, error) {
+	ctx := context.Background()
+
+	// 验证仓库存在
+	_, err := s.warehouseRepo.FindByID(ctx, warehouseID)
+	if err != nil {
+		return nil, fmt.Errorf("仓库不存在")
+	}
+
+	result := &ImportStockInResponse{
+		TotalCount: len(items),
+	}
+
+	// 将 SKU 转为 product_id + quantity，收集有效项
+	var validItems []StockInOrderItemRequest
+	for _, item := range items {
+		product, err := s.productRepo.FindBySKU(ctx, item.SKU)
+		if err != nil {
+			result.FailCount++
+			result.FailReasons = append(result.FailReasons, fmt.Sprintf("SKU %s 不存在", item.SKU))
+			continue
+		}
+
+		validItems = append(validItems, StockInOrderItemRequest{
+			ProductID: product.ID,
+			Quantity:  item.Quantity,
+		})
+		result.SuccessCount++
+	}
+
+	if len(validItems) == 0 {
+		return result, nil
+	}
+
+	// 使用已有的创建入库单逻辑
+	order, err := s.CreateStockInOrder(CreateStockInOrderRequest{
+		WarehouseID: warehouseID,
+		Items:       validItems,
+		Remark:      remark,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("创建入库单失败: %v", err)
+	}
+
+	result.OrderNo = order.OrderNo
+	for _, item := range validItems {
+		result.TotalQty += item.Quantity
+	}
+
+	return result, nil
+}
+
 // ========== 仓库相关 ==========
 
 // ListWarehouses 获取仓库列表

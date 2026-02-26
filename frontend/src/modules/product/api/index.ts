@@ -119,6 +119,16 @@ export interface InitProductsResponse {
 
 // ========== 入库单相关 ==========
 
+// 导入入库单响应
+export interface ImportStockInResponse {
+  order_no: string
+  total_count: number
+  success_count: number
+  fail_count: number
+  total_qty: number
+  fail_reasons?: string[]
+}
+
 // 入库单明细请求
 export interface StockInOrderItemRequest {
   product_id: number
@@ -340,6 +350,18 @@ const api = {
   },
   getStockInOrder: (id: number) => {
     return request.get<StockInOrderResponse>(`/product/stock-in-orders/${id}`)
+  },
+  exportStockInTemplate: () => {
+    return request.get('/product/stock-in-template', { responseType: 'blob' })
+  },
+  importStockInOrder: (file: File, warehouseId: number, remark?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('warehouse_id', String(warehouseId))
+    if (remark) formData.append('remark', remark)
+    return request.post<ImportStockInResponse>('/product/stock-in-import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
   },
 
   // 仓库

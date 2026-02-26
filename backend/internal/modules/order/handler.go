@@ -238,7 +238,7 @@ func SyncOrders(c *gin.Context) {
 		to = time.Now()
 	}
 
-	result, err := orderService.SyncOrders(uint(id), userID, since, to)
+	result, err := orderService.SyncOrders(uint(id), userID, since, to, false)
 	if err != nil {
 		if err == ErrAuthNotFound {
 			response.Error(c, http.StatusNotFound, "授权不存在")

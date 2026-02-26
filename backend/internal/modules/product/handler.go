@@ -415,6 +415,121 @@ func GetStockInOrder(c *gin.Context) {
 	response.Success(c, http.StatusOK, "获取成功", resp)
 }
 
+// ExportStockInTemplate 导出入库单导入模板
+func ExportStockInTemplate(c *gin.Context) {
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename=stock_in_import_template.xlsx")
+
+	f := excelize.NewFile()
+	sheetName := "Sheet1"
+
+	headers := []string{"SKU", "数量"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetName, cell, h)
+	}
+
+	exampleData := []interface{}{"SKU001", 10}
+	for i, v := range exampleData {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 2)
+		f.SetCellValue(sheetName, cell, v)
+	}
+
+	f.SetColWidth(sheetName, "A", "A", 25)
+	f.SetColWidth(sheetName, "B", "B", 12)
+
+	if err := f.Write(c.Writer); err != nil {
+		response.Error(c, http.StatusInternalServerError, "生成模板失败")
+	}
+}
+
+// ImportStockInOrders 批量导入入库单
+func ImportStockInOrders(c *gin.Context) {
+	warehouseIDStr := c.PostForm("warehouse_id")
+	if warehouseIDStr == "" {
+		response.Error(c, http.StatusBadRequest, "请选择入库仓库")
+		return
+	}
+	warehouseID, err := strconv.Atoi(warehouseIDStr)
+	if err != nil || warehouseID <= 0 {
+		response.Error(c, http.StatusBadRequest, "仓库ID无效")
+		return
+	}
+
+	remarkText := c.PostForm("remark")
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "请上传文件")
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "无法打开文件")
+		return
+	}
+	defer src.Close()
+
+	f, err := excelize.OpenReader(src)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无法解析 Excel 文件")
+		return
+	}
+	defer f.Close()
+
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无法读取 Sheet1")
+		return
+	}
+
+	if len(rows) <= 1 {
+		response.Error(c, http.StatusBadRequest, "文件中没有数据")
+		return
+	}
+
+	var items []ImportStockInItem
+	for i, row := range rows[1:] {
+		if len(row) < 1 || row[0] == "" {
+			continue
+		}
+
+		item := ImportStockInItem{
+			SKU: row[0],
+		}
+
+		if len(row) > 1 {
+			qty, _ := strconv.Atoi(row[1])
+			if qty <= 0 {
+				qty = 1
+			}
+			item.Quantity = qty
+		} else {
+			item.Quantity = 1
+		}
+
+		items = append(items, item)
+
+		if i >= 999 {
+			break
+		}
+	}
+
+	if len(items) == 0 {
+		response.Error(c, http.StatusBadRequest, "文件中没有有效数据")
+		return
+	}
+
+	result, err := service.ImportStockInOrders(uint(warehouseID), remarkText, items)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "导入完成", result)
+}
+
 // ========== 仓库相关 ==========
 
 // ListWarehouses 获取仓库列表（仅活跃状态，用于下拉选择）

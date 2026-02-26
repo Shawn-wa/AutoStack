@@ -112,9 +112,9 @@ func syncAllAuthsOrdersAndCommission() {
 
 	log.Printf("[Scheduler] 找到 %d 个活跃授权", len(auths))
 
-	// 同步时间范围：最近2小时（确保覆盖）
+	// 同步时间范围：最近3个月
 	now := time.Now()
-	since := now.Add(-2 * time.Hour)
+	since := now.AddDate(0, -3, 0)
 
 	successCount := 0
 	failCount := 0
@@ -123,7 +123,7 @@ func syncAllAuthsOrdersAndCommission() {
 		log.Printf("[Scheduler] 同步授权 ID=%d, 平台=%s, 店铺=%s", auth.ID, auth.Platform, auth.ShopName)
 
 		// 同步订单
-		result, err := orderService.SyncOrders(auth.ID, auth.UserID, since, now)
+		result, err := orderService.SyncOrders(auth.ID, auth.UserID, since, now, true)
 		if err != nil {
 			log.Printf("[Scheduler] 同步订单失败 (授权ID=%d): %v", auth.ID, err)
 			failCount++

@@ -254,6 +254,8 @@ func (s *Server) setupRoutes() {
 				productGroup.GET("/stock-in-orders", product.ListStockInOrders)
 				productGroup.POST("/stock-in-orders", product.CreateStockInOrder)
 				productGroup.GET("/stock-in-orders/:id", product.GetStockInOrder)
+				productGroup.GET("/stock-in-template", product.ExportStockInTemplate)
+				productGroup.POST("/stock-in-import", product.ImportStockInOrders)
 
 				// 仓库
 				productGroup.GET("/warehouses", product.ListWarehouses)

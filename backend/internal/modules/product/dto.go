@@ -147,6 +147,22 @@ type StockInOrderListResponse struct {
 	PageSize int                    `json:"page_size"`
 }
 
+// ImportStockInItem Excel导入入库单项
+type ImportStockInItem struct {
+	SKU      string `json:"sku"`
+	Quantity int    `json:"quantity"`
+}
+
+// ImportStockInResponse 导入入库单响应
+type ImportStockInResponse struct {
+	OrderNo      string   `json:"order_no"`
+	TotalCount   int      `json:"total_count"`
+	SuccessCount int      `json:"success_count"`
+	FailCount    int      `json:"fail_count"`
+	TotalQty     int      `json:"total_qty"`
+	FailReasons  []string `json:"fail_reasons,omitempty"`
+}
+
 // ========== 仓库相关 ==========
 
 // CreateWarehouseRequest 创建仓库请求

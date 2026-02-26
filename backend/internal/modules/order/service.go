@@ -218,7 +218,8 @@ func (s *Service) TestAuth(id uint, userID uint) error {
 }
 
 // SyncOrders 同步订单
-func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOrdersResponse, error) {
+// skipDelivered: 为 true 时跳过已签收订单的更新（定时任务使用），手动触发传 false
+func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time, skipDelivered bool) (*SyncOrdersResponse, error) {
 	db := database.GetDB()
 
 	auth, err := s.GetAuthByID(id, userID)
@@ -270,7 +271,11 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time) (*SyncOr
 			}
 			result.Created++
 		} else if err == nil {
-			// 更新现有订单
+			// 已签收的订单在自动同步时跳过，仅手动触发时更新
+			if skipDelivered && existingOrder.Status == OrderStatusDelivered {
+				result.Total++
+				continue
+			}
 			updates := map[string]interface{}{
 				"status":          ord.Status,
 				"platform_status": ord.PlatformStatus,

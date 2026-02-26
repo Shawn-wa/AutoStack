@@ -118,6 +118,7 @@ const routeTitleMap: Record<string, string> = {
   'PlatformProducts': '平台产品',
   'OrderSummary': '订单汇总',
   'StockInOrders': '入库单',
+  'StockInCreate': '新建入库单',
   'InventoryList': '库存明细',
   'WarehouseList': '仓库列表',
   'ShippingTemplates': '运费模板',
