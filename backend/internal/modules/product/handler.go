@@ -640,6 +640,32 @@ func CreateWarehouse(c *gin.Context) {
 	})
 }
 
+// UpdateWarehouse 更新仓库
+func UpdateWarehouse(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req UpdateWarehouseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	warehouse, err := service.UpdateWarehouse(uint(id), req)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "更新成功", WarehouseResponse{
+		ID:        warehouse.ID,
+		Code:      warehouse.Code,
+		Name:      warehouse.Name,
+		Type:      warehouse.Type,
+		Address:   warehouse.Address,
+		Status:    warehouse.Status,
+		CreatedAt: warehouse.CreatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
 // ========== 库存相关 ==========
 
 // ListInventory 获取库存明细列表

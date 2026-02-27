@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import api, { type WarehouseResponse } from '../api'
 
@@ -10,7 +10,6 @@ const loading = ref(false)
 const tableData = ref<WarehouseResponse[]>([])
 const activeTab = ref('all')
 
-// 仓库类型TAB选项
 const tabOptions = [
   { name: 'all', label: '全部' },
   { name: 'local', label: '本地仓' },
@@ -20,7 +19,6 @@ const tabOptions = [
   { name: 'virtual', label: '虚拟仓' },
 ]
 
-// 仓库类型选项（用于新建仓库）
 const warehouseTypeOptions = [
   { value: 'local', label: '本地仓' },
   { value: 'overseas', label: '海外仓' },
@@ -29,33 +27,33 @@ const warehouseTypeOptions = [
   { value: 'virtual', label: '虚拟仓' },
 ]
 
-// 新建仓库弹窗
 const warehouseDialogVisible = ref(false)
 const warehouseLoading = ref(false)
+const isEdit = ref(false)
+const editingId = ref(0)
 const warehouseForm = ref({
   code: '',
   name: '',
   type: 'local',
-  address: ''
+  address: '',
+  status: 'active'
 })
 
-// 获取仓库类型显示文本
+const dialogTitle = computed(() => isEdit.value ? '编辑仓库' : '新建仓库')
+
 const getWarehouseTypeLabel = (type: string) => {
   const item = warehouseTypeOptions.find(o => o.value === type)
   return item?.label || type
 }
 
-// 获取状态标签类型
 const getStatusType = (status: string) => {
   return status === 'active' ? 'success' : 'danger'
 }
 
-// 获取状态显示文本
 const getStatusLabel = (status: string) => {
   return status === 'active' ? '启用' : '停用'
 }
 
-// 获取仓库列表
 const fetchList = async () => {
   loading.value = true
   try {
@@ -68,45 +66,83 @@ const fetchList = async () => {
   }
 }
 
-// TAB切换
 const handleTabChange = () => {
   fetchList()
 }
 
-// 打开新建仓库弹窗
 const openWarehouseDialog = () => {
-  // 根据当前TAB预设仓库类型
+  isEdit.value = false
+  editingId.value = 0
   const presetType = activeTab.value !== 'all' ? activeTab.value : 'local'
   warehouseForm.value = {
     code: '',
     name: '',
     type: presetType,
-    address: ''
+    address: '',
+    status: 'active'
   }
   warehouseDialogVisible.value = true
 }
 
-// 提交新建仓库
+const openEditDialog = (row: WarehouseResponse) => {
+  isEdit.value = true
+  editingId.value = row.id
+  warehouseForm.value = {
+    code: row.code,
+    name: row.name,
+    type: row.type,
+    address: row.address || '',
+    status: row.status
+  }
+  warehouseDialogVisible.value = true
+}
+
 const submitWarehouse = async () => {
-  if (!warehouseForm.value.code || !warehouseForm.value.name) {
-    ElMessage.warning('请填写仓库编码和名称')
+  if (!warehouseForm.value.name) {
+    ElMessage.warning('请填写仓库名称')
     return
   }
-  
+  if (!isEdit.value && !warehouseForm.value.code) {
+    ElMessage.warning('请填写仓库编码')
+    return
+  }
+
   warehouseLoading.value = true
   try {
-    await api.createWarehouse(warehouseForm.value)
-    ElMessage.success('仓库创建成功')
+    if (isEdit.value) {
+      await api.updateWarehouse(editingId.value, {
+        name: warehouseForm.value.name,
+        type: warehouseForm.value.type,
+        address: warehouseForm.value.address,
+        status: warehouseForm.value.status,
+      })
+      ElMessage.success('仓库更新成功')
+    } else {
+      await api.createWarehouse(warehouseForm.value)
+      ElMessage.success('仓库创建成功')
+    }
     warehouseDialogVisible.value = false
     fetchList()
+    fetchAllForCounts()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '创建失败')
+    ElMessage.error(error.response?.data?.message || (isEdit.value ? '更新失败' : '创建失败'))
   } finally {
     warehouseLoading.value = false
   }
 }
 
-// 统计各类型仓库数量
+const handleStatusChange = async (row: WarehouseResponse, val: boolean) => {
+  const newStatus = val ? 'active' : 'inactive'
+  try {
+    await api.updateWarehouse(row.id, { status: newStatus })
+    row.status = newStatus
+    ElMessage.success(val ? '已启用' : '已停用')
+    fetchAllForCounts()
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '状态更新失败')
+  }
+}
+
 const allWarehouses = ref<WarehouseResponse[]>([])
 const tabCounts = computed(() => {
   const counts: Record<string, number> = { all: allWarehouses.value.length }
@@ -116,7 +152,6 @@ const tabCounts = computed(() => {
   return counts
 })
 
-// 初始加载所有仓库用于统计
 const fetchAllForCounts = async () => {
   try {
     const res = await api.listAllWarehouses()
@@ -194,25 +229,40 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusLabel(row.status) }}
-            </el-tag>
+            <el-switch
+              :model-value="row.status === 'active'"
+              active-text="启用"
+              inactive-text="停用"
+              inline-prompt
+              @change="(val: boolean) => handleStatusChange(row, val)"
+            />
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openEditDialog(row)">
+              <el-icon><Edit /></el-icon>
+              编辑
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </div>
 
-    <!-- 新建仓库弹窗 -->
     <el-dialog
       v-model="warehouseDialogVisible"
-      title="新建仓库"
+      :title="dialogTitle"
       width="500px"
       :close-on-click-modal="false"
     >
       <el-form :model="warehouseForm" label-width="100px">
         <el-form-item label="仓库编码" required>
-          <el-input v-model="warehouseForm.code" placeholder="如：WH001" />
+          <el-input
+            v-model="warehouseForm.code"
+            placeholder="如：WH001"
+            :disabled="isEdit"
+          />
         </el-form-item>
         <el-form-item label="仓库名称" required>
           <el-input v-model="warehouseForm.name" placeholder="请输入仓库名称" />
@@ -230,11 +280,21 @@ onMounted(() => {
         <el-form-item label="仓库地址">
           <el-input v-model="warehouseForm.address" placeholder="请输入仓库地址（选填）" />
         </el-form-item>
+        <el-form-item v-if="isEdit" label="状态">
+          <el-switch
+            v-model="warehouseForm.status"
+            active-value="active"
+            inactive-value="inactive"
+            active-text="启用"
+            inactive-text="停用"
+            inline-prompt
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="warehouseDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="warehouseLoading" @click="submitWarehouse">
-          确认创建
+          {{ isEdit ? '确认修改' : '确认创建' }}
         </el-button>
       </template>
     </el-dialog>

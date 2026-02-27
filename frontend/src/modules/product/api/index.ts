@@ -176,6 +176,14 @@ export interface WarehouseResponse {
   created_at: string
 }
 
+// 更新仓库请求
+export interface UpdateWarehouseRequest {
+  name?: string
+  type?: string
+  address?: string
+  status?: string
+}
+
 // ========== 库存相关 ==========
 
 // 库存明细响应
@@ -378,6 +386,9 @@ const api = {
   },
   createWarehouse: (data: { code: string; name: string; type?: string; address?: string }) => {
     return request.post<WarehouseResponse>('/product/warehouses', data)
+  },
+  updateWarehouse: (id: number, data: UpdateWarehouseRequest) => {
+    return request.put<WarehouseResponse>(`/product/warehouses/${id}`, data)
   },
 
   // 库存

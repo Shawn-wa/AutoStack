@@ -777,6 +777,38 @@ func (s *Service) CreateWarehouse(req CreateWarehouseRequest) (*Warehouse, error
 	return warehouse, nil
 }
 
+// UpdateWarehouse 更新仓库
+func (s *Service) UpdateWarehouse(id uint, req UpdateWarehouseRequest) (*Warehouse, error) {
+	ctx := context.Background()
+
+	warehouse, err := s.warehouseRepo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("仓库不存在")
+		}
+		return nil, err
+	}
+
+	if req.Name != "" {
+		warehouse.Name = req.Name
+	}
+	if req.Type != "" {
+		warehouse.Type = req.Type
+	}
+	if req.Status != "" {
+		warehouse.Status = req.Status
+	}
+	if req.Address != nil {
+		warehouse.Address = *req.Address
+	}
+
+	if err := s.warehouseRepo.Update(ctx, warehouse); err != nil {
+		return nil, err
+	}
+
+	return warehouse, nil
+}
+
 // InitDefaultWarehouse 初始化默认仓库
 func (s *Service) InitDefaultWarehouse() error {
 	ctx := context.Background()

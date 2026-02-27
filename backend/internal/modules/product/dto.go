@@ -173,6 +173,14 @@ type CreateWarehouseRequest struct {
 	Address string `json:"address"`
 }
 
+// UpdateWarehouseRequest 更新仓库请求
+type UpdateWarehouseRequest struct {
+	Name    string  `json:"name"`
+	Type    string  `json:"type"`
+	Address *string `json:"address,omitempty"`
+	Status  string  `json:"status"`
+}
+
 // WarehouseResponse 仓库响应
 type WarehouseResponse struct {
 	ID        uint   `json:"id"`

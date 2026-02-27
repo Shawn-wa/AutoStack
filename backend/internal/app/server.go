@@ -261,9 +261,10 @@ func (s *Server) setupRoutes() {
 				productGroup.GET("/warehouses", product.ListWarehouses)
 				productGroup.GET("/warehouses/available", product.ListAvailableWarehouses) // 获取当前用户可用仓库
 				productGroup.GET("/warehouses/all", product.ListAllWarehouses)
-				productGroup.POST("/warehouses", product.CreateWarehouse)
+			productGroup.POST("/warehouses", product.CreateWarehouse)
+			productGroup.PUT("/warehouses/:id", product.UpdateWarehouse)
 
-				// 库存
+			// 库存
 				productGroup.GET("/inventory", product.ListInventory)
 				productGroup.PUT("/inventory", product.UpdateInventory)
 				productGroup.POST("/inventory/init", product.InitInventory)
