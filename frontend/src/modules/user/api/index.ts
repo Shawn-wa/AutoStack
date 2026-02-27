@@ -75,9 +75,9 @@ export function getPermissions() {
 }
 
 // 获取用户列表（管理员）
-export function getUsers(page: number = 1, pageSize: number = 10) {
+export function getUsers(params: { page?: number; page_size?: number; keyword?: string; role?: string } = {}) {
   return request.get<any, { data: UserListResult }>('/admin/users', {
-    params: { page, page_size: pageSize }
+    params: { page: params.page || 1, page_size: params.page_size || 10, ...params.keyword && { keyword: params.keyword }, ...params.role && { role: params.role } }
   })
 }
 

@@ -60,7 +60,7 @@ func (r *gormProductRepository) List(ctx context.Context, query *ProductQuery) (
 	}
 
 	offset := (query.Page - 1) * query.PageSize
-	if err := q.Order("id DESC").Offset(offset).Limit(query.PageSize).Find(&products).Error; err != nil {
+	if err := q.Order("id ASC").Offset(offset).Limit(query.PageSize).Find(&products).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -158,13 +158,19 @@ func (r *gormPlatformProductRepository) List(ctx context.Context, query *Platfor
 			)
 		)`, like, like, like)
 	}
+	switch query.MappedFilter {
+	case "mapped":
+		q = q.Where("id IN (SELECT platform_product_id FROM product_mappings)")
+	case "unmapped":
+		q = q.Where("id NOT IN (SELECT platform_product_id FROM product_mappings)")
+	}
 
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	offset := (query.Page - 1) * query.PageSize
-	if err := q.Preload("ProductMapping.Product").Order("id DESC").Offset(offset).Limit(query.PageSize).Find(&products).Error; err != nil {
+	if err := q.Preload("ProductMapping.Product").Order("id ASC").Offset(offset).Limit(query.PageSize).Find(&products).Error; err != nil {
 		return nil, 0, err
 	}
 

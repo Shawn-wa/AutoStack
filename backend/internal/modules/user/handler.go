@@ -220,6 +220,8 @@ func CreateUser(c *gin.Context) {
 func ListUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	keyword := c.Query("keyword")
+	role := c.Query("role")
 
 	if page < 1 {
 		page = 1
@@ -228,7 +230,7 @@ func ListUsers(c *gin.Context) {
 		pageSize = 10
 	}
 
-	users, total, err := userService.ListUsers(page, pageSize)
+	users, total, err := userService.ListUsers(keyword, role, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取用户列表失败")
 		return

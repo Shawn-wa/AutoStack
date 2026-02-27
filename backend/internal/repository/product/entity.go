@@ -53,7 +53,7 @@ type Product struct {
 	Name       string    `gorm:"size:255;not null" json:"name"`
 	Image      string    `gorm:"size:500" json:"image"`
 	CostPrice  float64   `gorm:"type:decimal(10,2);default:0" json:"cost_price"`
-	Weight     float64   `gorm:"type:decimal(10,2);default:0" json:"weight"` // kg
+	Weight     float64   `gorm:"type:decimal(10,2);default:0" json:"weight"` // g
 	Dimensions string    `gorm:"size:50" json:"dimensions"`                  // L*W*H cm
 	Stock      int       `gorm:"default:0" json:"stock"`                     // 库存数量
 	CreatedAt  time.Time `json:"created_at"`

@@ -592,6 +592,7 @@ onMounted(() => {
             <el-option label="最近 30 天" :value="30" />
             <el-option label="最近 60 天" :value="60" />
             <el-option label="最近 90 天" :value="90" />
+            <el-option label="最近 6 个月" :value="180" />
           </el-select>
         </el-form-item>
       </el-form>

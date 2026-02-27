@@ -14,6 +14,7 @@ type PlatformProductQuery struct {
 	PageSize       int
 	PlatformAuthID uint
 	Keyword        string
+	MappedFilter   string // all, mapped, unmapped
 }
 
 // SyncTaskQuery 同步任务查询条件

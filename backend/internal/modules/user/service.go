@@ -162,12 +162,14 @@ func (s *Service) ChangePassword(id uint, oldPassword, newPassword string) error
 }
 
 // ListUsers 获取用户列表
-func (s *Service) ListUsers(page, pageSize int) ([]User, int64, error) {
+func (s *Service) ListUsers(keyword, role string, page, pageSize int) ([]User, int64, error) {
 	ctx := context.Background()
 
 	return s.userRepo.List(ctx, &userRepo.UserQuery{
 		Page:     page,
 		PageSize: pageSize,
+		Keyword:  keyword,
+		Role:     role,
 	})
 }
 

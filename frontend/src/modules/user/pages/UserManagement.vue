@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 
 defineOptions({ name: 'UserManagement' })
 
@@ -27,6 +27,10 @@ const tableData = ref<UserInfo[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
+
+// 筛选条件
+const filterKeyword = ref('')
+const filterRole = ref('')
 
 // 权限数据
 const permissionsData = ref<PermissionsResult | null>(null)
@@ -115,7 +119,12 @@ const getAssignablePermissions = (targetRole: string): Record<string, Permission
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const res = await getUsers(currentPage.value, pageSize.value)
+    const res = await getUsers({
+      page: currentPage.value,
+      page_size: pageSize.value,
+      keyword: filterKeyword.value || undefined,
+      role: filterRole.value || undefined
+    })
     tableData.value = res.data.list
     total.value = res.data.total
   } catch (error) {
@@ -123,6 +132,20 @@ const fetchUsers = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 搜索
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchUsers()
+}
+
+// 重置筛选
+const handleReset = () => {
+  filterKeyword.value = ''
+  filterRole.value = ''
+  currentPage.value = 1
+  fetchUsers()
 }
 
 // 分页变化
@@ -326,11 +349,26 @@ onMounted(() => {
         <h1 class="page-title">用户管理</h1>
         <p class="page-desc">管理系统中的所有用户</p>
       </div>
-      <div class="header-right">
-        <el-button type="primary" :icon="Plus" @click="handleCreate">
-          创建用户
-        </el-button>
-      </div>
+    </div>
+
+    <div class="filter-card">
+      <el-form inline>
+        <el-form-item label="关键词">
+          <el-input v-model="filterKeyword" placeholder="用户名/邮箱" clearable style="width: 180px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-select v-model="filterRole" placeholder="全部角色" clearable style="width: 140px">
+            <el-option label="超级管理员" value="super_admin" />
+            <el-option label="管理员" value="admin" />
+            <el-option label="普通用户" value="user" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
+          <el-button @click="handleReset">重置</el-button>
+          <el-button type="primary" :icon="Plus" @click="handleCreate">创建用户</el-button>
+        </el-form-item>
+      </el-form>
     </div>
 
     <div class="content-card">
@@ -572,6 +610,14 @@ onMounted(() => {
   color: var(--text-secondary);
   margin: 0;
   font-size: 14px;
+}
+
+.filter-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 0;
+  margin-bottom: 24px;
 }
 
 .content-card {

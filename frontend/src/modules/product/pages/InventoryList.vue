@@ -174,13 +174,6 @@ onMounted(async () => {
         <h1 class="page-title">库存明细</h1>
         <p class="page-desc">查看系统库存信息</p>
       </div>
-      <div class="header-actions">
-        <el-button @click="openWarehouseDialog">
-          <el-icon><Plus /></el-icon>
-          新建仓库
-        </el-button>
-        <el-button type="primary" @click="handleInitInventory">初始化库存</el-button>
-      </div>
     </div>
 
     <div class="filter-card">
@@ -207,6 +200,7 @@ onMounted(async () => {
         <el-form-item>
           <el-button type="primary" @click="fetchList">查询</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <el-button type="primary" @click="handleInitInventory">初始化库存</el-button>
         </el-form-item>
       </el-form>
     </div>

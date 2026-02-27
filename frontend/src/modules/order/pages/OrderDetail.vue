@@ -87,9 +87,9 @@ const isDeadlineNear = (deadline: string | null | undefined) => {
   return diffHours <= 48
 }
 
-// 佣金货币（优先使用佣金货币，否则使用订单货币）
+// 佣金货币（优先使用佣金货币，默认RUB，不回退到订单销售币种）
 const commissionCurrency = computed(() => {
-  return order.value?.commission_currency || order.value?.currency || ''
+  return order.value?.commission_currency || 'RUB'
 })
 
 // 订单利润额（直接使用后端计算的值）

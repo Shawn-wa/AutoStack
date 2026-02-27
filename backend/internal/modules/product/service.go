@@ -147,13 +147,14 @@ func (s *Service) DeleteProduct(id uint) error {
 }
 
 // ListPlatformProducts 获取平台产品列表
-func (s *Service) ListPlatformProducts(platformAuthID uint, keyword string, page, pageSize int) ([]PlatformProduct, int64, error) {
+func (s *Service) ListPlatformProducts(platformAuthID uint, keyword string, mappedFilter string, page, pageSize int) ([]PlatformProduct, int64, error) {
 	ctx := context.Background()
 	return s.platformProductRepo.List(ctx, &productRepo.PlatformProductQuery{
 		Page:           page,
 		PageSize:       pageSize,
 		PlatformAuthID: platformAuthID,
 		Keyword:        keyword,
+		MappedFilter:   mappedFilter,
 	})
 }
 

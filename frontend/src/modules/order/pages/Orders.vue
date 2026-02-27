@@ -362,9 +362,6 @@ onMounted(() => {
         <h1 class="page-title">订单列表</h1>
         <p class="page-desc">查看和管理从各电商平台同步的订单</p>
       </div>
-      <div class="header-actions">
-        <el-button type="primary" @click="openSyncDialog">同步订单</el-button>
-      </div>
     </div>
 
     <div class="content-card">
@@ -432,6 +429,7 @@ onMounted(() => {
           <el-form-item>
             <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
             <el-button @click="handleReset">重置</el-button>
+            <el-button type="primary" @click="openSyncDialog">同步订单</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -473,16 +471,14 @@ onMounted(() => {
             {{ row.currency }} {{ row.total_amount?.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="sale_commission" label="佣金" min-width="110">
+        <el-table-column prop="sale_commission" label="平台代理佣金" min-width="130">
           <template #default="{ row }">
             <span v-if="row.sale_commission" style="color: var(--el-color-warning)">
-              {{ row.commission_currency || row.currency }} {{ row.sale_commission?.toFixed(2) }}
+              {{ row.commission_currency || 'RUB' }} {{ row.sale_commission?.toFixed(2) }}
             </span>
             <span v-else style="color: var(--text-secondary)">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="recipient_name" label="收件人" min-width="100" show-overflow-tooltip />
-        <el-table-column prop="country" label="国家/地区" min-width="100" show-overflow-tooltip />
         <el-table-column label="商品数" min-width="70" align="center">
           <template #default="{ row }">
             {{ row.items?.length || 0 }}

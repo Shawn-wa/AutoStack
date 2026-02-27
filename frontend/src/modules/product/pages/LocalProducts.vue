@@ -44,6 +44,24 @@ const formData = ref<CreateProductRequest & { id?: number }>({
   dimensions: ''
 })
 
+const dimLength = ref<number | undefined>(undefined)
+const dimWidth = ref<number | undefined>(undefined)
+const dimHeight = ref<number | undefined>(undefined)
+
+const parseDimensions = (dim: string) => {
+  const parts = dim?.split('*').map(s => parseFloat(s.trim()))
+  dimLength.value = parts?.[0] || undefined
+  dimWidth.value = parts?.[1] || undefined
+  dimHeight.value = parts?.[2] || undefined
+}
+
+const buildDimensions = () => {
+  if (dimLength.value || dimWidth.value || dimHeight.value) {
+    return `${dimLength.value || 0}*${dimWidth.value || 0}*${dimHeight.value || 0}`
+  }
+  return ''
+}
+
 // 供应商对话框控制
 const supplierDialogVisible = ref(false)
 const supplierLoading = ref(false)
@@ -164,6 +182,9 @@ const handleCreate = () => {
     weight: 0,
     dimensions: ''
   }
+  dimLength.value = undefined
+  dimWidth.value = undefined
+  dimHeight.value = undefined
   dialogVisible.value = true
 }
 
@@ -180,6 +201,7 @@ const handleEdit = (row: Product) => {
     weight: row.weight,
     dimensions: row.dimensions
   }
+  parseDimensions(row.dimensions)
   dialogVisible.value = true
 }
 
@@ -192,11 +214,12 @@ const handleSave = async () => {
 
   formLoading.value = true
   try {
+    const submitData = { ...formData.value, dimensions: buildDimensions() }
     if (isEdit.value && formData.value.id) {
-      await api.updateProduct(formData.value.id, formData.value)
+      await api.updateProduct(formData.value.id, submitData)
       ElMessage.success('更新成功')
     } else {
-      await api.createProduct(formData.value)
+      await api.createProduct(submitData)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -423,14 +446,6 @@ onMounted(() => {
         <h1 class="page-title">系统产品管理</h1>
         <p class="page-desc">管理系统产品基础信息</p>
       </div>
-      <div class="header-right">
-        <el-button :icon="Upload" @click="handleOpenImport">
-          批量导入采购信息
-        </el-button>
-        <el-button type="primary" :icon="Plus" @click="handleCreate">
-          新增产品
-        </el-button>
-      </div>
     </div>
 
     <div class="filter-card">
@@ -463,6 +478,10 @@ onMounted(() => {
         <el-form-item>
           <el-button type="primary" @click="handleSearch">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
+        </el-form-item>
+        <el-form-item class="action-buttons">
+          <el-button :icon="Upload" @click="handleOpenImport">批量导入采购信息</el-button>
+          <el-button type="primary" :icon="Plus" @click="handleCreate">新增产品</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -510,8 +529,12 @@ onMounted(() => {
             {{ row.cost_price }}
           </template>
         </el-table-column>
-        <el-table-column prop="weight" label="重量(kg)" width="100" />
-        <el-table-column prop="dimensions" label="尺寸(cm)" width="150" />
+        <el-table-column prop="weight" label="重量(g)" width="100" />
+        <el-table-column label="尺寸(cm)" width="150">
+          <template #default="{ row }">
+            {{ row.dimensions || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">
             {{ formatDateTime(row.created_at) }}
@@ -609,16 +632,25 @@ onMounted(() => {
         <el-form-item label="重量">
           <el-input-number
             v-model="formData.weight"
-            :precision="3"
-            :step="0.01"
+            :precision="2"
+            :step="1"
             :min="0"
             controls-position="right"
             style="width: 160px"
           />
-          <span class="form-unit">kg</span>
+          <span class="form-unit">g</span>
         </el-form-item>
         <el-form-item label="尺寸">
-          <el-input v-model="formData.dimensions" placeholder="例如: 10*10*10 cm" style="width: 200px" />
+          <div style="display: flex; align-items: center; gap: 0">
+            <el-input-number v-model="dimLength" :precision="1" :step="1" :min="0" :controls="false" style="width: 80px" placeholder="长" />
+            <span class="form-unit" style="margin-left: 2px">cm</span>
+            <span style="margin: 0 6px">*</span>
+            <el-input-number v-model="dimWidth" :precision="1" :step="1" :min="0" :controls="false" style="width: 80px" placeholder="宽" />
+            <span class="form-unit" style="margin-left: 2px">cm</span>
+            <span style="margin: 0 6px">*</span>
+            <el-input-number v-model="dimHeight" :precision="1" :step="1" :min="0" :controls="false" style="width: 80px" placeholder="高" />
+            <span class="form-unit" style="margin-left: 2px">cm</span>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -906,6 +938,16 @@ onMounted(() => {
   border-radius: var(--radius-lg);
   padding: 24px 24px 0;
   margin-bottom: 24px;
+
+  :deep(.el-form) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .action-buttons {
+    margin-left: 0;
+  }
 }
 
 .content-card {

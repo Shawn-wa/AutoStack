@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Link, Delete, Search, Picture, Van } from '@element-plus/icons-vue'
+import { Refresh, Link, Delete, Search, Picture, Van, CopyDocument } from '@element-plus/icons-vue'
 import api, { type PlatformProduct, type Product } from '../api'
 import { getAuths, type AuthResponse } from '@/modules/order/api'
 import { formatDateTime } from '@/utils/format'
@@ -26,6 +26,7 @@ const pageSize = ref(10)
 const authId = ref<number | undefined>(undefined)
 const authOptions = ref<AuthResponse[]>([])
 const keyword = ref('')
+const mappedFilter = ref('')
 const syncLoading = ref(false)
 
 // 映射对话框
@@ -60,6 +61,17 @@ const fetchAuths = async () => {
   }
 }
 
+// 复制SKU
+const handleCopySku = async (sku: string, event: Event) => {
+  event.stopPropagation()
+  try {
+    await navigator.clipboard.writeText(sku)
+    ElMessage.success('SKU已复制')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
 // 获取平台产品列表
 const fetchProducts = async () => {
   if (!authId.value) return
@@ -69,7 +81,8 @@ const fetchProducts = async () => {
       page: currentPage.value,
       page_size: pageSize.value,
       platform_auth_id: authId.value,
-      keyword: keyword.value || undefined
+      keyword: keyword.value || undefined,
+      mapped_filter: mappedFilter.value || undefined
     })
     tableData.value = res.data.list || []
     total.value = res.data.total || 0
@@ -108,6 +121,7 @@ const handleSearch = () => {
 // 重置筛选
 const handleReset = () => {
   keyword.value = ''
+  mappedFilter.value = ''
   currentPage.value = 1
   fetchProducts()
 }
@@ -236,6 +250,12 @@ onMounted(() => {
         <el-form-item label="关键词">
           <el-input v-model="keyword" placeholder="SKU/名称" clearable style="width: 180px" @keyup.enter="handleSearch" />
         </el-form-item>
+        <el-form-item label="配对">
+          <el-select v-model="mappedFilter" placeholder="全部" clearable style="width: 120px">
+            <el-option label="已配对" value="mapped" />
+            <el-option label="未配对" value="unmapped" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
@@ -257,6 +277,9 @@ onMounted(() => {
         <el-table-column prop="platform_sku" label="平台SKU" width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="sku-cell">{{ row.platform_sku }}</span>
+            <el-icon class="copy-icon" @click="handleCopySku(row.platform_sku, $event)" title="复制SKU">
+              <CopyDocument />
+            </el-icon>
           </template>
         </el-table-column>
         <el-table-column label="平台标题" min-width="280">
@@ -283,7 +306,13 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="stock" label="库存" width="100" />
-        <el-table-column prop="status" label="状态" width="120" />
+        <el-table-column prop="status" label="状态" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+              {{ { active: '在售', archived: '已归档' }[row.status as string] || row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="关联本地产品" min-width="250">
           <template #default="{ row }">
             <div v-if="row.product_mapping" class="local-product-info">
@@ -450,7 +479,19 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block;
+}
+
+.copy-icon {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--el-color-primary);
+  }
 }
 
 .product-info-cell {

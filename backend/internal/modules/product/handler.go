@@ -137,8 +137,9 @@ func ListPlatformProducts(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	authID, _ := strconv.Atoi(c.DefaultQuery("platform_auth_id", "0"))
 	keyword := c.Query("keyword")
+	mappedFilter := c.Query("mapped_filter")
 
-	products, total, err := service.ListPlatformProducts(uint(authID), keyword, page, pageSize)
+	products, total, err := service.ListPlatformProducts(uint(authID), keyword, mappedFilter, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取平台产品列表失败")
 		return
