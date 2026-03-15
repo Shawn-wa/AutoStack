@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"autostack/internal/repository"
 	shippingRepo "autostack/internal/repository/shipping"
 )
 
@@ -42,10 +43,11 @@ func GetService() *Service {
 // ========== 运费模板服务 ==========
 
 // CreateTemplate 创建运费模板
-func (s *Service) CreateTemplate(req *CreateTemplateRequest) (*shippingRepo.ShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) CreateTemplate(companyID uint, req *CreateTemplateRequest) (*shippingRepo.ShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	template := &shippingRepo.ShippingTemplate{
+		CompanyID:   companyID,
 		Name:        req.Name,
 		Carrier:     req.Carrier,
 		FromRegion:  req.FromRegion,
@@ -70,6 +72,7 @@ func (s *Service) CreateTemplate(req *CreateTemplateRequest) (*shippingRepo.Ship
 				currency = "CNY"
 			}
 			rules = append(rules, shippingRepo.ShippingTemplateRule{
+				CompanyID:       companyID,
 				TemplateID:      template.ID,
 				ToRegion:        r.ToRegion,
 				MinWeight:       r.MinWeight,
@@ -91,8 +94,8 @@ func (s *Service) CreateTemplate(req *CreateTemplateRequest) (*shippingRepo.Ship
 }
 
 // UpdateTemplate 更新运费模板
-func (s *Service) UpdateTemplate(id uint, req *UpdateTemplateRequest) error {
-	ctx := context.Background()
+func (s *Service) UpdateTemplate(companyID, id uint, req *UpdateTemplateRequest) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	template, err := s.templateRepo.FindByID(ctx, id)
 	if err != nil {
@@ -119,8 +122,8 @@ func (s *Service) UpdateTemplate(id uint, req *UpdateTemplateRequest) error {
 }
 
 // DeleteTemplate 删除运费模板
-func (s *Service) DeleteTemplate(id uint) error {
-	ctx := context.Background()
+func (s *Service) DeleteTemplate(companyID, id uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	// 先删除规则
 	if err := s.templateRuleRepo.DeleteByTemplateID(ctx, id); err != nil {
 		return err
@@ -129,15 +132,16 @@ func (s *Service) DeleteTemplate(id uint) error {
 }
 
 // GetTemplate 获取运费模板详情
-func (s *Service) GetTemplate(id uint) (*shippingRepo.ShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) GetTemplate(companyID, id uint) (*shippingRepo.ShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.templateRepo.FindByIDWithRules(ctx, id)
 }
 
 // ListTemplates 获取运费模板列表
-func (s *Service) ListTemplates(page, pageSize int, keyword, status string) ([]shippingRepo.ShippingTemplate, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListTemplates(companyID uint, page, pageSize int, keyword, status string) ([]shippingRepo.ShippingTemplate, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.templateRepo.List(ctx, &shippingRepo.TemplateQuery{
+		CompanyID: companyID,
 		Page:     page,
 		PageSize: pageSize,
 		Keyword:  keyword,
@@ -146,16 +150,16 @@ func (s *Service) ListTemplates(page, pageSize int, keyword, status string) ([]s
 }
 
 // ListAllTemplates 获取所有启用的运费模板
-func (s *Service) ListAllTemplates() ([]shippingRepo.ShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) ListAllTemplates(companyID uint) ([]shippingRepo.ShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.templateRepo.ListAll(ctx)
 }
 
 // ========== 运费规则服务 ==========
 
 // CreateRule 创建运费规则
-func (s *Service) CreateRule(templateID uint, req *CreateTemplateRuleRequest) (*shippingRepo.ShippingTemplateRule, error) {
-	ctx := context.Background()
+func (s *Service) CreateRule(companyID, templateID uint, req *CreateTemplateRuleRequest) (*shippingRepo.ShippingTemplateRule, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查模板是否存在
 	if _, err := s.templateRepo.FindByID(ctx, templateID); err != nil {
@@ -172,6 +176,7 @@ func (s *Service) CreateRule(templateID uint, req *CreateTemplateRuleRequest) (*
 	}
 
 	rule := &shippingRepo.ShippingTemplateRule{
+		CompanyID:       companyID,
 		TemplateID:      templateID,
 		ToRegion:        req.ToRegion,
 		MinWeight:       req.MinWeight,
@@ -192,8 +197,8 @@ func (s *Service) CreateRule(templateID uint, req *CreateTemplateRuleRequest) (*
 }
 
 // UpdateRule 更新运费规则
-func (s *Service) UpdateRule(id uint, req *UpdateTemplateRuleRequest) error {
-	ctx := context.Background()
+func (s *Service) UpdateRule(companyID, id uint, req *UpdateTemplateRuleRequest) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	rule, err := s.templateRuleRepo.FindByID(ctx, id)
 	if err != nil {
@@ -220,14 +225,14 @@ func (s *Service) UpdateRule(id uint, req *UpdateTemplateRuleRequest) error {
 }
 
 // DeleteRule 删除运费规则
-func (s *Service) DeleteRule(id uint) error {
-	ctx := context.Background()
+func (s *Service) DeleteRule(companyID, id uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.templateRuleRepo.Delete(ctx, id)
 }
 
 // GetRulesByTemplateID 获取模板的所有规则
-func (s *Service) GetRulesByTemplateID(templateID uint) ([]shippingRepo.ShippingTemplateRule, error) {
-	ctx := context.Background()
+func (s *Service) GetRulesByTemplateID(companyID, templateID uint) ([]shippingRepo.ShippingTemplateRule, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.templateRuleRepo.FindByTemplateID(ctx, templateID)
 }
 
@@ -295,8 +300,8 @@ func (s *Service) BatchCalculateShipping(items []CalculateShippingRequest) ([]Ca
 // ========== 本地产品运费模版关联服务 ==========
 
 // BindProductShippingTemplate 绑定本地产品运费模版
-func (s *Service) BindProductShippingTemplate(req *BindProductShippingTemplateRequest) (*shippingRepo.ProductShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) BindProductShippingTemplate(companyID uint, req *BindProductShippingTemplateRequest) (*shippingRepo.ProductShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查模板是否存在
 	if _, err := s.templateRepo.FindByID(ctx, req.ShippingTemplateID); err != nil {
@@ -304,6 +309,7 @@ func (s *Service) BindProductShippingTemplate(req *BindProductShippingTemplateRe
 	}
 
 	pst := &shippingRepo.ProductShippingTemplate{
+		CompanyID:          companyID,
 		ProductID:          req.ProductID,
 		ShippingTemplateID: req.ShippingTemplateID,
 		IsDefault:          req.IsDefault,
@@ -326,14 +332,14 @@ func (s *Service) BindProductShippingTemplate(req *BindProductShippingTemplateRe
 }
 
 // UnbindProductShippingTemplate 解绑本地产品运费模版
-func (s *Service) UnbindProductShippingTemplate(id uint) error {
-	ctx := context.Background()
+func (s *Service) UnbindProductShippingTemplate(companyID, id uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.productShippingRepo.Delete(ctx, id)
 }
 
 // GetProductShippingTemplates 获取本地产品的运费模版列表
-func (s *Service) GetProductShippingTemplates(productID uint) ([]shippingRepo.ProductShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) GetProductShippingTemplates(companyID, productID uint) ([]shippingRepo.ProductShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.productShippingRepo.FindByProductID(ctx, productID)
 }
 
@@ -344,16 +350,16 @@ func (s *Service) GetDefaultProductShippingTemplate(productID uint) (*shippingRe
 }
 
 // SetProductDefaultShippingTemplate 设置本地产品的默认运费模版
-func (s *Service) SetProductDefaultShippingTemplate(productID uint, shippingTemplateID uint) error {
-	ctx := context.Background()
+func (s *Service) SetProductDefaultShippingTemplate(companyID, productID uint, shippingTemplateID uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.productShippingRepo.SetDefault(ctx, productID, shippingTemplateID)
 }
 
 // ========== 平台产品运费模版关联服务 ==========
 
 // BindPlatformProductShippingTemplate 绑定平台产品运费模版
-func (s *Service) BindPlatformProductShippingTemplate(req *BindPlatformProductShippingTemplateRequest) (*shippingRepo.PlatformProductShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) BindPlatformProductShippingTemplate(companyID uint, req *BindPlatformProductShippingTemplateRequest) (*shippingRepo.PlatformProductShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查模板是否存在
 	if _, err := s.templateRepo.FindByID(ctx, req.ShippingTemplateID); err != nil {
@@ -361,6 +367,7 @@ func (s *Service) BindPlatformProductShippingTemplate(req *BindPlatformProductSh
 	}
 
 	ppst := &shippingRepo.PlatformProductShippingTemplate{
+		CompanyID:          companyID,
 		PlatformProductID:  req.PlatformProductID,
 		ShippingTemplateID: req.ShippingTemplateID,
 		IsDefault:          req.IsDefault,
@@ -383,14 +390,14 @@ func (s *Service) BindPlatformProductShippingTemplate(req *BindPlatformProductSh
 }
 
 // UnbindPlatformProductShippingTemplate 解绑平台产品运费模版
-func (s *Service) UnbindPlatformProductShippingTemplate(id uint) error {
-	ctx := context.Background()
+func (s *Service) UnbindPlatformProductShippingTemplate(companyID, id uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.platformProductShippingRepo.Delete(ctx, id)
 }
 
 // GetPlatformProductShippingTemplates 获取平台产品的运费模版列表
-func (s *Service) GetPlatformProductShippingTemplates(platformProductID uint) ([]shippingRepo.PlatformProductShippingTemplate, error) {
-	ctx := context.Background()
+func (s *Service) GetPlatformProductShippingTemplates(companyID, platformProductID uint) ([]shippingRepo.PlatformProductShippingTemplate, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.platformProductShippingRepo.FindByPlatformProductID(ctx, platformProductID)
 }
 
@@ -401,8 +408,8 @@ func (s *Service) GetDefaultPlatformProductShippingTemplate(platformProductID ui
 }
 
 // SetPlatformProductDefaultShippingTemplate 设置平台产品的默认运费模版
-func (s *Service) SetPlatformProductDefaultShippingTemplate(platformProductID uint, shippingTemplateID uint) error {
-	ctx := context.Background()
+func (s *Service) SetPlatformProductDefaultShippingTemplate(companyID, platformProductID uint, shippingTemplateID uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.platformProductShippingRepo.SetDefault(ctx, platformProductID, shippingTemplateID)
 }
 

@@ -33,9 +33,9 @@ func (r *gormPlatformAuthRepository) FindByID(ctx context.Context, id uint) (*Pl
 	return &auth, nil
 }
 
-func (r *gormPlatformAuthRepository) FindByIDAndUserID(ctx context.Context, id, userID uint) (*PlatformAuth, error) {
+func (r *gormPlatformAuthRepository) FindByIDAndCompanyID(ctx context.Context, id, companyID uint) (*PlatformAuth, error) {
 	var auth PlatformAuth
-	if err := r.getDB(ctx).Where("id = ? AND user_id = ?", id, userID).First(&auth).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ? AND company_id = ?", id, companyID).First(&auth).Error; err != nil {
 		return nil, err
 	}
 	return &auth, nil
@@ -47,8 +47,8 @@ func (r *gormPlatformAuthRepository) List(ctx context.Context, query *PlatformAu
 	db := r.getDB(ctx)
 
 	q := db.Model(&PlatformAuth{})
-	if query.UserID > 0 {
-		q = q.Where("user_id = ?", query.UserID)
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
 	}
 	if query.Platform != "" {
 		q = q.Where("platform = ?", query.Platform)
@@ -77,9 +77,9 @@ func (r *gormPlatformAuthRepository) ListActive(ctx context.Context) ([]Platform
 	return auths, nil
 }
 
-func (r *gormPlatformAuthRepository) ListByUserID(ctx context.Context, userID uint) ([]PlatformAuth, error) {
+func (r *gormPlatformAuthRepository) ListByCompanyID(ctx context.Context, companyID uint) ([]PlatformAuth, error) {
 	var auths []PlatformAuth
-	if err := r.getDB(ctx).Where("user_id = ?", userID).Order("id DESC").Find(&auths).Error; err != nil {
+	if err := r.getDB(ctx).Where("company_id = ?", companyID).Order("id DESC").Find(&auths).Error; err != nil {
 		return nil, err
 	}
 	return auths, nil
@@ -97,22 +97,22 @@ func (r *gormPlatformAuthRepository) UpdateFields(ctx context.Context, id uint, 
 	return r.getDB(ctx).Model(&PlatformAuth{}).Where("id = ?", id).Updates(fields).Error
 }
 
-func (r *gormPlatformAuthRepository) Delete(ctx context.Context, id, userID uint) (int64, error) {
-	result := r.getDB(ctx).Where("id = ? AND user_id = ?", id, userID).Delete(&PlatformAuth{})
+func (r *gormPlatformAuthRepository) Delete(ctx context.Context, id, companyID uint) (int64, error) {
+	result := r.getDB(ctx).Where("id = ? AND company_id = ?", id, companyID).Delete(&PlatformAuth{})
 	return result.RowsAffected, result.Error
 }
 
-func (r *gormPlatformAuthRepository) CountByUserID(ctx context.Context, userID uint) (int64, error) {
+func (r *gormPlatformAuthRepository) CountByCompanyID(ctx context.Context, companyID uint) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&PlatformAuth{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+	if err := r.getDB(ctx).Model(&PlatformAuth{}).Where("company_id = ?", companyID).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *gormPlatformAuthRepository) CountActiveByUserID(ctx context.Context, userID uint) (int64, error) {
+func (r *gormPlatformAuthRepository) CountActiveByCompanyID(ctx context.Context, companyID uint) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&PlatformAuth{}).Where("user_id = ? AND status = ?", userID, AuthStatusActive).Count(&count).Error; err != nil {
+	if err := r.getDB(ctx).Model(&PlatformAuth{}).Where("company_id = ? AND status = ?", companyID, AuthStatusActive).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -196,9 +196,9 @@ func (r *gormCashFlowRepository) FindByID(ctx context.Context, id uint) (*CashFl
 	return &statement, nil
 }
 
-func (r *gormCashFlowRepository) FindByIDAndUserID(ctx context.Context, id, userID uint) (*CashFlowStatement, error) {
+func (r *gormCashFlowRepository) FindByIDAndCompanyID(ctx context.Context, id, companyID uint) (*CashFlowStatement, error) {
 	var statement CashFlowStatement
-	if err := r.getDB(ctx).Where("id = ? AND user_id = ?", id, userID).First(&statement).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ? AND company_id = ?", id, companyID).First(&statement).Error; err != nil {
 		return nil, err
 	}
 	return &statement, nil
@@ -218,8 +218,8 @@ func (r *gormCashFlowRepository) List(ctx context.Context, query *CashFlowQuery)
 	db := r.getDB(ctx)
 
 	q := db.Model(&CashFlowStatement{})
-	if query.UserID > 0 {
-		q = q.Where("user_id = ?", query.UserID)
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
 	}
 	if query.PlatformAuthID > 0 {
 		q = q.Where("platform_auth_id = ?", query.PlatformAuthID)

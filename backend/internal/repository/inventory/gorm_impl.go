@@ -15,6 +15,13 @@ type gormWarehouseRepository struct {
 	db *gorm.DB
 }
 
+func scopeByCompanyID(ctx context.Context, db *gorm.DB) *gorm.DB {
+	if companyID := repository.GetCompanyID(ctx); companyID > 0 {
+		return db.Where("company_id = ?", companyID)
+	}
+	return db
+}
+
 // NewWarehouseRepository 创建仓库仓储实例
 func NewWarehouseRepository(db *gorm.DB) WarehouseRepository {
 	return &gormWarehouseRepository{db: db}
@@ -26,7 +33,7 @@ func (r *gormWarehouseRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormWarehouseRepository) FindByID(ctx context.Context, id uint) (*Warehouse, error) {
 	var warehouse Warehouse
-	if err := r.getDB(ctx).First(&warehouse, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).First(&warehouse, id).Error; err != nil {
 		return nil, err
 	}
 	return &warehouse, nil
@@ -34,7 +41,7 @@ func (r *gormWarehouseRepository) FindByID(ctx context.Context, id uint) (*Wareh
 
 func (r *gormWarehouseRepository) FindByCode(ctx context.Context, code string) (*Warehouse, error) {
 	var warehouse Warehouse
-	if err := r.getDB(ctx).Where("code = ?", code).First(&warehouse).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("code = ?", code).First(&warehouse).Error; err != nil {
 		return nil, err
 	}
 	return &warehouse, nil
@@ -42,7 +49,7 @@ func (r *gormWarehouseRepository) FindByCode(ctx context.Context, code string) (
 
 func (r *gormWarehouseRepository) FindFirstActive(ctx context.Context) (*Warehouse, error) {
 	var warehouse Warehouse
-	if err := r.getDB(ctx).Where("status = ?", WarehouseStatusActive).First(&warehouse).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("status = ?", WarehouseStatusActive).First(&warehouse).Error; err != nil {
 		return nil, err
 	}
 	return &warehouse, nil
@@ -54,6 +61,9 @@ func (r *gormWarehouseRepository) List(ctx context.Context, query *WarehouseQuer
 
 	q := db.Model(&Warehouse{})
 	if query != nil {
+		if query.CompanyID > 0 {
+			q = q.Where("company_id = ?", query.CompanyID)
+		}
 		if query.Type != "" && query.Type != "all" {
 			q = q.Where("type = ?", query.Type)
 		}
@@ -70,7 +80,7 @@ func (r *gormWarehouseRepository) List(ctx context.Context, query *WarehouseQuer
 
 func (r *gormWarehouseRepository) ListActive(ctx context.Context) ([]Warehouse, error) {
 	var warehouses []Warehouse
-	if err := r.getDB(ctx).Where("status = ?", WarehouseStatusActive).Order("id ASC").Find(&warehouses).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("status = ?", WarehouseStatusActive).Order("id ASC").Find(&warehouses).Error; err != nil {
 		return nil, err
 	}
 	return warehouses, nil
@@ -86,7 +96,7 @@ func (r *gormWarehouseRepository) Update(ctx context.Context, warehouse *Warehou
 
 func (r *gormWarehouseRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&Warehouse{}).Count(&count).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&Warehouse{}).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -94,7 +104,7 @@ func (r *gormWarehouseRepository) Count(ctx context.Context) (int64, error) {
 
 func (r *gormWarehouseRepository) CountByCode(ctx context.Context, code string) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&Warehouse{}).Where("code = ?", code).Count(&count).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&Warehouse{}).Where("code = ?", code).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -117,7 +127,7 @@ func (r *gormInventoryRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormInventoryRepository) FindByID(ctx context.Context, id uint) (*WarehouseCenterInventory, error) {
 	var inventory WarehouseCenterInventory
-	if err := r.getDB(ctx).First(&inventory, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).First(&inventory, id).Error; err != nil {
 		return nil, err
 	}
 	return &inventory, nil
@@ -125,7 +135,7 @@ func (r *gormInventoryRepository) FindByID(ctx context.Context, id uint) (*Wareh
 
 func (r *gormInventoryRepository) FindByProductAndWarehouse(ctx context.Context, productID, warehouseID uint) (*WarehouseCenterInventory, error) {
 	var inventory WarehouseCenterInventory
-	if err := r.getDB(ctx).Where("product_id = ? AND warehouse_id = ?", productID, warehouseID).First(&inventory).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("product_id = ? AND warehouse_id = ?", productID, warehouseID).First(&inventory).Error; err != nil {
 		return nil, err
 	}
 	return &inventory, nil
@@ -137,6 +147,9 @@ func (r *gormInventoryRepository) List(ctx context.Context, query *InventoryQuer
 	db := r.getDB(ctx)
 
 	q := db.Model(&WarehouseCenterInventory{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
 	if query.WarehouseID > 0 {
 		q = q.Where("warehouse_id = ?", query.WarehouseID)
 	}
@@ -167,17 +180,17 @@ func (r *gormInventoryRepository) Update(ctx context.Context, inventory *Warehou
 }
 
 func (r *gormInventoryRepository) UpdateFields(ctx context.Context, id uint, fields map[string]interface{}) error {
-	return r.getDB(ctx).Model(&WarehouseCenterInventory{}).Where("id = ?", id).Updates(fields).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Model(&WarehouseCenterInventory{}).Where("id = ?", id).Updates(fields).Error
 }
 
 func (r *gormInventoryRepository) UpdateAvailableStock(ctx context.Context, id uint, delta int) error {
-	return r.getDB(ctx).Model(&WarehouseCenterInventory{}).Where("id = ?", id).
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Model(&WarehouseCenterInventory{}).Where("id = ?", id).
 		Update("available_stock", gorm.Expr("available_stock + ?", delta)).Error
 }
 
 func (r *gormInventoryRepository) CountByProductAndWarehouse(ctx context.Context, productID, warehouseID uint) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&WarehouseCenterInventory{}).
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&WarehouseCenterInventory{}).
 		Where("product_id = ? AND warehouse_id = ?", productID, warehouseID).Count(&count).Error; err != nil {
 		return 0, err
 	}
@@ -186,7 +199,7 @@ func (r *gormInventoryRepository) CountByProductAndWarehouse(ctx context.Context
 
 func (r *gormInventoryRepository) GetStockSummaryBySKUs(ctx context.Context, skus []string) ([]StockSummary, error) {
 	var summaries []StockSummary
-	if err := r.getDB(ctx).Table("warehouse_center_inventory").
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Table("warehouse_center_inventory").
 		Select("sku, SUM(available_stock) as available_stock").
 		Where("sku IN ?", skus).
 		Group("sku").
@@ -213,7 +226,7 @@ func (r *gormStockInOrderRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormStockInOrderRepository) FindByID(ctx context.Context, id uint) (*StockInOrder, error) {
 	var order StockInOrder
-	if err := r.getDB(ctx).First(&order, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).First(&order, id).Error; err != nil {
 		return nil, err
 	}
 	return &order, nil
@@ -221,7 +234,7 @@ func (r *gormStockInOrderRepository) FindByID(ctx context.Context, id uint) (*St
 
 func (r *gormStockInOrderRepository) FindByIDWithDetails(ctx context.Context, id uint) (*StockInOrder, error) {
 	var order StockInOrder
-	if err := r.getDB(ctx).Preload("Warehouse").Preload("Items").First(&order, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Preload("Warehouse").Preload("Items").First(&order, id).Error; err != nil {
 		return nil, err
 	}
 	return &order, nil
@@ -233,6 +246,9 @@ func (r *gormStockInOrderRepository) List(ctx context.Context, query *StockInOrd
 	db := r.getDB(ctx)
 
 	q := db.Model(&StockInOrder{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
 	if query.Status != "" {
 		q = q.Where("status = ?", query.Status)
 	}
@@ -279,7 +295,7 @@ func (r *gormStockInOrderItemRepository) Create(ctx context.Context, item *Stock
 
 func (r *gormStockInOrderItemRepository) ListByOrderID(ctx context.Context, orderID uint) ([]StockInOrderItem, error) {
 	var items []StockInOrderItem
-	if err := r.getDB(ctx).Where("stock_in_order_id = ?", orderID).Find(&items).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("stock_in_order_id = ?", orderID).Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil

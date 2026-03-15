@@ -9,16 +9,39 @@ import (
 	"autostack/pkg/response"
 )
 
+func getCompanyID(c *gin.Context) uint {
+	val, exists := c.Get("company_id")
+	if !exists {
+		return 0
+	}
+	switch v := val.(type) {
+	case float64:
+		return uint(v)
+	case uint:
+		return v
+	case int:
+		return uint(v)
+	default:
+		return 0
+	}
+}
+
 // ========== 运费模板处理 ==========
 
 // ListTemplates 获取运费模板列表
 func ListTemplates(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	keyword := c.Query("keyword")
 	status := c.Query("status")
 
-	templates, total, err := service.ListTemplates(page, pageSize, keyword, status)
+	templates, total, err := service.ListTemplates(companyID, page, pageSize, keyword, status)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取模板列表失败")
 		return
@@ -49,7 +72,13 @@ func ListTemplates(c *gin.Context) {
 
 // ListAllTemplates 获取所有启用的运费模板（用于下拉选择）
 func ListAllTemplates(c *gin.Context) {
-	templates, err := service.ListAllTemplates()
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	templates, err := service.ListAllTemplates(companyID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取模板列表失败")
 		return
@@ -68,13 +97,19 @@ func ListAllTemplates(c *gin.Context) {
 
 // GetTemplate 获取运费模板详情
 func GetTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的模板ID")
 		return
 	}
 
-	template, err := service.GetTemplate(uint(id))
+	template, err := service.GetTemplate(companyID, uint(id))
 	if err != nil {
 		response.Error(c, http.StatusNotFound, "模板不存在")
 		return
@@ -114,13 +149,19 @@ func GetTemplate(c *gin.Context) {
 
 // CreateTemplate 创建运费模板
 func CreateTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req CreateTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	template, err := service.CreateTemplate(&req)
+	template, err := service.CreateTemplate(companyID, &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "创建模板失败")
 		return
@@ -140,6 +181,12 @@ func CreateTemplate(c *gin.Context) {
 
 // UpdateTemplate 更新运费模板
 func UpdateTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的模板ID")
@@ -152,7 +199,7 @@ func UpdateTemplate(c *gin.Context) {
 		return
 	}
 
-	if err := service.UpdateTemplate(uint(id), &req); err != nil {
+	if err := service.UpdateTemplate(companyID, uint(id), &req); err != nil {
 		response.Error(c, http.StatusInternalServerError, "更新模板失败")
 		return
 	}
@@ -162,13 +209,19 @@ func UpdateTemplate(c *gin.Context) {
 
 // DeleteTemplate 删除运费模板
 func DeleteTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的模板ID")
 		return
 	}
 
-	if err := service.DeleteTemplate(uint(id)); err != nil {
+	if err := service.DeleteTemplate(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, "删除模板失败")
 		return
 	}
@@ -180,13 +233,19 @@ func DeleteTemplate(c *gin.Context) {
 
 // GetTemplateRules 获取模板的所有规则
 func GetTemplateRules(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的模板ID")
 		return
 	}
 
-	rules, err := service.GetRulesByTemplateID(uint(templateID))
+	rules, err := service.GetRulesByTemplateID(companyID, uint(templateID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取规则列表失败")
 		return
@@ -215,6 +274,12 @@ func GetTemplateRules(c *gin.Context) {
 
 // CreateRule 创建运费规则
 func CreateRule(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的模板ID")
@@ -227,7 +292,7 @@ func CreateRule(c *gin.Context) {
 		return
 	}
 
-	rule, err := service.CreateRule(uint(templateID), &req)
+	rule, err := service.CreateRule(companyID, uint(templateID), &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -251,6 +316,12 @@ func CreateRule(c *gin.Context) {
 
 // UpdateRule 更新运费规则
 func UpdateRule(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("ruleId"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的规则ID")
@@ -263,7 +334,7 @@ func UpdateRule(c *gin.Context) {
 		return
 	}
 
-	if err := service.UpdateRule(uint(id), &req); err != nil {
+	if err := service.UpdateRule(companyID, uint(id), &req); err != nil {
 		response.Error(c, http.StatusInternalServerError, "更新规则失败")
 		return
 	}
@@ -273,13 +344,19 @@ func UpdateRule(c *gin.Context) {
 
 // DeleteRule 删除运费规则
 func DeleteRule(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("ruleId"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的规则ID")
 		return
 	}
 
-	if err := service.DeleteRule(uint(id)); err != nil {
+	if err := service.DeleteRule(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, "删除规则失败")
 		return
 	}
@@ -327,13 +404,19 @@ func BatchCalculateShippingHandler(c *gin.Context) {
 
 // BindProductShippingTemplate 绑定本地产品运费模版
 func BindProductShippingTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req BindProductShippingTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	pst, err := service.BindProductShippingTemplate(&req)
+	pst, err := service.BindProductShippingTemplate(companyID, &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -344,13 +427,19 @@ func BindProductShippingTemplate(c *gin.Context) {
 
 // UnbindProductShippingTemplate 解绑本地产品运费模版
 func UnbindProductShippingTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的ID")
 		return
 	}
 
-	if err := service.UnbindProductShippingTemplate(uint(id)); err != nil {
+	if err := service.UnbindProductShippingTemplate(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, "解绑失败")
 		return
 	}
@@ -360,13 +449,19 @@ func UnbindProductShippingTemplate(c *gin.Context) {
 
 // GetProductShippingTemplates 获取本地产品的运费模版列表
 func GetProductShippingTemplates(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的产品ID")
 		return
 	}
 
-	list, err := service.GetProductShippingTemplates(uint(productID))
+	list, err := service.GetProductShippingTemplates(companyID, uint(productID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取失败")
 		return
@@ -382,6 +477,12 @@ func GetProductShippingTemplates(c *gin.Context) {
 
 // SetProductDefaultShippingTemplate 设置本地产品的默认运费模版
 func SetProductDefaultShippingTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的产品ID")
@@ -394,7 +495,7 @@ func SetProductDefaultShippingTemplate(c *gin.Context) {
 		return
 	}
 
-	if err := service.SetProductDefaultShippingTemplate(uint(productID), req.ShippingTemplateID); err != nil {
+	if err := service.SetProductDefaultShippingTemplate(companyID, uint(productID), req.ShippingTemplateID); err != nil {
 		response.Error(c, http.StatusInternalServerError, "设置失败")
 		return
 	}
@@ -406,13 +507,19 @@ func SetProductDefaultShippingTemplate(c *gin.Context) {
 
 // BindPlatformProductShippingTemplate 绑定平台产品运费模版
 func BindPlatformProductShippingTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req BindPlatformProductShippingTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	ppst, err := service.BindPlatformProductShippingTemplate(&req)
+	ppst, err := service.BindPlatformProductShippingTemplate(companyID, &req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -423,13 +530,19 @@ func BindPlatformProductShippingTemplate(c *gin.Context) {
 
 // UnbindPlatformProductShippingTemplate 解绑平台产品运费模版
 func UnbindPlatformProductShippingTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的ID")
 		return
 	}
 
-	if err := service.UnbindPlatformProductShippingTemplate(uint(id)); err != nil {
+	if err := service.UnbindPlatformProductShippingTemplate(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, "解绑失败")
 		return
 	}
@@ -439,13 +552,19 @@ func UnbindPlatformProductShippingTemplate(c *gin.Context) {
 
 // GetPlatformProductShippingTemplates 获取平台产品的运费模版列表
 func GetPlatformProductShippingTemplates(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	platformProductID, err := strconv.ParseUint(c.Param("platformProductId"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的平台产品ID")
 		return
 	}
 
-	list, err := service.GetPlatformProductShippingTemplates(uint(platformProductID))
+	list, err := service.GetPlatformProductShippingTemplates(companyID, uint(platformProductID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取失败")
 		return
@@ -461,6 +580,12 @@ func GetPlatformProductShippingTemplates(c *gin.Context) {
 
 // SetPlatformProductDefaultShippingTemplate 设置平台产品的默认运费模版
 func SetPlatformProductDefaultShippingTemplate(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	platformProductID, err := strconv.ParseUint(c.Param("platformProductId"), 10, 32)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "无效的平台产品ID")
@@ -473,7 +598,7 @@ func SetPlatformProductDefaultShippingTemplate(c *gin.Context) {
 		return
 	}
 
-	if err := service.SetPlatformProductDefaultShippingTemplate(uint(platformProductID), req.ShippingTemplateID); err != nil {
+	if err := service.SetPlatformProductDefaultShippingTemplate(companyID, uint(platformProductID), req.ShippingTemplateID); err != nil {
 		response.Error(c, http.StatusInternalServerError, "设置失败")
 		return
 	}

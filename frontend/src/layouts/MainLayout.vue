@@ -14,60 +14,49 @@ const themeStore = useThemeStore()
 const tabsStore = useTabsStore()
 const sidebarCollapsed = ref(false)
 
-// 基础菜单项
-const baseMenuItems = [
-  { path: '/', name: 'Dashboard', icon: '🏠', label: '首页' },
-]
-
-// 产品管理菜单项
-const productMenuItems = [
+// 所有菜单项（带 permission 字段）
+const allMenuItems = [
+  { path: '/', name: 'Dashboard', icon: '🏠', label: '首页', permission: 'dashboard:view' },
   { 
     icon: '📦', 
     label: '产品管理',
+    permission: 'product:view',
     children: [
       { path: '/product/products', name: 'LocalProducts', label: '系统产品' },
       { path: '/product/platform-products', name: 'PlatformProducts', label: '平台产品' },
       { path: '/product/summary', name: 'OrderSummary', label: '订单汇总' },
     ]
   },
-]
-
-// 订单管理菜单项
-const orderMenuItems = [
-  { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权' },
-  { path: '/order/orders', name: 'Orders', icon: '📋', label: '订单列表' },
+  { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权', permission: 'platform_auth:view' },
+  { path: '/order/orders', name: 'Orders', icon: '📋', label: '订单列表', permission: 'order:view' },
   { 
     icon: '📊', 
     label: '报表',
+    permission: 'report:view',
     children: [
       { path: '/order/cashflow', name: 'CashFlow', label: '财务报告' },
       { path: '/order/settlement', name: 'Settlement', label: '结算报告' },
     ]
   },
-]
-
-// 仓库管理菜单项
-const warehouseMenuItems = [
   { 
     icon: '🏭', 
     label: '仓库',
+    permission: 'warehouse:view',
     children: [
       { path: '/warehouse/list', name: 'WarehouseList', label: '仓库列表' },
       { path: '/warehouse/inventory', name: 'InventoryList', label: '库存明细' },
       { path: '/warehouse/stock-in', name: 'StockInOrders', label: '入库单' },
     ]
   },
-]
-
-// 物流管理菜单项
-const shippingMenuItems = [
   { 
     icon: '🚚', 
     label: '物流',
+    permission: 'shipping:view',
     children: [
       { path: '/shipping/templates', name: 'ShippingTemplates', label: '运费模板' },
     ]
   },
+  { path: '/users', name: 'UserManagement', icon: '👤', label: '用户管理', permission: 'user:view' },
 ]
 
 // 展开的菜单
@@ -92,18 +81,12 @@ const isChildActive = (item: any) => {
   return item.children.some((child: any) => route.path === child.path)
 }
 
-// 管理员菜单项
-const adminMenuItems = [
-  { path: '/users', name: 'UserManagement', icon: '👤', label: '用户管理' },
-]
-
-// 计算显示的菜单项
+// 计算显示的菜单项（根据用户权限过滤）
 const menuItems = computed(() => {
-  let items = [...baseMenuItems, ...productMenuItems, ...orderMenuItems, ...warehouseMenuItems, ...shippingMenuItems]
-  if (userStore.isAdmin) {
-    items = [...items, ...adminMenuItems]
-  }
-  return items
+  return allMenuItems.filter(item => {
+    if (!item.permission) return true
+    return userStore.hasPermission(item.permission)
+  })
 })
 
 // 路由名称到标题的映射
@@ -135,7 +118,10 @@ const userInitial = computed(() => {
 
 // 用户角色显示
 const userRoleDisplay = computed(() => {
-  return userStore.user?.role === 'admin' ? '管理员' : '用户'
+  const role = userStore.user?.role
+  if (role === 'super_admin') return '超级管理员'
+  if (role === 'admin') return '管理员'
+  return '用户'
 })
 
 const isActive = (path: string) => route.path === path
@@ -471,7 +457,7 @@ const handleLogout = async () => {
           <button class="theme-toggle" @click="themeStore.toggleTheme" :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'">
             {{ themeStore.isDark ? '☀️' : '🌙' }}
           </button>
-          <span class="user-greeting">欢迎，{{ userStore.username }}</span>
+          <span class="user-greeting">{{ userStore.companyName ? userStore.companyName + ' - ' : '' }}{{ userStore.username }}</span>
         </div>
       </header>
       

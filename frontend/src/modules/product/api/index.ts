@@ -94,6 +94,7 @@ export interface ListRequest {
 
 // 平台产品列表查询请求
 export interface ListPlatformProductRequest extends ListRequest {
+  platform?: string
   platform_auth_id?: number
   keyword?: string
   mapped_filter?: string // all, mapped, unmapped

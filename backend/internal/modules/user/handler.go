@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	companyRepo "autostack/internal/repository/company"
 	"autostack/internal/repository"
 	userRepo "autostack/internal/repository/user"
 	"autostack/pkg/response"
@@ -16,18 +17,30 @@ import (
 var userService *Service
 
 // InitHandler 初始化 Handler，注入 Service 依赖
-// 应在服务器启动时调用
 func InitHandler(db *gorm.DB) {
 	txManager := repository.NewTxManager(db)
 	userService = NewService(
 		txManager,
 		userRepo.NewUserRepository(db),
+		companyRepo.NewCompanyRepository(db),
 	)
 }
 
 // GetService 获取服务实例（用于外部调用）
 func GetService() *Service {
 	return userService
+}
+
+// getCompanyName 获取企业名称
+func getCompanyName(companyID uint) string {
+	if companyID == 0 {
+		return ""
+	}
+	company, err := userService.GetCompanyByID(companyID)
+	if err != nil {
+		return ""
+	}
+	return company.Name
 }
 
 // GetProfile 获取当前用户信息
@@ -56,6 +69,8 @@ func GetProfile(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "获取成功", ProfileResponse{
 		ID:          user.ID,
+		CompanyID:   user.CompanyID,
+		CompanyName: getCompanyName(user.CompanyID),
 		Username:    user.Username,
 		Email:       user.Email,
 		Role:        user.Role,
@@ -102,6 +117,8 @@ func UpdateProfile(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "更新成功", ProfileResponse{
 		ID:          user.ID,
+		CompanyID:   user.CompanyID,
+		CompanyName: getCompanyName(user.CompanyID),
 		Username:    user.Username,
 		Email:       user.Email,
 		Role:        user.Role,
@@ -151,7 +168,6 @@ func GetPermissions(c *gin.Context) {
 
 // CreateUser 创建用户（管理员）
 func CreateUser(c *gin.Context) {
-	// 获取当前用户
 	currentUser, err := getCurrentUser(c)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, "未授权")
@@ -164,19 +180,16 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	// 检查是否有权限创建该角色
 	if !currentUser.CanManageRole(req.Role) {
 		response.Error(c, http.StatusForbidden, "无权创建该角色用户")
 		return
 	}
 
-	// 只有超级管理员可以创建管理员
 	if req.Role == RoleAdmin && !currentUser.IsSuperAdmin() {
 		response.Error(c, http.StatusForbidden, "只有超级管理员可以创建管理员")
 		return
 	}
 
-	// 验证权限是否可被授予
 	if len(req.Permissions) > 0 {
 		if err := userService.ValidatePermissions(currentUser, req.Role, req.Permissions); err != nil {
 			response.Error(c, http.StatusForbidden, "包含无法授予的权限")
@@ -184,7 +197,6 @@ func CreateUser(c *gin.Context) {
 		}
 	}
 
-	// 创建用户
 	createdBy := currentUser.ID
 	user, err := userService.CreateUserWithPermissions(
 		req.Username,
@@ -193,6 +205,7 @@ func CreateUser(c *gin.Context) {
 		req.Role,
 		req.Permissions,
 		&createdBy,
+		currentUser.CompanyID,
 	)
 	if err != nil {
 		if err == ErrUserExists {
@@ -205,6 +218,8 @@ func CreateUser(c *gin.Context) {
 
 	response.Success(c, http.StatusCreated, "创建成功", UserDetailResponse{
 		ID:          user.ID,
+		CompanyID:   user.CompanyID,
+		CompanyName: getCompanyName(user.CompanyID),
 		Username:    user.Username,
 		Email:       user.Email,
 		Role:        user.Role,
@@ -216,8 +231,14 @@ func CreateUser(c *gin.Context) {
 	})
 }
 
-// ListUsers 获取用户列表（管理员）
+// ListUsers 获取用户列表（管理员，同企业内）
 func ListUsers(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	keyword := c.Query("keyword")
@@ -230,17 +251,20 @@ func ListUsers(c *gin.Context) {
 		pageSize = 10
 	}
 
-	users, total, err := userService.ListUsers(keyword, role, page, pageSize)
+	users, total, err := userService.ListUsers(currentUser.CompanyID, keyword, role, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取用户列表失败")
 		return
 	}
 
-	// 转换为列表项
+	companyName := getCompanyName(currentUser.CompanyID)
+
 	list := make([]UserListItem, len(users))
 	for i, u := range users {
 		list[i] = UserListItem{
 			ID:          u.ID,
+			CompanyID:   u.CompanyID,
+			CompanyName: companyName,
 			Username:    u.Username,
 			Email:       u.Email,
 			Role:        u.Role,
@@ -279,6 +303,8 @@ func GetUser(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "获取成功", UserDetailResponse{
 		ID:          user.ID,
+		CompanyID:   user.CompanyID,
+		CompanyName: getCompanyName(user.CompanyID),
 		Username:    user.Username,
 		Email:       user.Email,
 		Role:        user.Role,
@@ -298,14 +324,12 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 获取当前用户
 	currentUser, err := getCurrentUser(c)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, "未授权")
 		return
 	}
 
-	// 获取目标用户
 	targetUser, err := userService.GetUserByID(uint(id))
 	if err != nil {
 		if err == ErrUserNotFound {
@@ -316,13 +340,11 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 不能修改自己（通过此接口）
 	if currentUser.ID == targetUser.ID {
 		response.Error(c, http.StatusBadRequest, "不能通过此接口修改自己")
 		return
 	}
 
-	// 检查是否有权限管理目标用户
 	if !userService.CanManageUser(currentUser, targetUser) {
 		response.Error(c, http.StatusForbidden, "无权管理该用户")
 		return
@@ -342,20 +364,16 @@ func UpdateUser(c *gin.Context) {
 		updates["status"] = *req.Status
 	}
 
-	// 处理角色变更
 	newRole := targetUser.Role
 	if req.Role != "" && req.Role != targetUser.Role {
-		// 检查是否有权限变更角色
 		if !currentUser.CanManageRole(req.Role) {
 			response.Error(c, http.StatusForbidden, "无权设置该角色")
 			return
 		}
-		// 只有超级管理员可以设置管理员角色
 		if req.Role == RoleAdmin && !currentUser.IsSuperAdmin() {
 			response.Error(c, http.StatusForbidden, "只有超级管理员可以设置管理员角色")
 			return
 		}
-		// 不能修改超级管理员的角色
 		if targetUser.IsSuperAdmin() {
 			response.Error(c, http.StatusForbidden, "不能修改超级管理员的角色")
 			return
@@ -364,13 +382,11 @@ func UpdateUser(c *gin.Context) {
 		newRole = req.Role
 	}
 
-	// 处理权限变更
 	if req.Permissions != nil {
 		if err := userService.ValidatePermissions(currentUser, newRole, req.Permissions); err != nil {
 			response.Error(c, http.StatusForbidden, "包含无法授予的权限")
 			return
 		}
-		// 将权限序列化为JSON
 		if err := targetUser.SetPermissions(req.Permissions); err != nil {
 			response.Error(c, http.StatusInternalServerError, "设置权限失败")
 			return
@@ -395,6 +411,8 @@ func UpdateUser(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "更新成功", UserDetailResponse{
 		ID:          user.ID,
+		CompanyID:   user.CompanyID,
+		CompanyName: getCompanyName(user.CompanyID),
 		Username:    user.Username,
 		Email:       user.Email,
 		Role:        user.Role,
@@ -414,20 +432,17 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 获取当前用户
 	currentUser, err := getCurrentUser(c)
 	if err != nil {
 		response.Error(c, http.StatusUnauthorized, "未授权")
 		return
 	}
 
-	// 不能删除自己
 	if currentUser.ID == uint(id) {
 		response.Error(c, http.StatusBadRequest, "不能删除自己")
 		return
 	}
 
-	// 获取目标用户
 	targetUser, err := userService.GetUserByID(uint(id))
 	if err != nil {
 		if err == ErrUserNotFound {
@@ -438,13 +453,11 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 不能删除超级管理员
 	if targetUser.IsSuperAdmin() {
 		response.Error(c, http.StatusForbidden, "不能删除超级管理员")
 		return
 	}
 
-	// 检查是否有权限删除目标用户
 	if !userService.CanManageUser(currentUser, targetUser) {
 		response.Error(c, http.StatusForbidden, "无权删除该用户")
 		return

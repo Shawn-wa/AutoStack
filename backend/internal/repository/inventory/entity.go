@@ -26,6 +26,7 @@ const (
 // Warehouse 仓库
 type Warehouse struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
+	CompanyID uint      `gorm:"index;not null;default:0" json:"company_id"`
 	Code      string    `gorm:"size:32;uniqueIndex;not null" json:"code"`   // 仓库编码
 	Name      string    `gorm:"size:100;not null" json:"name"`              // 仓库名称
 	Type      string    `gorm:"size:32;default:local;index" json:"type"`    // 仓库类型
@@ -45,6 +46,7 @@ func (Warehouse) TableName() string {
 // WarehouseCenterInventory 仓库库存明细
 type WarehouseCenterInventory struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
+	CompanyID      uint      `gorm:"index;not null;default:0" json:"company_id"`
 	ProductID      uint      `gorm:"index;not null" json:"product_id"`              // 本地产品ID
 	WarehouseID    uint      `gorm:"index;not null" json:"warehouse_id"`            // 仓库ID
 	SKU            string    `gorm:"size:100;not null;index" json:"sku"`            // 系统SKU
@@ -81,6 +83,7 @@ const (
 // StockInOrder 入库单
 type StockInOrder struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
+	CompanyID   uint      `gorm:"index;not null;default:0" json:"company_id"`
 	OrderNo     string    `gorm:"size:32;uniqueIndex;not null" json:"order_no"` // 入库单号
 	WarehouseID uint      `gorm:"index;not null" json:"warehouse_id"`           // 入库仓库
 	Status      string    `gorm:"size:16;default:pending;index" json:"status"`
@@ -101,6 +104,7 @@ func (StockInOrder) TableName() string {
 // StockInOrderItem 入库单明细
 type StockInOrderItem struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
+	CompanyID      uint      `gorm:"index;not null;default:0" json:"company_id"`
 	StockInOrderID uint      `gorm:"index;not null" json:"stock_in_order_id"`
 	ProductID      uint      `gorm:"index;not null" json:"product_id"`
 	SKU            string    `gorm:"size:100;not null" json:"sku"`

@@ -60,9 +60,10 @@ func NewService(
 }
 
 // ListProducts 获取本地产品列表
-func (s *Service) ListProducts(page, pageSize int, keyword string, warehouseID uint) ([]Product, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListProducts(companyID uint, page, pageSize int, keyword string, warehouseID uint) ([]Product, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.productRepo.List(ctx, &productRepo.ProductQuery{
+		CompanyID:  companyID,
 		Page:        page,
 		PageSize:    pageSize,
 		Keyword:     keyword,
@@ -71,8 +72,8 @@ func (s *Service) ListProducts(page, pageSize int, keyword string, warehouseID u
 }
 
 // CreateProduct 创建本地产品
-func (s *Service) CreateProduct(req CreateProductRequest) (*Product, error) {
-	ctx := context.Background()
+func (s *Service) CreateProduct(companyID uint, req CreateProductRequest) (*Product, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查SKU是否已存在
 	count, err := s.productRepo.CountBySKU(ctx, req.SKU)
@@ -84,6 +85,7 @@ func (s *Service) CreateProduct(req CreateProductRequest) (*Product, error) {
 	}
 
 	product := &Product{
+		CompanyID:  companyID,
 		WID:        req.WID,
 		SKU:        req.SKU,
 		Name:       req.Name,
@@ -101,8 +103,8 @@ func (s *Service) CreateProduct(req CreateProductRequest) (*Product, error) {
 }
 
 // UpdateProduct 更新本地产品
-func (s *Service) UpdateProduct(id uint, req UpdateProductRequest) (*Product, error) {
-	ctx := context.Background()
+func (s *Service) UpdateProduct(companyID, id uint, req UpdateProductRequest) (*Product, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	product, err := s.productRepo.FindByID(ctx, id)
 	if err != nil {
@@ -131,8 +133,8 @@ func (s *Service) UpdateProduct(id uint, req UpdateProductRequest) (*Product, er
 }
 
 // DeleteProduct 删除本地产品
-func (s *Service) DeleteProduct(id uint) error {
-	ctx := context.Background()
+func (s *Service) DeleteProduct(companyID, id uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查是否有映射关联
 	count, err := s.mappingRepo.CountByProductID(ctx, id)
@@ -147,11 +149,13 @@ func (s *Service) DeleteProduct(id uint) error {
 }
 
 // ListPlatformProducts 获取平台产品列表
-func (s *Service) ListPlatformProducts(platformAuthID uint, keyword string, mappedFilter string, page, pageSize int) ([]PlatformProduct, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListPlatformProducts(companyID uint, platform, keyword string, platformAuthID uint, mappedFilter string, page, pageSize int) ([]PlatformProduct, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.platformProductRepo.List(ctx, &productRepo.PlatformProductQuery{
+		CompanyID:      companyID,
 		Page:           page,
 		PageSize:       pageSize,
+		Platform:       platform,
 		PlatformAuthID: platformAuthID,
 		Keyword:        keyword,
 		MappedFilter:   mappedFilter,
@@ -159,8 +163,8 @@ func (s *Service) ListPlatformProducts(platformAuthID uint, keyword string, mapp
 }
 
 // MapProduct 关联产品
-func (s *Service) MapProduct(req MapProductRequest) error {
-	ctx := context.Background()
+func (s *Service) MapProduct(companyID uint, req MapProductRequest) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查平台产品是否存在
 	platformProduct, err := s.platformProductRepo.FindByID(ctx, req.PlatformProductID)
@@ -195,6 +199,7 @@ func (s *Service) MapProduct(req MapProductRequest) error {
 
 	// 创建新映射
 	newMapping := &ProductMapping{
+		CompanyID:         companyID,
 		WID:               req.WID,
 		PlatformAccountID: platformAccountID,
 		ProductID:         req.ProductID,
@@ -205,8 +210,8 @@ func (s *Service) MapProduct(req MapProductRequest) error {
 }
 
 // UnmapProduct 解除关联
-func (s *Service) UnmapProduct(platformProductID uint) error {
-	ctx := context.Background()
+func (s *Service) UnmapProduct(companyID, platformProductID uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.mappingRepo.DeleteByPlatformProductID(ctx, platformProductID)
 }
 
@@ -297,12 +302,12 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 			}
 
 			// 查找或创建
-			pp, err := s.platformProductRepo.FindByAccountAndUniqueCode(ctx, auth.UserID, info.OfferID)
+			pp, err := s.platformProductRepo.FindByAccountAndUniqueCode(ctx, auth.CompanyID, info.OfferID)
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				pp = &PlatformProduct{
 					Platform:          order.PlatformOzon,
 					PlatformAuthID:    platformAuthID,
-					PlatformAccountID: auth.UserID,
+					PlatformAccountID: auth.CompanyID,
 					PlatformSKU:       info.OfferID,
 					UniqueCode:        info.OfferID,
 				}
@@ -313,7 +318,7 @@ func (s *Service) SyncPlatformProducts(platformAuthID uint) error {
 
 			// 更新字段
 			pp.PlatformAuthID = platformAuthID
-			pp.PlatformAccountID = auth.UserID
+			pp.PlatformAccountID = auth.CompanyID
 			pp.UniqueCode = info.OfferID
 			pp.Name = info.Name
 			pp.Stock = totalStock
@@ -352,8 +357,8 @@ func (s *Service) createOzonClient(credentials string, platformAuthID uint) (*oz
 // ========== 同步任务相关 ==========
 
 // CreateSyncTask 创建同步任务
-func (s *Service) CreateSyncTask(platformAuthID uint, taskType string) (*PlatformSyncTask, error) {
-	ctx := context.Background()
+func (s *Service) CreateSyncTask(companyID, platformAuthID uint, taskType string) (*PlatformSyncTask, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查是否已存在相同的待处理或执行中的任务
 	existingTask, err := s.syncTaskRepo.FindPendingOrRunning(ctx, platformAuthID, taskType)
@@ -369,6 +374,7 @@ func (s *Service) CreateSyncTask(platformAuthID uint, taskType string) (*Platfor
 
 	// 创建新任务
 	task := &PlatformSyncTask{
+		CompanyID:      companyID,
 		PlatformAuthID: platformAuthID,
 		TaskType:       taskType,
 		Status:         SyncTaskStatusPending,
@@ -469,8 +475,8 @@ func (s *Service) CleanOldTasks(before time.Time) (int64, error) {
 }
 
 // InitProductsFromPlatform 根据平台SKU初始化本地产品
-func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsResponse, error) {
-	ctx := context.Background()
+func (s *Service) InitProductsFromPlatform(companyID, platformAuthID uint) (*InitProductsResponse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	result := &InitProductsResponse{}
 
 	// 获取默认仓库ID
@@ -502,9 +508,10 @@ func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsRe
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 创建新的本地产品
 			localProduct = &Product{
-				SKU:   pp.PlatformSKU,
-				Name:  pp.Name,
-				Image: pp.Image,
+				CompanyID: companyID,
+				SKU:       pp.PlatformSKU,
+				Name:      pp.Name,
+				Image:     pp.Image,
 			}
 			if err := s.productRepo.Create(ctx, localProduct); err != nil {
 				fmt.Printf("[InitProducts] 创建本地产品失败 %s: %v\n", pp.PlatformSKU, err)
@@ -525,6 +532,7 @@ func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsRe
 
 		// 创建映射关系
 		mapping := &ProductMapping{
+			CompanyID:         companyID,
 			WID:               defaultWID,
 			PlatformAccountID: pp.PlatformAccountID,
 			ProductID:         localProduct.ID,
@@ -546,9 +554,10 @@ func (s *Service) InitProductsFromPlatform(platformAuthID uint) (*InitProductsRe
 }
 
 // ListSyncTasks 获取同步任务列表
-func (s *Service) ListSyncTasks(page, pageSize int, status string) ([]PlatformSyncTask, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListSyncTasks(companyID uint, page, pageSize int, status string) ([]PlatformSyncTask, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.syncTaskRepo.List(ctx, &productRepo.SyncTaskQuery{
+		CompanyID: companyID,
 		Page:     page,
 		PageSize: pageSize,
 		Status:   status,
@@ -563,8 +572,8 @@ func generateStockInOrderNo() string {
 }
 
 // CreateStockInOrder 创建入库单（同时更新库存）
-func (s *Service) CreateStockInOrder(req CreateStockInOrderRequest) (*StockInOrder, error) {
-	ctx := context.Background()
+func (s *Service) CreateStockInOrder(companyID uint, req CreateStockInOrderRequest) (*StockInOrder, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 验证仓库存在
 	_, err := s.warehouseRepo.FindByID(ctx, req.WarehouseID)
@@ -578,6 +587,7 @@ func (s *Service) CreateStockInOrder(req CreateStockInOrderRequest) (*StockInOrd
 	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		// 创建入库单
 		stockInOrder := &StockInOrder{
+			CompanyID:   companyID,
 			OrderNo:     generateStockInOrderNo(),
 			WarehouseID: req.WarehouseID,
 			Status:      StockInStatusCompleted,
@@ -598,6 +608,7 @@ func (s *Service) CreateStockInOrder(req CreateStockInOrderRequest) (*StockInOrd
 
 			// 创建明细
 			orderItem := &StockInOrderItem{
+				CompanyID:      companyID,
 				StockInOrderID: stockInOrder.ID,
 				ProductID:      item.ProductID,
 				SKU:            product.SKU,
@@ -618,6 +629,7 @@ func (s *Service) CreateStockInOrder(req CreateStockInOrderRequest) (*StockInOrd
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				// 创建新的库存记录
 				inventory = &WarehouseCenterInventory{
+					CompanyID:      companyID,
 					ProductID:      item.ProductID,
 					WarehouseID:    req.WarehouseID,
 					SKU:            product.SKU,
@@ -653,9 +665,10 @@ func (s *Service) CreateStockInOrder(req CreateStockInOrderRequest) (*StockInOrd
 }
 
 // ListStockInOrders 获取入库单列表
-func (s *Service) ListStockInOrders(page, pageSize int, status string) ([]StockInOrder, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListStockInOrders(companyID uint, page, pageSize int, status string) ([]StockInOrder, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.stockInOrderRepo.List(ctx, &inventoryRepo.StockInOrderQuery{
+		CompanyID: companyID,
 		Page:     page,
 		PageSize: pageSize,
 		Status:   status,
@@ -663,8 +676,8 @@ func (s *Service) ListStockInOrders(page, pageSize int, status string) ([]StockI
 }
 
 // GetStockInOrder 获取入库单详情
-func (s *Service) GetStockInOrder(id uint) (*StockInOrder, error) {
-	ctx := context.Background()
+func (s *Service) GetStockInOrder(companyID, id uint) (*StockInOrder, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	order, err := s.stockInOrderRepo.FindByIDWithDetails(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -676,8 +689,8 @@ func (s *Service) GetStockInOrder(id uint) (*StockInOrder, error) {
 }
 
 // ImportStockInOrders 批量导入入库单
-func (s *Service) ImportStockInOrders(warehouseID uint, remark string, items []ImportStockInItem) (*ImportStockInResponse, error) {
-	ctx := context.Background()
+func (s *Service) ImportStockInOrders(companyID, warehouseID uint, remark string, items []ImportStockInItem) (*ImportStockInResponse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 验证仓库存在
 	_, err := s.warehouseRepo.FindByID(ctx, warehouseID)
@@ -711,7 +724,7 @@ func (s *Service) ImportStockInOrders(warehouseID uint, remark string, items []I
 	}
 
 	// 使用已有的创建入库单逻辑
-	order, err := s.CreateStockInOrder(CreateStockInOrderRequest{
+	order, err := s.CreateStockInOrder(companyID, CreateStockInOrderRequest{
 		WarehouseID: warehouseID,
 		Items:       validItems,
 		Remark:      remark,
@@ -731,22 +744,26 @@ func (s *Service) ImportStockInOrders(warehouseID uint, remark string, items []I
 // ========== 仓库相关 ==========
 
 // ListWarehouses 获取仓库列表
-func (s *Service) ListWarehouses() ([]Warehouse, error) {
-	ctx := context.Background()
-	return s.warehouseRepo.ListActive(ctx)
+func (s *Service) ListWarehouses(companyID uint) ([]Warehouse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
+	return s.warehouseRepo.List(ctx, &inventoryRepo.WarehouseQuery{
+		CompanyID: companyID,
+		Status:    WarehouseStatusActive,
+	})
 }
 
 // ListAllWarehouses 获取所有仓库（支持按类型筛选）
-func (s *Service) ListAllWarehouses(warehouseType string) ([]Warehouse, error) {
-	ctx := context.Background()
+func (s *Service) ListAllWarehouses(companyID uint, warehouseType string) ([]Warehouse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.warehouseRepo.List(ctx, &inventoryRepo.WarehouseQuery{
-		Type: warehouseType,
+		CompanyID: companyID,
+		Type:      warehouseType,
 	})
 }
 
 // CreateWarehouse 创建仓库
-func (s *Service) CreateWarehouse(req CreateWarehouseRequest) (*Warehouse, error) {
-	ctx := context.Background()
+func (s *Service) CreateWarehouse(companyID uint, req CreateWarehouseRequest) (*Warehouse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 检查编码是否已存在
 	count, err := s.warehouseRepo.CountByCode(ctx, req.Code)
@@ -764,6 +781,7 @@ func (s *Service) CreateWarehouse(req CreateWarehouseRequest) (*Warehouse, error
 	}
 
 	warehouse := &Warehouse{
+		CompanyID: companyID,
 		Code:    req.Code,
 		Name:    req.Name,
 		Type:    warehouseType,
@@ -779,8 +797,8 @@ func (s *Service) CreateWarehouse(req CreateWarehouseRequest) (*Warehouse, error
 }
 
 // UpdateWarehouse 更新仓库
-func (s *Service) UpdateWarehouse(id uint, req UpdateWarehouseRequest) (*Warehouse, error) {
-	ctx := context.Background()
+func (s *Service) UpdateWarehouse(companyID, id uint, req UpdateWarehouseRequest) (*Warehouse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	warehouse, err := s.warehouseRepo.FindByID(ctx, id)
 	if err != nil {
@@ -834,9 +852,10 @@ func (s *Service) InitDefaultWarehouse() error {
 // ========== 库存相关 ==========
 
 // ListInventory 获取库存明细列表
-func (s *Service) ListInventory(warehouseID uint, keyword string, page, pageSize int) ([]WarehouseCenterInventory, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListInventory(companyID, warehouseID uint, keyword string, page, pageSize int) ([]WarehouseCenterInventory, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.inventoryRepo.List(ctx, &inventoryRepo.InventoryQuery{
+		CompanyID:   companyID,
 		Page:        page,
 		PageSize:    pageSize,
 		WarehouseID: warehouseID,
@@ -845,8 +864,8 @@ func (s *Service) ListInventory(warehouseID uint, keyword string, page, pageSize
 }
 
 // GetOrCreateInventory 获取或创建库存记录
-func (s *Service) GetOrCreateInventory(productID, warehouseID uint) (*WarehouseCenterInventory, error) {
-	ctx := context.Background()
+func (s *Service) GetOrCreateInventory(companyID, productID, warehouseID uint) (*WarehouseCenterInventory, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	inventory, err := s.inventoryRepo.FindByProductAndWarehouse(ctx, productID, warehouseID)
 	if err == nil {
@@ -865,6 +884,7 @@ func (s *Service) GetOrCreateInventory(productID, warehouseID uint) (*WarehouseC
 
 	// 创建新库存记录
 	inventory = &WarehouseCenterInventory{
+		CompanyID:      companyID,
 		ProductID:      productID,
 		WarehouseID:    warehouseID,
 		SKU:            product.SKU,
@@ -881,10 +901,10 @@ func (s *Service) GetOrCreateInventory(productID, warehouseID uint) (*WarehouseC
 }
 
 // UpdateInventory 更新库存
-func (s *Service) UpdateInventory(req UpdateInventoryRequest) (*WarehouseCenterInventory, error) {
-	ctx := context.Background()
+func (s *Service) UpdateInventory(companyID uint, req UpdateInventoryRequest) (*WarehouseCenterInventory, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
-	inventory, err := s.GetOrCreateInventory(req.ProductID, req.WarehouseID)
+	inventory, err := s.GetOrCreateInventory(companyID, req.ProductID, req.WarehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -913,8 +933,8 @@ func (s *Service) UpdateInventory(req UpdateInventoryRequest) (*WarehouseCenterI
 }
 
 // InitInventoryFromProducts 从产品表初始化库存
-func (s *Service) InitInventoryFromProducts(warehouseID uint) (int, error) {
-	ctx := context.Background()
+func (s *Service) InitInventoryFromProducts(companyID, warehouseID uint) (int, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 获取所有产品
 	products, err := s.productRepo.FindAll(ctx)
@@ -933,6 +953,7 @@ func (s *Service) InitInventoryFromProducts(warehouseID uint) (int, error) {
 		}
 
 		inventory := &WarehouseCenterInventory{
+			CompanyID:      companyID,
 			ProductID:      p.ID,
 			WarehouseID:    warehouseID,
 			SKU:            p.SKU,
@@ -953,15 +974,16 @@ func (s *Service) InitInventoryFromProducts(warehouseID uint) (int, error) {
 // ========== 供应商/采购信息相关 ==========
 
 // ListSuppliersByProductID 获取产品的供应商列表
-func (s *Service) ListSuppliersByProductID(productID uint) ([]ProductSupplier, error) {
-	ctx := context.Background()
+func (s *Service) ListSuppliersByProductID(companyID, productID uint) ([]ProductSupplier, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.supplierRepo.FindByProductID(ctx, productID)
 }
 
 // ListSuppliers 分页获取供应商列表
-func (s *Service) ListSuppliers(productID uint, keyword, status string, page, pageSize int) ([]ProductSupplier, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListSuppliers(companyID, productID uint, keyword, status string, page, pageSize int) ([]ProductSupplier, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.supplierRepo.List(ctx, &productRepo.ProductSupplierQuery{
+		CompanyID: companyID,
 		Page:      page,
 		PageSize:  pageSize,
 		ProductID: productID,
@@ -977,8 +999,8 @@ func (s *Service) GetSupplier(id uint) (*ProductSupplier, error) {
 }
 
 // CreateSupplier 创建供应商
-func (s *Service) CreateSupplier(req CreateSupplierRequest) (*ProductSupplier, error) {
-	ctx := context.Background()
+func (s *Service) CreateSupplier(companyID uint, req CreateSupplierRequest) (*ProductSupplier, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 验证产品是否存在
 	_, err := s.productRepo.FindByID(ctx, req.ProductID)
@@ -992,6 +1014,7 @@ func (s *Service) CreateSupplier(req CreateSupplierRequest) (*ProductSupplier, e
 	}
 
 	supplier := &ProductSupplier{
+		CompanyID:     companyID,
 		ProductID:     req.ProductID,
 		SupplierName:  req.SupplierName,
 		PurchaseLink:  req.PurchaseLink,
@@ -1019,8 +1042,8 @@ func (s *Service) CreateSupplier(req CreateSupplierRequest) (*ProductSupplier, e
 }
 
 // UpdateSupplier 更新供应商
-func (s *Service) UpdateSupplier(id uint, req UpdateSupplierRequest) (*ProductSupplier, error) {
-	ctx := context.Background()
+func (s *Service) UpdateSupplier(companyID, id uint, req UpdateSupplierRequest) (*ProductSupplier, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	supplier, err := s.supplierRepo.FindByID(ctx, id)
 	if err != nil {
@@ -1058,25 +1081,26 @@ func (s *Service) UpdateSupplier(id uint, req UpdateSupplierRequest) (*ProductSu
 }
 
 // DeleteSupplier 删除供应商
-func (s *Service) DeleteSupplier(id uint) error {
-	ctx := context.Background()
+func (s *Service) DeleteSupplier(companyID, id uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.supplierRepo.Delete(ctx, id)
 }
 
 // SetDefaultSupplier 设置默认供应商
-func (s *Service) SetDefaultSupplier(productID, supplierID uint) error {
-	ctx := context.Background()
+func (s *Service) SetDefaultSupplier(companyID, productID, supplierID uint) error {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	return s.supplierRepo.SetDefault(ctx, productID, supplierID)
 }
 
 // ========== 批量操作相关 ==========
 
 // ListProductsWithSupplier 获取产品列表（带默认供应商信息）
-func (s *Service) ListProductsWithSupplier(page, pageSize int, keyword string, warehouseID uint) ([]ProductWithSupplierResponse, int64, error) {
-	ctx := context.Background()
+func (s *Service) ListProductsWithSupplier(companyID uint, page, pageSize int, keyword string, warehouseID uint) ([]ProductWithSupplierResponse, int64, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 
 	// 获取产品列表
 	products, total, err := s.productRepo.List(ctx, &productRepo.ProductQuery{
+		CompanyID:  companyID,
 		Page:        page,
 		PageSize:    pageSize,
 		Keyword:     keyword,
@@ -1088,7 +1112,10 @@ func (s *Service) ListProductsWithSupplier(page, pageSize int, keyword string, w
 
 	// 获取仓库映射
 	warehouseMap := make(map[uint]string)
-	warehouses, _ := s.warehouseRepo.ListActive(ctx)
+	warehouses, _ := s.warehouseRepo.List(ctx, &inventoryRepo.WarehouseQuery{
+		CompanyID: companyID,
+		Status:    WarehouseStatusActive,
+	})
 	for _, w := range warehouses {
 		warehouseMap[w.ID] = w.Name
 	}
@@ -1139,8 +1166,8 @@ func (s *Service) ListProductsWithSupplier(page, pageSize int, keyword string, w
 }
 
 // BatchUpdateSuppliers 批量更新供应商信息
-func (s *Service) BatchUpdateSuppliers(req BatchUpdateSupplierRequest) (*BatchUpdateSupplierResponse, error) {
-	ctx := context.Background()
+func (s *Service) BatchUpdateSuppliers(companyID uint, req BatchUpdateSupplierRequest) (*BatchUpdateSupplierResponse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	result := &BatchUpdateSupplierResponse{}
 
 	for _, item := range req.Items {
@@ -1169,6 +1196,7 @@ func (s *Service) BatchUpdateSuppliers(req BatchUpdateSupplierRequest) (*BatchUp
 				supplierName = "默认供应商"
 			}
 			supplier = &ProductSupplier{
+				CompanyID:    companyID,
 				ProductID:    item.ProductID,
 				SupplierName: supplierName,
 				UnitPrice:    item.UnitPrice,
@@ -1201,8 +1229,8 @@ func (s *Service) BatchUpdateSuppliers(req BatchUpdateSupplierRequest) (*BatchUp
 }
 
 // ImportSuppliers 导入供应商数据
-func (s *Service) ImportSuppliers(items []ImportSupplierItem) (*ImportSupplierResponse, error) {
-	ctx := context.Background()
+func (s *Service) ImportSuppliers(companyID uint, items []ImportSupplierItem) (*ImportSupplierResponse, error) {
+	ctx := repository.WithCompanyID(context.Background(), companyID)
 	result := &ImportSupplierResponse{
 		TotalCount: len(items),
 	}
@@ -1233,6 +1261,7 @@ func (s *Service) ImportSuppliers(items []ImportSupplierItem) (*ImportSupplierRe
 		if err != nil {
 			// 不存在，创建新的
 			supplier = &ProductSupplier{
+				CompanyID:    companyID,
 				ProductID:    product.ID,
 				SupplierName: supplierName,
 				UnitPrice:    item.UnitPrice,

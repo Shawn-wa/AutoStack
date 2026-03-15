@@ -6,11 +6,11 @@ import "time"
 type OrderQuery struct {
 	Page           int
 	PageSize       int
-	UserID         uint
+	CompanyID      uint
 	Platform       string
 	AuthID         uint
-	Status         string   // 支持逗号分隔多状态
-	Statuses       []string // 多状态列表
+	Status         string
+	Statuses       []string
 	Keyword        string
 	StartTime      string
 	EndTime        string
@@ -24,7 +24,7 @@ type OrderItemQuery struct {
 
 // DailyStatQuery 每日统计查询条件
 type DailyStatQuery struct {
-	UserID    uint
+	CompanyID uint
 	StartDate time.Time
 	EndDate   time.Time
 	Currency  string

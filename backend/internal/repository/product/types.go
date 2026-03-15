@@ -2,6 +2,7 @@ package product
 
 // ProductQuery 产品查询条件
 type ProductQuery struct {
+	CompanyID  uint
 	Page        int
 	PageSize    int
 	Keyword     string
@@ -10,8 +11,10 @@ type ProductQuery struct {
 
 // PlatformProductQuery 平台产品查询条件
 type PlatformProductQuery struct {
+	CompanyID      uint
 	Page           int
 	PageSize       int
+	Platform       string
 	PlatformAuthID uint
 	Keyword        string
 	MappedFilter   string // all, mapped, unmapped
@@ -19,6 +22,7 @@ type PlatformProductQuery struct {
 
 // SyncTaskQuery 同步任务查询条件
 type SyncTaskQuery struct {
+	CompanyID uint
 	Page     int
 	PageSize int
 	Status   string
@@ -26,6 +30,7 @@ type SyncTaskQuery struct {
 
 // ProductSupplierQuery 产品供应商查询条件
 type ProductSupplierQuery struct {
+	CompanyID uint
 	Page      int
 	PageSize  int
 	ProductID uint   // 按产品ID筛选

@@ -12,7 +12,6 @@ import (
 	"autostack/internal/modules/product"
 )
 
-// commissionSyncResult 佣金同步结果
 type commissionSyncResult struct {
 	total   int
 	updated int
@@ -24,35 +23,30 @@ var cronScheduler *cron.Cron
 func Start() {
 	cronScheduler = cron.New(cron.WithSeconds())
 
-	// 每小时同步订单和佣金（每小时的第 5 分钟执行，避免整点高峰）
 	_, err := cronScheduler.AddFunc("0 5 * * * *", syncAllAuthsOrdersAndCommission)
 	if err != nil {
 		log.Printf("[Scheduler] 添加订单同步任务失败: %v", err)
 		return
 	}
 
-	// 每4小时统计订单走势数据（每天 0/4/8/12/16/20 点的第10分钟执行）
 	_, err = cronScheduler.AddFunc("0 10 */4 * * *", calculateOrderTrendStats)
 	if err != nil {
 		log.Printf("[Scheduler] 添加订单走势统计任务失败: %v", err)
 		return
 	}
 
-	// 每1分钟扫描并执行待处理的同步任务
 	_, err = cronScheduler.AddFunc("0 */1 * * * *", processPendingSyncTasks)
 	if err != nil {
 		log.Printf("[Scheduler] 添加同步任务扫描失败: %v", err)
 		return
 	}
 
-	// 每天凌晨1:20清理3个月前的同步任务记录
 	_, err = cronScheduler.AddFunc("0 20 1 * * *", cleanOldSyncTasks)
 	if err != nil {
 		log.Printf("[Scheduler] 添加任务清理失败: %v", err)
 		return
 	}
 
-	// 每天凌晨2点同步所有平台产品
 	_, err = cronScheduler.AddFunc("0 0 2 * * *", syncAllPlatformProducts)
 	if err != nil {
 		log.Printf("[Scheduler] 添加平台产品同步任务失败: %v", err)
@@ -103,7 +97,6 @@ func syncAllAuthsOrdersAndCommission() {
 	db := database.GetDB()
 	orderService := order.GetService()
 
-	// 获取所有活跃的授权
 	var auths []order.PlatformAuth
 	if err := db.Where("status = ?", order.AuthStatusActive).Find(&auths).Error; err != nil {
 		log.Printf("[Scheduler] 获取授权列表失败: %v", err)
@@ -112,7 +105,6 @@ func syncAllAuthsOrdersAndCommission() {
 
 	log.Printf("[Scheduler] 找到 %d 个活跃授权", len(auths))
 
-	// 同步时间范围：最近3个月
 	now := time.Now()
 	since := now.AddDate(0, -3, 0)
 
@@ -122,8 +114,7 @@ func syncAllAuthsOrdersAndCommission() {
 	for _, auth := range auths {
 		log.Printf("[Scheduler] 同步授权 ID=%d, 平台=%s, 店铺=%s", auth.ID, auth.Platform, auth.ShopName)
 
-		// 同步订单
-		result, err := orderService.SyncOrders(auth.ID, auth.UserID, since, now, true)
+		result, err := orderService.SyncOrders(auth.ID, auth.CompanyID, since, now, true)
 		if err != nil {
 			log.Printf("[Scheduler] 同步订单失败 (授权ID=%d): %v", auth.ID, err)
 			failCount++
@@ -133,12 +124,10 @@ func syncAllAuthsOrdersAndCommission() {
 		log.Printf("[Scheduler] 订单同步完成 (授权ID=%d): 总计=%d, 新增=%d, 更新=%d",
 			auth.ID, result.Total, result.Created, result.Updated)
 
-		// 同步佣金：只同步已签收的订单（最近30天内签收的）
 		commissionSince := now.Add(-30 * 24 * time.Hour)
-		commissionResult, err := syncCommissionForDeliveredOrders(auth.ID, auth.UserID, commissionSince, now)
+		commissionResult, err := syncCommissionForDeliveredOrders(auth.ID, auth.CompanyID, commissionSince, now)
 		if err != nil {
 			log.Printf("[Scheduler] 同步佣金失败 (授权ID=%d): %v", auth.ID, err)
-			// 佣金同步失败不影响整体
 		} else {
 			log.Printf("[Scheduler] 佣金同步完成 (授权ID=%d): 处理=%d, 更新=%d",
 				auth.ID, commissionResult.total, commissionResult.updated)
@@ -150,25 +139,23 @@ func syncAllAuthsOrdersAndCommission() {
 	log.Printf("[Scheduler] 定时同步任务完成: 成功=%d, 失败=%d", successCount, failCount)
 }
 
-// calculateOrderTrendStats 统计订单走势数据并存储到 order_daily_stats 表
+// calculateOrderTrendStats 按企业统计订单走势数据并存储到 order_daily_stats 表
 func calculateOrderTrendStats() {
 	log.Println("[Scheduler] 开始执行订单走势统计任务...")
 
 	db := database.GetDB()
 
-	// 获取所有用户
-	type UserInfo struct {
+	type CompanyInfo struct {
 		ID uint
 	}
-	var users []UserInfo
-	if err := db.Table("users").Select("id").Find(&users).Error; err != nil {
-		log.Printf("[Scheduler] 获取用户列表失败: %v", err)
+	var companies []CompanyInfo
+	if err := db.Table("companies").Select("id").Find(&companies).Error; err != nil {
+		log.Printf("[Scheduler] 获取企业列表失败: %v", err)
 		return
 	}
 
-	log.Printf("[Scheduler] 找到 %d 个用户需要统计订单走势", len(users))
+	log.Printf("[Scheduler] 找到 %d 个企业需要统计订单走势", len(companies))
 
-	// 统计时间范围：最近30天（存储更多历史数据）
 	days := 30
 	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour)
 	startDate := endDate.AddDate(0, 0, -days)
@@ -176,8 +163,7 @@ func calculateOrderTrendStats() {
 	totalSaved := 0
 	totalUpdated := 0
 
-	for _, user := range users {
-		// 按日期分组统计
+	for _, company := range companies {
 		type DailyStats struct {
 			Date     time.Time
 			Currency string
@@ -193,30 +179,27 @@ func calculateOrderTrendStats() {
 				COUNT(*) as count, 
 				COALESCE(SUM(total_amount), 0) as amount
 			`).
-			Where("user_id = ? AND order_time >= ? AND order_time < ?", user.ID, startDate, endDate).
+			Where("company_id = ? AND order_time >= ? AND order_time < ?", company.ID, startDate, endDate).
 			Group("DATE(order_time), currency").
 			Order("date ASC").
 			Scan(&dailyStats).Error
 
 		if err != nil {
-			log.Printf("[Scheduler] 用户 %d 订单走势统计失败: %v", user.ID, err)
+			log.Printf("[Scheduler] 企业 %d 订单走势统计失败: %v", company.ID, err)
 			continue
 		}
 
-		log.Printf("[Scheduler] 用户 %d 共有 %d 条日期统计数据", user.ID, len(dailyStats))
+		log.Printf("[Scheduler] 企业 %d 共有 %d 条日期统计数据", company.ID, len(dailyStats))
 
-		// 存储到 order_daily_stats 表
 		for _, stat := range dailyStats {
 			statDate := stat.Date
 
-			// 使用 upsert 逻辑：存在则更新，不存在则创建
 			var existing order.OrderDailyStat
-			result := db.Where("user_id = ? AND stat_date = ? AND currency = ?", user.ID, statDate, stat.Currency).First(&existing)
+			result := db.Where("company_id = ? AND stat_date = ? AND currency = ?", company.ID, statDate, stat.Currency).First(&existing)
 
 			if result.Error != nil {
-				// 不存在，创建新记录
 				newStat := order.OrderDailyStat{
-					UserID:      user.ID,
+					CompanyID:   company.ID,
 					StatDate:    statDate,
 					Currency:    stat.Currency,
 					OrderCount:  stat.Count,
@@ -228,7 +211,6 @@ func calculateOrderTrendStats() {
 				}
 				totalSaved++
 			} else {
-				// 存在，更新记录
 				db.Model(&existing).Updates(map[string]interface{}{
 					"order_count":  stat.Count,
 					"order_amount": stat.Amount,
@@ -237,7 +219,6 @@ func calculateOrderTrendStats() {
 			}
 		}
 
-		// 计算总计
 		var totalOrders int64
 		var totalAmount float64
 		for _, stat := range dailyStats {
@@ -245,36 +226,32 @@ func calculateOrderTrendStats() {
 			totalAmount += stat.Amount
 		}
 
-		log.Printf("[Scheduler] 用户 %d 订单走势统计完成: 近%d天订单=%d, 总金额=%.2f",
-			user.ID, days, totalOrders, totalAmount)
+		log.Printf("[Scheduler] 企业 %d 订单走势统计完成: 近%d天订单=%d, 总金额=%.2f",
+			company.ID, days, totalOrders, totalAmount)
 	}
 
 	log.Printf("[Scheduler] 订单走势统计任务完成: 新增=%d, 更新=%d", totalSaved, totalUpdated)
 }
 
 // syncCommissionForDeliveredOrders 只同步已签收订单的佣金
-func syncCommissionForDeliveredOrders(authID, userID uint, since, to time.Time) (*commissionSyncResult, error) {
+func syncCommissionForDeliveredOrders(authID, companyID uint, since, to time.Time) (*commissionSyncResult, error) {
 	db := database.GetDB()
 
-	// 获取授权信息
 	var auth order.PlatformAuth
-	if err := db.Where("id = ? AND user_id = ?", authID, userID).First(&auth).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", authID, companyID).First(&auth).Error; err != nil {
 		return nil, fmt.Errorf("授权不存在")
 	}
 
-	// 获取平台适配器
 	adapter := order.GetAdapter(auth.Platform)
 	if adapter == nil {
 		return nil, fmt.Errorf("平台 %s 适配器未找到", auth.Platform)
 	}
 
-	// 解密凭证
 	credentials, err := order.Decrypt(auth.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("凭证解密失败: %w", err)
 	}
 
-	// 只查询已签收的订单（status = 'delivered'）
 	var orders []order.Order
 	query := db.Model(&order.Order{}).
 		Where("platform_auth_id = ?", authID).
@@ -284,7 +261,6 @@ func syncCommissionForDeliveredOrders(authID, userID uint, since, to time.Time) 
 		return nil, fmt.Errorf("查询订单失败: %w", err)
 	}
 
-	// 提取订单号列表
 	postingNumbers := make([]string, 0, len(orders))
 	for _, ord := range orders {
 		postingNumbers = append(postingNumbers, ord.PlatformOrderNo)
@@ -296,7 +272,6 @@ func syncCommissionForDeliveredOrders(authID, userID uint, since, to time.Time) 
 		return &commissionSyncResult{total: 0, updated: 0}, nil
 	}
 
-	// 使用适配器获取佣金
 	var commissions map[string]*order.CommissionData
 	if adapterWithOrders, ok := adapter.(order.PlatformAdapterWithOrders); ok {
 		commissions, err = adapterWithOrders.GetCommissionsForOrders(credentials, postingNumbers, auth.ID)
@@ -313,7 +288,6 @@ func syncCommissionForDeliveredOrders(authID, userID uint, since, to time.Time) 
 		total: len(postingNumbers),
 	}
 
-	// 批量更新订单佣金
 	now := time.Now()
 	for postingNumber, commData := range commissions {
 		updateResult := db.Model(&order.Order{}).
@@ -357,7 +331,6 @@ func processPendingSyncTasks() {
 func cleanOldSyncTasks() {
 	log.Println("[Scheduler] 开始清理旧的同步任务记录...")
 
-	// 3个月前
 	before := time.Now().AddDate(0, -3, 0)
 
 	productService := product.GetService()
@@ -387,7 +360,6 @@ func syncAllPlatformProducts() {
 		return
 	}
 
-	// 获取所有活跃的授权
 	var auths []order.PlatformAuth
 	if err := db.Where("status = ?", order.AuthStatusActive).Find(&auths).Error; err != nil {
 		log.Printf("[Scheduler] 获取授权列表失败: %v", err)

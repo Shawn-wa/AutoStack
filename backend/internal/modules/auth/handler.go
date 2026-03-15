@@ -16,6 +16,22 @@ func InitService(jwtSecret string, jwtExpireHour int) {
 	authService = NewService(jwtSecret, jwtExpireHour)
 }
 
+// getCompanyName 获取企业名称
+func getCompanyName(companyID uint) string {
+	if companyID == 0 {
+		return ""
+	}
+	userSvc := user.GetService()
+	if userSvc == nil {
+		return ""
+	}
+	company, err := userSvc.GetCompanyByID(companyID)
+	if err != nil {
+		return ""
+	}
+	return company.Name
+}
+
 // Login 用户登录
 func Login(c *gin.Context) {
 	var req LoginRequest
@@ -42,10 +58,13 @@ func Login(c *gin.Context) {
 	response.Success(c, http.StatusOK, "登录成功", LoginResponse{
 		Token: token,
 		User: UserInfo{
-			ID:       u.ID,
-			Username: u.Username,
-			Email:    u.Email,
-			Role:     u.Role,
+			ID:          u.ID,
+			CompanyID:   u.CompanyID,
+			CompanyName: getCompanyName(u.CompanyID),
+			Username:    u.Username,
+			Email:       u.Email,
+			Role:        u.Role,
+			Permissions: u.GetPermissions(),
 		},
 	})
 }
@@ -58,7 +77,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	u, err := authService.Register(req.Username, req.Password, req.Email)
+	u, company, err := authService.Register(req.Username, req.Password, req.Email, req.CompanyName)
 	if err != nil {
 		if err == user.ErrUserExists {
 			response.Error(c, http.StatusConflict, "用户名或邮箱已存在")
@@ -69,9 +88,11 @@ func Register(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, "注册成功", UserInfo{
-		ID:       u.ID,
-		Username: u.Username,
-		Email:    u.Email,
-		Role:     u.Role,
+		ID:          u.ID,
+		CompanyID:   company.ID,
+		CompanyName: company.Name,
+		Username:    u.Username,
+		Email:       u.Email,
+		Role:        u.Role,
 	})
 }

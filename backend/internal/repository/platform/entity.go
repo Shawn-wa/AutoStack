@@ -27,7 +27,8 @@ const (
 // PlatformAuth 平台授权模型
 type PlatformAuth struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
-	UserID      uint       `gorm:"index;not null" json:"user_id"`
+	CompanyID   uint       `gorm:"index;not null" json:"company_id"`
+	CreatedBy   uint       `gorm:"index;not null;default:0" json:"created_by"`
 	Platform    string     `gorm:"size:50;not null" json:"platform"`
 	ShopName    string     `gorm:"size:100;not null" json:"shop_name"`
 	Credentials string     `gorm:"type:text;not null" json:"-"`
@@ -67,7 +68,7 @@ func (OrdersRequestLog) TableName() string {
 // CashFlowStatement 现金流报表模型
 type CashFlowStatement struct {
 	ID             uint       `gorm:"primaryKey" json:"id"`
-	UserID         uint       `gorm:"index;not null" json:"user_id"`
+	CompanyID      uint       `gorm:"index;not null" json:"company_id"`
 	PlatformAuthID uint       `gorm:"index;not null" json:"platform_auth_id"`
 	Platform       string     `gorm:"size:50;not null;index" json:"platform"`
 	PeriodBegin    *time.Time `gorm:"uniqueIndex:idx_auth_period" json:"period_begin"`

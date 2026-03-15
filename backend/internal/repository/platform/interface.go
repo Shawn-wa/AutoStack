@@ -9,14 +9,14 @@ import (
 type PlatformAuthRepository interface {
 	// FindByID 根据ID查找授权
 	FindByID(ctx context.Context, id uint) (*PlatformAuth, error)
-	// FindByIDAndUserID 根据ID和用户ID查找授权
-	FindByIDAndUserID(ctx context.Context, id, userID uint) (*PlatformAuth, error)
+	// FindByIDAndCompanyID 根据ID和企业ID查找授权
+	FindByIDAndCompanyID(ctx context.Context, id, companyID uint) (*PlatformAuth, error)
 	// List 分页查询授权列表
 	List(ctx context.Context, query *PlatformAuthQuery) ([]PlatformAuth, int64, error)
 	// ListActive 查询所有活跃的授权
 	ListActive(ctx context.Context) ([]PlatformAuth, error)
-	// ListByUserID 根据用户ID查询授权列表
-	ListByUserID(ctx context.Context, userID uint) ([]PlatformAuth, error)
+	// ListByCompanyID 根据企业ID查询授权列表
+	ListByCompanyID(ctx context.Context, companyID uint) ([]PlatformAuth, error)
 	// Create 创建授权
 	Create(ctx context.Context, auth *PlatformAuth) error
 	// Update 更新授权
@@ -24,11 +24,11 @@ type PlatformAuthRepository interface {
 	// UpdateFields 更新指定字段
 	UpdateFields(ctx context.Context, id uint, fields map[string]interface{}) error
 	// Delete 删除授权
-	Delete(ctx context.Context, id, userID uint) (int64, error)
-	// CountByUserID 统计用户授权数
-	CountByUserID(ctx context.Context, userID uint) (int64, error)
-	// CountActiveByUserID 统计用户活跃授权数
-	CountActiveByUserID(ctx context.Context, userID uint) (int64, error)
+	Delete(ctx context.Context, id, companyID uint) (int64, error)
+	// CountByCompanyID 统计企业授权数
+	CountByCompanyID(ctx context.Context, companyID uint) (int64, error)
+	// CountActiveByCompanyID 统计企业活跃授权数
+	CountActiveByCompanyID(ctx context.Context, companyID uint) (int64, error)
 }
 
 // RequestLogRepository 请求日志仓储接口
@@ -45,8 +45,8 @@ type RequestLogRepository interface {
 type CashFlowRepository interface {
 	// FindByID 根据ID查找
 	FindByID(ctx context.Context, id uint) (*CashFlowStatement, error)
-	// FindByIDAndUserID 根据ID和用户ID查找
-	FindByIDAndUserID(ctx context.Context, id, userID uint) (*CashFlowStatement, error)
+	// FindByIDAndCompanyID 根据ID和企业ID查找
+	FindByIDAndCompanyID(ctx context.Context, id, companyID uint) (*CashFlowStatement, error)
 	// FindByAuthAndPeriod 根据授权ID和周期开始时间查找
 	FindByAuthAndPeriod(ctx context.Context, authID uint, periodBegin time.Time) (*CashFlowStatement, error)
 	// List 分页查询

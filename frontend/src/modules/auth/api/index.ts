@@ -9,15 +9,18 @@ export interface RegisterParams {
   username: string
   password: string
   email: string
+  company_name: string
 }
 
 export interface UserInfo {
   id: number
+  company_id: number
+  company_name: string
   username: string
   email: string
   role: string
   status?: number
-  permissions?: string[]
+  permissions: string[]
 }
 
 export interface LoginResult {

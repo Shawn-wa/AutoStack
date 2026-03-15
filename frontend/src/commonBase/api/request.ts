@@ -3,6 +3,11 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { storage } from '@/utils/storage'
 
+interface StoredUserInfo {
+  id?: number
+  company_id?: number
+}
+
 // 创建 axios 实例
 const request: AxiosInstance = axios.create({
   baseURL: '/api/v1',
@@ -16,9 +21,18 @@ const request: AxiosInstance = axios.create({
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = storage.get('token')
+    const user = storage.get<StoredUserInfo>('user')
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    if (user?.company_id) {
+      config.headers['company_id'] = String(user.company_id)
+    }
+    if (user?.id) {
+      config.headers.uid = String(user.id)
+    }
+
     return config
   },
   (error) => {

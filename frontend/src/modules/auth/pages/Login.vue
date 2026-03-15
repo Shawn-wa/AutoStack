@@ -19,7 +19,8 @@ const registerForm = reactive({
   username: '',
   password: '',
   confirmPassword: '',
-  email: ''
+  email: '',
+  company_name: ''
 })
 
 const handleLogin = async () => {
@@ -44,7 +45,7 @@ const handleLogin = async () => {
 }
 
 const handleRegister = async () => {
-  if (!registerForm.username || !registerForm.password || !registerForm.email) {
+  if (!registerForm.username || !registerForm.password || !registerForm.email || !registerForm.company_name) {
     ElMessage.warning('请填写完整信息')
     return
   }
@@ -64,7 +65,8 @@ const handleRegister = async () => {
     await userStore.register({
       username: registerForm.username,
       password: registerForm.password,
-      email: registerForm.email
+      email: registerForm.email,
+      company_name: registerForm.company_name
     })
     ElMessage.success('注册成功，请登录')
     isLogin.value = true
@@ -73,6 +75,7 @@ const handleRegister = async () => {
     registerForm.password = ''
     registerForm.confirmPassword = ''
     registerForm.email = ''
+    registerForm.company_name = ''
   } catch (error: any) {
     // 错误已在响应拦截器中处理
   } finally {
@@ -134,6 +137,17 @@ const toggleMode = () => {
 
         <!-- 注册表单 -->
         <template v-else>
+          <div class="form-group">
+            <label class="form-label">企业名称</label>
+            <input 
+              v-model="registerForm.company_name"
+              type="text" 
+              class="input" 
+              placeholder="请输入企业名称"
+              :disabled="loading"
+            />
+          </div>
+
           <div class="form-group">
             <label class="form-label">用户名</label>
             <input 

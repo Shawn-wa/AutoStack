@@ -54,6 +54,9 @@ func (r *gormUserRepository) List(ctx context.Context, query *UserQuery) ([]User
 	db := r.getDB(ctx)
 
 	q := db.Model(&User{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
 	if query.Role != "" {
 		q = q.Where("role = ?", query.Role)
 	}

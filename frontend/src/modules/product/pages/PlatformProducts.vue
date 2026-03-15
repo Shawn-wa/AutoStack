@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Link, Delete, Search, Picture, Van, CopyDocument } from '@element-plus/icons-vue'
 import api, { type PlatformProduct, type Product } from '../api'
-import { getAuths, type AuthResponse } from '@/modules/order/api'
+import { getAuths, getPlatforms, type AuthResponse, type PlatformInfo } from '@/modules/order/api'
 import { formatDateTime } from '@/utils/format'
 import ImagePreview from '@/components/ImagePreview.vue'
 import ShippingTemplateBindDialog from '@/modules/shipping/components/ShippingTemplateBindDialog.vue'
@@ -23,8 +23,10 @@ const tableData = ref<PlatformProduct[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
+const platform = ref('')
 const authId = ref<number | undefined>(undefined)
 const authOptions = ref<AuthResponse[]>([])
+const platformOptions = ref<PlatformInfo[]>([])
 const keyword = ref('')
 const mappedFilter = ref('')
 const syncLoading = ref(false)
@@ -41,6 +43,11 @@ const productLoading = ref(false)
 const shippingDialogVisible = ref(false)
 const shippingPlatformProduct = ref<PlatformProduct | null>(null)
 
+const filteredAuthOptions = computed(() => {
+  if (!platform.value) return authOptions.value
+  return authOptions.value.filter(item => item.platform === platform.value)
+})
+
 // 打开运费模版绑定对话框
 const handleShippingTemplates = (row: PlatformProduct) => {
   shippingPlatformProduct.value = row
@@ -52,12 +59,24 @@ const fetchAuths = async () => {
   try {
     const res = await getAuths()
     authOptions.value = res.data.list || []
-    if (authOptions.value.length > 0) {
-      authId.value = authOptions.value[0].id
-      fetchProducts()
+    if (filteredAuthOptions.value.length > 0) {
+      authId.value = filteredAuthOptions.value[0].id
+    } else {
+      authId.value = undefined
     }
+    fetchProducts()
   } catch (error) {
     console.error('获取授权列表失败', error)
+  }
+}
+
+// 获取平台列表
+const fetchPlatforms = async () => {
+  try {
+    const res = await getPlatforms()
+    platformOptions.value = res.data || []
+  } catch (error) {
+    console.error('获取平台列表失败', error)
   }
 }
 
@@ -74,13 +93,13 @@ const handleCopySku = async (sku: string, event: Event) => {
 
 // 获取平台产品列表
 const fetchProducts = async () => {
-  if (!authId.value) return
   loading.value = true
   try {
     const res = await api.listPlatformProducts({
       page: currentPage.value,
       page_size: pageSize.value,
-      platform_auth_id: authId.value,
+      platform: platform.value || undefined,
+      platform_auth_id: authId.value || undefined,
       keyword: keyword.value || undefined,
       mapped_filter: mappedFilter.value || undefined
     })
@@ -91,6 +110,18 @@ const fetchProducts = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 平台切换
+const handlePlatformChange = () => {
+  if (authId.value) {
+    const selectedAuth = authOptions.value.find(item => item.id === authId.value)
+    if (!selectedAuth || (platform.value && selectedAuth.platform !== platform.value)) {
+      authId.value = undefined
+    }
+  }
+  currentPage.value = 1
+  fetchProducts()
 }
 
 // 同步产品
@@ -120,8 +151,10 @@ const handleSearch = () => {
 
 // 重置筛选
 const handleReset = () => {
+  platform.value = ''
   keyword.value = ''
   mappedFilter.value = ''
+  authId.value = undefined
   currentPage.value = 1
   fetchProducts()
 }
@@ -222,6 +255,7 @@ const handleUnmap = async (row: PlatformProduct) => {
 }
 
 onMounted(() => {
+  fetchPlatforms()
   fetchAuths()
 })
 </script>
@@ -237,10 +271,20 @@ onMounted(() => {
 
     <div class="filter-card">
       <el-form inline>
+        <el-form-item label="平台">
+          <el-select v-model="platform" placeholder="全部平台" clearable style="width: 160px" @change="handlePlatformChange">
+            <el-option
+              v-for="item in platformOptions"
+              :key="item.name"
+              :label="item.label"
+              :value="item.name"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="店铺">
           <el-select v-model="authId" placeholder="选择店铺" style="width: 200px" @change="handleSearch">
             <el-option
-              v-for="item in authOptions"
+              v-for="item in filteredAuthOptions"
               :key="item.id"
               :label="`${item.platform} - ${item.shop_name}`"
               :value="item.id"

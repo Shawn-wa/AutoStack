@@ -36,7 +36,6 @@ func (s *Service) getUserService() *user.Service {
 func (s *Service) Login(username, password string) (*user.User, string, error) {
 	userSvc := s.getUserService()
 
-	// 获取用户
 	u, err := userSvc.GetUserByUsername(username)
 	if err != nil {
 		if err == user.ErrUserNotFound {
@@ -45,19 +44,17 @@ func (s *Service) Login(username, password string) (*user.User, string, error) {
 		return nil, "", err
 	}
 
-	// 检查用户状态
 	if !u.IsActive() {
 		return nil, "", ErrUserDisabled
 	}
 
-	// 验证密码
 	if !utils.CheckPassword(password, u.PasswordHash) {
 		return nil, "", ErrInvalidPassword
 	}
 
-	// 生成 JWT（包含权限信息）
 	token, err := utils.GenerateTokenWithPermissions(
 		u.ID,
+		u.CompanyID,
 		u.Username,
 		u.Role,
 		u.GetPermissions(),
@@ -71,7 +68,7 @@ func (s *Service) Login(username, password string) (*user.User, string, error) {
 	return u, token, nil
 }
 
-// Register 用户注册
-func (s *Service) Register(username, password, email string) (*user.User, error) {
-	return s.getUserService().CreateUser(username, password, email, user.RoleUser)
+// Register 用户注册（创建企业 + 超级管理员）
+func (s *Service) Register(username, password, email, companyName string) (*user.User, *user.Company, error) {
+	return s.getUserService().RegisterWithCompany(username, password, email, companyName)
 }

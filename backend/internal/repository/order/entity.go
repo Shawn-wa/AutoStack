@@ -7,7 +7,7 @@ import (
 // Order 订单模型
 type Order struct {
 	ID              uint       `gorm:"primaryKey" json:"id"`
-	UserID          uint       `gorm:"index;not null" json:"user_id"`
+	CompanyID       uint       `gorm:"index;not null" json:"company_id"`
 	PlatformAuthID  uint       `gorm:"index;not null" json:"platform_auth_id"`
 	Platform        string     `gorm:"size:50;not null;index" json:"platform"`
 	PlatformOrderNo string     `gorm:"size:100;not null;uniqueIndex" json:"platform_order_no"`
@@ -76,9 +76,9 @@ func (OrderItem) TableName() string {
 // OrderDailyStat 订单每日统计模型
 type OrderDailyStat struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      uint      `gorm:"uniqueIndex:idx_user_date_currency;not null" json:"user_id"`
-	StatDate    time.Time `gorm:"uniqueIndex:idx_user_date_currency;type:date;not null" json:"stat_date"`
-	Currency    string    `gorm:"size:10;not null;default:'RUB';uniqueIndex:idx_user_date_currency" json:"currency"`
+	CompanyID   uint      `gorm:"uniqueIndex:idx_company_date_currency;not null" json:"company_id"`
+	StatDate    time.Time `gorm:"uniqueIndex:idx_company_date_currency;type:date;not null" json:"stat_date"`
+	Currency    string    `gorm:"size:10;not null;default:'RUB';uniqueIndex:idx_company_date_currency" json:"currency"`
 	OrderCount  int64     `gorm:"default:0" json:"order_count"`
 	OrderAmount float64   `gorm:"type:decimal(15,2);default:0" json:"order_amount"`
 	CreatedAt   time.Time `json:"created_at"`

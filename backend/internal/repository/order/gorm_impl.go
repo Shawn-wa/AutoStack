@@ -36,9 +36,9 @@ func (r *gormOrderRepository) FindByID(ctx context.Context, id uint) (*Order, er
 	return &order, nil
 }
 
-func (r *gormOrderRepository) FindByIDAndUserID(ctx context.Context, id, userID uint) (*Order, error) {
+func (r *gormOrderRepository) FindByIDAndCompanyID(ctx context.Context, id, companyID uint) (*Order, error) {
 	var order Order
-	if err := r.getDB(ctx).Preload("Items").Where("id = ? AND user_id = ?", id, userID).First(&order).Error; err != nil {
+	if err := r.getDB(ctx).Preload("Items").Where("id = ? AND company_id = ?", id, companyID).First(&order).Error; err != nil {
 		return nil, err
 	}
 	return &order, nil
@@ -57,9 +57,8 @@ func (r *gormOrderRepository) List(ctx context.Context, query *OrderQuery) ([]Or
 	var total int64
 	db := r.getDB(ctx)
 
-	q := db.Model(&Order{}).Where("user_id = ?", query.UserID)
+	q := db.Model(&Order{}).Where("company_id = ?", query.CompanyID)
 
-	// 应用过滤条件
 	if query.Platform != "" {
 		q = q.Where("platform = ?", query.Platform)
 	}
@@ -137,45 +136,45 @@ func (r *gormOrderRepository) UpdateByPlatformOrderNo(ctx context.Context, order
 	return result.RowsAffected, result.Error
 }
 
-func (r *gormOrderRepository) CountByUserID(ctx context.Context, userID uint) (int64, error) {
+func (r *gormOrderRepository) CountByCompanyID(ctx context.Context, companyID uint) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&Order{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+	if err := r.getDB(ctx).Model(&Order{}).Where("company_id = ?", companyID).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *gormOrderRepository) CountByStatus(ctx context.Context, userID uint, status string) (int64, error) {
+func (r *gormOrderRepository) CountByStatus(ctx context.Context, companyID uint, status string) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&Order{}).Where("user_id = ? AND status = ?", userID, status).Count(&count).Error; err != nil {
+	if err := r.getDB(ctx).Model(&Order{}).Where("company_id = ? AND status = ?", companyID, status).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *gormOrderRepository) CountByStatuses(ctx context.Context, userID uint, statuses []string) (int64, error) {
+func (r *gormOrderRepository) CountByStatuses(ctx context.Context, companyID uint, statuses []string) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&Order{}).Where("user_id = ? AND status IN ?", userID, statuses).Count(&count).Error; err != nil {
+	if err := r.getDB(ctx).Model(&Order{}).Where("company_id = ? AND status IN ?", companyID, statuses).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *gormOrderRepository) CountToday(ctx context.Context, userID uint) (int64, error) {
+func (r *gormOrderRepository) CountToday(ctx context.Context, companyID uint) (int64, error) {
 	var count int64
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	if err := r.getDB(ctx).Model(&Order{}).Where("user_id = ? AND order_time >= ?", userID, today).Count(&count).Error; err != nil {
+	if err := r.getDB(ctx).Model(&Order{}).Where("company_id = ? AND order_time >= ?", companyID, today).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *gormOrderRepository) SumAmountByCurrency(ctx context.Context, userID uint, excludeStatus string) ([]CurrencyAmount, error) {
+func (r *gormOrderRepository) SumAmountByCurrency(ctx context.Context, companyID uint, excludeStatus string) ([]CurrencyAmount, error) {
 	var amounts []CurrencyAmount
 	if err := r.getDB(ctx).Model(&Order{}).
 		Select("currency, COALESCE(SUM(total_amount), 0) as amount").
-		Where("user_id = ? AND status != ?", userID, excludeStatus).
+		Where("company_id = ? AND status != ?", companyID, excludeStatus).
 		Group("currency").
 		Scan(&amounts).Error; err != nil {
 		return nil, err
@@ -183,7 +182,7 @@ func (r *gormOrderRepository) SumAmountByCurrency(ctx context.Context, userID ui
 	return amounts, nil
 }
 
-func (r *gormOrderRepository) SumCommission(ctx context.Context, userID uint, status string) (*CommissionSummary, error) {
+func (r *gormOrderRepository) SumCommission(ctx context.Context, companyID uint, status string) (*CommissionSummary, error) {
 	var summary CommissionSummary
 	if err := r.getDB(ctx).Model(&Order{}).
 		Select(`
@@ -191,7 +190,7 @@ func (r *gormOrderRepository) SumCommission(ctx context.Context, userID uint, st
 			COALESCE(SUM(sale_commission), 0) as total_commission,
 			COALESCE(SUM(services_amount), 0) as total_service_fee
 		`).
-		Where("user_id = ? AND status = ?", userID, status).
+		Where("company_id = ? AND status = ?", companyID, status).
 		Scan(&summary).Error; err != nil {
 		return nil, err
 	}
@@ -218,9 +217,9 @@ func (r *gormOrderRepository) ListByAuthIDStatusAndTimeRange(ctx context.Context
 	return orders, nil
 }
 
-func (r *gormOrderRepository) GetRecentOrders(ctx context.Context, userID uint, limit int) ([]Order, error) {
+func (r *gormOrderRepository) GetRecentOrders(ctx context.Context, companyID uint, limit int) ([]Order, error) {
 	var orders []Order
-	if err := r.getDB(ctx).Where("user_id = ?", userID).
+	if err := r.getDB(ctx).Where("company_id = ?", companyID).
 		Order("order_time DESC").
 		Limit(limit).
 		Find(&orders).Error; err != nil {
@@ -278,9 +277,9 @@ func (r *gormOrderDailyStatRepository) getDB(ctx context.Context) *gorm.DB {
 	return repository.GetDB(ctx, r.db)
 }
 
-func (r *gormOrderDailyStatRepository) FindByUserDateCurrency(ctx context.Context, userID uint, date time.Time, currency string) (*OrderDailyStat, error) {
+func (r *gormOrderDailyStatRepository) FindByCompanyDateCurrency(ctx context.Context, companyID uint, date time.Time, currency string) (*OrderDailyStat, error) {
 	var stat OrderDailyStat
-	if err := r.getDB(ctx).Where("user_id = ? AND stat_date = ? AND currency = ?", userID, date, currency).First(&stat).Error; err != nil {
+	if err := r.getDB(ctx).Where("company_id = ? AND stat_date = ? AND currency = ?", companyID, date, currency).First(&stat).Error; err != nil {
 		return nil, err
 	}
 	return &stat, nil
@@ -298,9 +297,9 @@ func (r *gormOrderDailyStatRepository) UpdateFields(ctx context.Context, id uint
 	return r.getDB(ctx).Model(&OrderDailyStat{}).Where("id = ?", id).Updates(fields).Error
 }
 
-func (r *gormOrderDailyStatRepository) ListByUserAndDateRange(ctx context.Context, userID uint, start, end time.Time, currency string) ([]OrderDailyStat, error) {
+func (r *gormOrderDailyStatRepository) ListByCompanyAndDateRange(ctx context.Context, companyID uint, start, end time.Time, currency string) ([]OrderDailyStat, error) {
 	var stats []OrderDailyStat
-	if err := r.getDB(ctx).Where("user_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", userID, currency, start, end).
+	if err := r.getDB(ctx).Where("company_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", companyID, currency, start, end).
 		Order("stat_date ASC").
 		Find(&stats).Error; err != nil {
 		return nil, err
@@ -308,11 +307,11 @@ func (r *gormOrderDailyStatRepository) ListByUserAndDateRange(ctx context.Contex
 	return stats, nil
 }
 
-func (r *gormOrderDailyStatRepository) DeleteByUserID(ctx context.Context, userID uint) error {
-	return r.getDB(ctx).Where("user_id = ?", userID).Delete(&OrderDailyStat{}).Error
+func (r *gormOrderDailyStatRepository) DeleteByCompanyID(ctx context.Context, companyID uint) error {
+	return r.getDB(ctx).Where("company_id = ?", companyID).Delete(&OrderDailyStat{}).Error
 }
 
-func (r *gormOrderDailyStatRepository) GetDailyStats(ctx context.Context, userID uint, startDate, endDate time.Time) ([]DailyStat, error) {
+func (r *gormOrderDailyStatRepository) GetDailyStats(ctx context.Context, companyID uint, startDate, endDate time.Time) ([]DailyStat, error) {
 	var stats []DailyStat
 	if err := r.getDB(ctx).Table("orders").
 		Select(`
@@ -321,7 +320,7 @@ func (r *gormOrderDailyStatRepository) GetDailyStats(ctx context.Context, userID
 			COUNT(*) as count, 
 			COALESCE(SUM(total_amount), 0) as amount
 		`).
-		Where("user_id = ? AND order_time >= ? AND order_time < ?", userID, startDate, endDate).
+		Where("company_id = ? AND order_time >= ? AND order_time < ?", companyID, startDate, endDate).
 		Group("DATE(order_time), currency").
 		Order("date ASC").
 		Scan(&stats).Error; err != nil {

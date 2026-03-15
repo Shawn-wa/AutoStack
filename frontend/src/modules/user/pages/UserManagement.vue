@@ -78,10 +78,14 @@ const statusOptions = [
 
 // 模块名称映射
 const moduleNames: Record<string, string> = {
+  dashboard: '控制台',
+  product: '产品管理',
+  platform_auth: '平台授权',
+  order: '订单管理',
+  report: '报表',
+  warehouse: '仓库管理',
+  shipping: '物流管理',
   user: '用户管理',
-  project: '项目管理',
-  deployment: '部署管理',
-  template: '模板管理'
 }
 
 // 获取权限列表

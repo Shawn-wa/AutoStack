@@ -2,6 +2,8 @@ import request from '@/commonBase/api/request'
 
 export interface UserInfo {
   id: number
+  company_id: number
+  company_name: string
   username: string
   email: string
   role: string

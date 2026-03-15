@@ -2,11 +2,11 @@ package platform
 
 // PlatformAuthQuery 平台授权查询条件
 type PlatformAuthQuery struct {
-	Page     int
-	PageSize int
-	UserID   uint
-	Platform string
-	Status   *int
+	Page      int
+	PageSize  int
+	CompanyID uint
+	Platform  string
+	Status    *int
 }
 
 // RequestLogQuery 请求日志查询条件
@@ -21,6 +21,6 @@ type RequestLogQuery struct {
 type CashFlowQuery struct {
 	Page           int
 	PageSize       int
-	UserID         uint
+	CompanyID      uint
 	PlatformAuthID uint
 }

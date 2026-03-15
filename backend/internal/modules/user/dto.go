@@ -3,6 +3,8 @@ package user
 // ProfileResponse 用户信息响应
 type ProfileResponse struct {
 	ID          uint     `json:"id"`
+	CompanyID   uint     `json:"company_id"`
+	CompanyName string   `json:"company_name"`
 	Username    string   `json:"username"`
 	Email       string   `json:"email"`
 	Role        string   `json:"role"`
@@ -41,6 +43,8 @@ type UpdateUserRequest struct {
 // UserDetailResponse 用户详情响应
 type UserDetailResponse struct {
 	ID          uint     `json:"id"`
+	CompanyID   uint     `json:"company_id"`
+	CompanyName string   `json:"company_name"`
 	Username    string   `json:"username"`
 	Email       string   `json:"email"`
 	Role        string   `json:"role"`
@@ -54,6 +58,8 @@ type UserDetailResponse struct {
 // UserListItem 用户列表项
 type UserListItem struct {
 	ID          uint     `json:"id"`
+	CompanyID   uint     `json:"company_id"`
+	CompanyName string   `json:"company_name"`
 	Username    string   `json:"username"`
 	Email       string   `json:"email"`
 	Role        string   `json:"role"`
@@ -73,6 +79,6 @@ type UserListResponse struct {
 
 // PermissionsResponse 权限列表响应
 type PermissionsResponse struct {
-	Permissions []PermissionDef         `json:"permissions"`
+	Permissions []PermissionDef            `json:"permissions"`
 	Modules     map[string][]PermissionDef `json:"modules"`
 }

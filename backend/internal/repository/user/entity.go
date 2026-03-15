@@ -18,44 +18,16 @@ const (
 	StatusDisabled = 0
 )
 
-// 权限常量
+// 权限常量 — 模块级查看权限（控制菜单/路由可见性）
 const (
-	// 用户管理权限
-	PermUserCreate = "user:create"
-	PermUserUpdate = "user:update"
-	PermUserDelete = "user:delete"
-	PermUserList   = "user:list"
-
-	// 项目管理权限
-	PermProjectCreate = "project:create"
-	PermProjectUpdate = "project:update"
-	PermProjectDelete = "project:delete"
-	PermProjectList   = "project:list"
-
-	// 部署管理权限
-	PermDeploymentCreate = "deployment:create"
-	PermDeploymentUpdate = "deployment:update"
-	PermDeploymentDelete = "deployment:delete"
-	PermDeploymentList   = "deployment:list"
-	PermDeploymentStart  = "deployment:start"
-	PermDeploymentStop   = "deployment:stop"
-
-	// 模板管理权限
-	PermTemplateCreate = "template:create"
-	PermTemplateUpdate = "template:update"
-	PermTemplateDelete = "template:delete"
-	PermTemplateList   = "template:list"
-
-	// 平台授权权限
-	PermPlatformAuthCreate = "platform_auth:create"
-	PermPlatformAuthUpdate = "platform_auth:update"
-	PermPlatformAuthDelete = "platform_auth:delete"
-	PermPlatformAuthList   = "platform_auth:list"
-	PermPlatformAuthSync   = "platform_auth:sync"
-
-	// 订单管理权限
-	PermOrderList   = "order:list"
-	PermOrderDetail = "order:detail"
+	PermDashboardView    = "dashboard:view"
+	PermProductView      = "product:view"
+	PermPlatformAuthView = "platform_auth:view"
+	PermOrderView        = "order:view"
+	PermReportView       = "report:view"
+	PermWarehouseView    = "warehouse:view"
+	PermShippingView     = "shipping:view"
+	PermUserView         = "user:view"
 )
 
 // PermissionDef 权限定义
@@ -65,49 +37,27 @@ type PermissionDef struct {
 	Module string `json:"module"`
 }
 
-// AllPermissions 所有权限定义
+// AllPermissions 所有模块权限定义
 var AllPermissions = []PermissionDef{
-	// 用户管理
-	{Code: PermUserCreate, Name: "创建用户", Module: "user"},
-	{Code: PermUserUpdate, Name: "更新用户", Module: "user"},
-	{Code: PermUserDelete, Name: "删除用户", Module: "user"},
-	{Code: PermUserList, Name: "查看用户列表", Module: "user"},
-	// 项目管理
-	{Code: PermProjectCreate, Name: "创建项目", Module: "project"},
-	{Code: PermProjectUpdate, Name: "更新项目", Module: "project"},
-	{Code: PermProjectDelete, Name: "删除项目", Module: "project"},
-	{Code: PermProjectList, Name: "查看项目列表", Module: "project"},
-	// 部署管理
-	{Code: PermDeploymentCreate, Name: "创建部署", Module: "deployment"},
-	{Code: PermDeploymentUpdate, Name: "更新部署", Module: "deployment"},
-	{Code: PermDeploymentDelete, Name: "删除部署", Module: "deployment"},
-	{Code: PermDeploymentList, Name: "查看部署列表", Module: "deployment"},
-	{Code: PermDeploymentStart, Name: "启动部署", Module: "deployment"},
-	{Code: PermDeploymentStop, Name: "停止部署", Module: "deployment"},
-	// 模板管理
-	{Code: PermTemplateCreate, Name: "创建模板", Module: "template"},
-	{Code: PermTemplateUpdate, Name: "更新模板", Module: "template"},
-	{Code: PermTemplateDelete, Name: "删除模板", Module: "template"},
-	{Code: PermTemplateList, Name: "查看模板列表", Module: "template"},
-	// 平台授权
-	{Code: PermPlatformAuthCreate, Name: "添加平台授权", Module: "platform_auth"},
-	{Code: PermPlatformAuthUpdate, Name: "更新平台授权", Module: "platform_auth"},
-	{Code: PermPlatformAuthDelete, Name: "删除平台授权", Module: "platform_auth"},
-	{Code: PermPlatformAuthList, Name: "查看平台授权", Module: "platform_auth"},
-	{Code: PermPlatformAuthSync, Name: "同步订单", Module: "platform_auth"},
-	// 订单管理
-	{Code: PermOrderList, Name: "查看订单列表", Module: "order"},
-	{Code: PermOrderDetail, Name: "查看订单详情", Module: "order"},
+	{Code: PermDashboardView, Name: "控制台", Module: "dashboard"},
+	{Code: PermProductView, Name: "产品管理", Module: "product"},
+	{Code: PermPlatformAuthView, Name: "平台授权", Module: "platform_auth"},
+	{Code: PermOrderView, Name: "订单管理", Module: "order"},
+	{Code: PermReportView, Name: "报表", Module: "report"},
+	{Code: PermWarehouseView, Name: "仓库管理", Module: "warehouse"},
+	{Code: PermShippingView, Name: "物流管理", Module: "shipping"},
+	{Code: PermUserView, Name: "用户管理", Module: "user"},
 }
 
-// UserManagePermissions 用户管理权限列表（仅super_admin可授予）
+// UserManagePermissions 用户管理权限（仅super_admin可授予admin）
 var UserManagePermissions = []string{
-	PermUserCreate, PermUserUpdate, PermUserDelete, PermUserList,
+	PermUserView,
 }
 
 // User 用户模型
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
+	CompanyID    uint      `gorm:"index;not null;default:0" json:"company_id"`
 	Username     string    `gorm:"uniqueIndex;size:50;not null" json:"username"`
 	PasswordHash string    `gorm:"size:255;not null" json:"-"`
 	Email        string    `gorm:"uniqueIndex;size:100;not null" json:"email"`

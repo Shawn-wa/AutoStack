@@ -7,6 +7,7 @@ import (
 // ShippingTemplate 运费模板
 type ShippingTemplate struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
+	CompanyID   uint      `gorm:"index;not null;default:0" json:"company_id"`
 	Name        string    `gorm:"size:100;not null" json:"name"`                // 模板名称
 	Carrier     string    `gorm:"size:100" json:"carrier"`                      // 物流商名称
 	FromRegion  string    `gorm:"size:100" json:"from_region"`                  // 发货区域
@@ -27,6 +28,7 @@ func (ShippingTemplate) TableName() string {
 // ShippingTemplateRule 运费模板规则
 type ShippingTemplateRule struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
+	CompanyID       uint      `gorm:"index;not null;default:0" json:"company_id"`
 	TemplateID      uint      `gorm:"index;not null" json:"template_id"`                    // 模板ID
 	ToRegion        string    `gorm:"size:100;not null" json:"to_region"`                   // 收货区域/国家
 	MinWeight       int       `gorm:"default:0" json:"min_weight"`                          // 最小重量(g)
@@ -55,6 +57,7 @@ const (
 // ProductShippingTemplate 本地产品运费模版关联
 type ProductShippingTemplate struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
+	CompanyID          uint      `gorm:"index;not null;default:0" json:"company_id"`
 	ProductID          uint      `gorm:"index:idx_product_shipping,unique;not null" json:"product_id"`           // 本地产品ID
 	ShippingTemplateID uint      `gorm:"index:idx_product_shipping,unique;not null" json:"shipping_template_id"` // 运费模版ID
 	IsDefault          bool      `gorm:"default:false;index" json:"is_default"`                                  // 是否默认
@@ -75,6 +78,7 @@ func (ProductShippingTemplate) TableName() string {
 // PlatformProductShippingTemplate 平台产品运费模版关联
 type PlatformProductShippingTemplate struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
+	CompanyID          uint      `gorm:"index;not null;default:0" json:"company_id"`
 	PlatformProductID  uint      `gorm:"index:idx_platform_product_shipping,unique;not null" json:"platform_product_id"`  // 平台产品ID
 	ShippingTemplateID uint      `gorm:"index:idx_platform_product_shipping,unique;not null" json:"shipping_template_id"` // 运费模版ID
 	IsDefault          bool      `gorm:"default:false;index" json:"is_default"`                                           // 是否默认

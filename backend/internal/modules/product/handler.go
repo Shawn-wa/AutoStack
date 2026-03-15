@@ -40,14 +40,37 @@ func GetService() *Service {
 	return service
 }
 
+func getCompanyID(c *gin.Context) uint {
+	val, exists := c.Get("company_id")
+	if !exists {
+		return 0
+	}
+	switch v := val.(type) {
+	case float64:
+		return uint(v)
+	case uint:
+		return v
+	case int:
+		return uint(v)
+	default:
+		return 0
+	}
+}
+
 // ListProducts 获取本地产品列表
 func ListProducts(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	keyword := c.Query("keyword")
 	warehouseID, _ := strconv.Atoi(c.DefaultQuery("wid", "0"))
 
-	products, total, err := service.ListProducts(page, pageSize, keyword, uint(warehouseID))
+	products, total, err := service.ListProducts(companyID, page, pageSize, keyword, uint(warehouseID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取产品列表失败")
 		return
@@ -55,7 +78,7 @@ func ListProducts(c *gin.Context) {
 
 	// 获取仓库ID列表并批量查询仓库名称
 	warehouseMap := make(map[uint]string)
-	warehouses, _ := service.ListWarehouses()
+	warehouses, _ := service.ListWarehouses(companyID)
 	for _, w := range warehouses {
 		warehouseMap[w.ID] = w.Name
 	}
@@ -87,13 +110,19 @@ func ListProducts(c *gin.Context) {
 
 // CreateProduct 创建本地产品
 func CreateProduct(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req CreateProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	product, err := service.CreateProduct(req)
+	product, err := service.CreateProduct(companyID, req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -104,6 +133,12 @@ func CreateProduct(c *gin.Context) {
 
 // UpdateProduct 更新本地产品
 func UpdateProduct(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req UpdateProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -111,7 +146,7 @@ func UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	product, err := service.UpdateProduct(uint(id), req)
+	product, err := service.UpdateProduct(companyID, uint(id), req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -122,8 +157,14 @@ func UpdateProduct(c *gin.Context) {
 
 // DeleteProduct 删除本地产品
 func DeleteProduct(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id"))
-	if err := service.DeleteProduct(uint(id)); err != nil {
+	if err := service.DeleteProduct(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -135,11 +176,18 @@ func DeleteProduct(c *gin.Context) {
 func ListPlatformProducts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	platform := c.Query("platform")
 	authID, _ := strconv.Atoi(c.DefaultQuery("platform_auth_id", "0"))
 	keyword := c.Query("keyword")
 	mappedFilter := c.Query("mapped_filter")
 
-	products, total, err := service.ListPlatformProducts(uint(authID), keyword, mappedFilter, page, pageSize)
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	products, total, err := service.ListPlatformProducts(companyID, platform, keyword, uint(authID), mappedFilter, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取平台产品列表失败")
 		return
@@ -191,13 +239,19 @@ func ListPlatformProducts(c *gin.Context) {
 
 // MapProduct 关联产品
 func MapProduct(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req MapProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if err := service.MapProduct(req); err != nil {
+	if err := service.MapProduct(companyID, req); err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -207,8 +261,14 @@ func MapProduct(c *gin.Context) {
 
 // UnmapProduct 解除关联
 func UnmapProduct(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id")) // platform_product_id
-	if err := service.UnmapProduct(uint(id)); err != nil {
+	if err := service.UnmapProduct(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -218,6 +278,12 @@ func UnmapProduct(c *gin.Context) {
 
 // SyncPlatformProducts 同步平台产品（通过任务队列）
 func SyncPlatformProducts(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req SyncProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
@@ -225,7 +291,7 @@ func SyncPlatformProducts(c *gin.Context) {
 	}
 
 	// 创建同步任务
-	task, err := service.CreateSyncTask(req.PlatformAuthID, SyncTaskTypeProduct)
+	task, err := service.CreateSyncTask(companyID, req.PlatformAuthID, SyncTaskTypeProduct)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "创建同步任务失败")
 		return
@@ -261,13 +327,19 @@ func TriggerSyncTasks(c *gin.Context) {
 
 // InitProducts 初始化本地产品（根据平台SKU生成）
 func InitProducts(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req InitProductsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	result, err := service.InitProductsFromPlatform(req.PlatformAuthID)
+	result, err := service.InitProductsFromPlatform(companyID, req.PlatformAuthID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -278,11 +350,17 @@ func InitProducts(c *gin.Context) {
 
 // ListSyncTasks 获取同步任务列表
 func ListSyncTasks(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	status := c.Query("status")
 
-	tasks, total, err := service.ListSyncTasks(page, pageSize, status)
+	tasks, total, err := service.ListSyncTasks(companyID, page, pageSize, status)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取任务列表失败")
 		return
@@ -300,13 +378,19 @@ func ListSyncTasks(c *gin.Context) {
 
 // CreateStockInOrder 创建入库单
 func CreateStockInOrder(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req CreateStockInOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	order, err := service.CreateStockInOrder(req)
+	order, err := service.CreateStockInOrder(companyID, req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -335,11 +419,17 @@ func CreateStockInOrder(c *gin.Context) {
 
 // ListStockInOrders 获取入库单列表
 func ListStockInOrders(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	status := c.Query("status")
 
-	orders, total, err := service.ListStockInOrders(page, pageSize, status)
+	orders, total, err := service.ListStockInOrders(companyID, page, pageSize, status)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取入库单列表失败")
 		return
@@ -382,9 +472,15 @@ func ListStockInOrders(c *gin.Context) {
 
 // GetStockInOrder 获取入库单详情
 func GetStockInOrder(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id"))
 
-	order, err := service.GetStockInOrder(uint(id))
+	order, err := service.GetStockInOrder(companyID, uint(id))
 	if err != nil {
 		response.Error(c, http.StatusNotFound, err.Error())
 		return
@@ -446,6 +542,12 @@ func ExportStockInTemplate(c *gin.Context) {
 
 // ImportStockInOrders 批量导入入库单
 func ImportStockInOrders(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	warehouseIDStr := c.PostForm("warehouse_id")
 	if warehouseIDStr == "" {
 		response.Error(c, http.StatusBadRequest, "请选择入库仓库")
@@ -522,7 +624,7 @@ func ImportStockInOrders(c *gin.Context) {
 		return
 	}
 
-	result, err := service.ImportStockInOrders(uint(warehouseID), remarkText, items)
+	result, err := service.ImportStockInOrders(companyID, uint(warehouseID), remarkText, items)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -535,7 +637,13 @@ func ImportStockInOrders(c *gin.Context) {
 
 // ListWarehouses 获取仓库列表（仅活跃状态，用于下拉选择）
 func ListWarehouses(c *gin.Context) {
-	warehouses, err := service.ListWarehouses()
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	warehouses, err := service.ListWarehouses(companyID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取仓库列表失败")
 		return
@@ -560,12 +668,18 @@ func ListWarehouses(c *gin.Context) {
 // ListAvailableWarehouses 获取当前用户可用的仓库列表（用于入库单等业务场景）
 // 后续可根据用户权限进行过滤
 func ListAvailableWarehouses(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	// TODO: 从上下文获取用户信息，根据权限过滤仓库
 	// userID := c.GetUint("user_id")
 	// warehouses, err := service.ListWarehousesByUser(userID)
 
 	// 当前返回所有活跃仓库
-	warehouses, err := service.ListWarehouses()
+	warehouses, err := service.ListWarehouses(companyID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取仓库列表失败")
 		return
@@ -592,9 +706,15 @@ func ListAvailableWarehouses(c *gin.Context) {
 
 // ListAllWarehouses 获取所有仓库（支持按类型筛选，用于仓库管理页面）
 func ListAllWarehouses(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	warehouseType := c.Query("type")
 
-	warehouses, err := service.ListAllWarehouses(warehouseType)
+	warehouses, err := service.ListAllWarehouses(companyID, warehouseType)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取仓库列表失败")
 		return
@@ -618,13 +738,19 @@ func ListAllWarehouses(c *gin.Context) {
 
 // CreateWarehouse 创建仓库
 func CreateWarehouse(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req CreateWarehouseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	warehouse, err := service.CreateWarehouse(req)
+	warehouse, err := service.CreateWarehouse(companyID, req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -643,6 +769,12 @@ func CreateWarehouse(c *gin.Context) {
 
 // UpdateWarehouse 更新仓库
 func UpdateWarehouse(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req UpdateWarehouseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -650,7 +782,7 @@ func UpdateWarehouse(c *gin.Context) {
 		return
 	}
 
-	warehouse, err := service.UpdateWarehouse(uint(id), req)
+	warehouse, err := service.UpdateWarehouse(companyID, uint(id), req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -671,12 +803,18 @@ func UpdateWarehouse(c *gin.Context) {
 
 // ListInventory 获取库存明细列表
 func ListInventory(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	warehouseID, _ := strconv.Atoi(c.DefaultQuery("warehouse_id", "0"))
 	keyword := c.Query("keyword")
 
-	inventories, total, err := service.ListInventory(uint(warehouseID), keyword, page, pageSize)
+	inventories, total, err := service.ListInventory(companyID, uint(warehouseID), keyword, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取库存列表失败")
 		return
@@ -716,13 +854,19 @@ func ListInventory(c *gin.Context) {
 
 // UpdateInventory 更新库存
 func UpdateInventory(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req UpdateInventoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	inventory, err := service.UpdateInventory(req)
+	inventory, err := service.UpdateInventory(companyID, req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -753,9 +897,15 @@ func UpdateInventory(c *gin.Context) {
 
 // InitInventory 初始化库存（从产品表生成库存记录）
 func InitInventory(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	warehouseID, _ := strconv.Atoi(c.DefaultQuery("warehouse_id", "1"))
 
-	created, err := service.InitInventoryFromProducts(uint(warehouseID))
+	created, err := service.InitInventoryFromProducts(companyID, uint(warehouseID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -770,13 +920,19 @@ func InitInventory(c *gin.Context) {
 
 // ListSuppliers 获取供应商列表
 func ListSuppliers(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	productID, _ := strconv.Atoi(c.DefaultQuery("product_id", "0"))
 	keyword := c.Query("keyword")
 	status := c.Query("status")
 
-	suppliers, total, err := service.ListSuppliers(uint(productID), keyword, status, page, pageSize)
+	suppliers, total, err := service.ListSuppliers(companyID, uint(productID), keyword, status, page, pageSize)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取供应商列表失败")
 		return
@@ -818,9 +974,15 @@ func ListSuppliers(c *gin.Context) {
 
 // GetProductSuppliers 获取产品的供应商列表
 func GetProductSuppliers(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	productID, _ := strconv.Atoi(c.Param("id"))
 
-	suppliers, err := service.ListSuppliersByProductID(uint(productID))
+	suppliers, err := service.ListSuppliersByProductID(companyID, uint(productID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取供应商列表失败")
 		return
@@ -852,13 +1014,19 @@ func GetProductSuppliers(c *gin.Context) {
 
 // CreateSupplier 创建供应商
 func CreateSupplier(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req CreateSupplierRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	supplier, err := service.CreateSupplier(req)
+	supplier, err := service.CreateSupplier(companyID, req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -885,6 +1053,12 @@ func CreateSupplier(c *gin.Context) {
 
 // UpdateSupplier 更新供应商
 func UpdateSupplier(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req UpdateSupplierRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -892,7 +1066,7 @@ func UpdateSupplier(c *gin.Context) {
 		return
 	}
 
-	supplier, err := service.UpdateSupplier(uint(id), req)
+	supplier, err := service.UpdateSupplier(companyID, uint(id), req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -919,8 +1093,14 @@ func UpdateSupplier(c *gin.Context) {
 
 // DeleteSupplier 删除供应商
 func DeleteSupplier(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	id, _ := strconv.Atoi(c.Param("id"))
-	if err := service.DeleteSupplier(uint(id)); err != nil {
+	if err := service.DeleteSupplier(companyID, uint(id)); err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -932,12 +1112,18 @@ func DeleteSupplier(c *gin.Context) {
 
 // ListProductsWithSupplier 获取产品列表（带默认供应商信息）
 func ListProductsWithSupplier(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	keyword := c.Query("keyword")
 	warehouseID, _ := strconv.Atoi(c.DefaultQuery("wid", "0"))
 
-	list, total, err := service.ListProductsWithSupplier(page, pageSize, keyword, uint(warehouseID))
+	list, total, err := service.ListProductsWithSupplier(companyID, page, pageSize, keyword, uint(warehouseID))
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "获取产品列表失败")
 		return
@@ -953,13 +1139,19 @@ func ListProductsWithSupplier(c *gin.Context) {
 
 // BatchUpdateSuppliers 批量更新供应商
 func BatchUpdateSuppliers(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	var req BatchUpdateSupplierRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	result, err := service.BatchUpdateSuppliers(req)
+	result, err := service.BatchUpdateSuppliers(companyID, req)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -1009,6 +1201,12 @@ func ExportSupplierTemplate(c *gin.Context) {
 
 // ImportSuppliers 导入供应商数据
 func ImportSuppliers(c *gin.Context) {
+	companyID := getCompanyID(c)
+	if companyID == 0 {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
 	// 获取上传的文件
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -1088,7 +1286,7 @@ func ImportSuppliers(c *gin.Context) {
 	}
 
 	// 执行导入
-	result, err := service.ImportSuppliers(items)
+	result, err := service.ImportSuppliers(companyID, items)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
 		return

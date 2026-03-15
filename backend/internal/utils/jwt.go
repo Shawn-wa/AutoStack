@@ -9,6 +9,7 @@ import (
 // JWTClaims JWT声明
 type JWTClaims struct {
 	UserID      uint     `json:"user_id"`
+	CompanyID   uint     `json:"company_id"`
 	Username    string   `json:"username"`
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
@@ -16,14 +17,15 @@ type JWTClaims struct {
 }
 
 // GenerateToken 生成JWT Token
-func GenerateToken(userID uint, username, role, secret string, expireHour int) (string, error) {
-	return GenerateTokenWithPermissions(userID, username, role, nil, secret, expireHour)
+func GenerateToken(userID, companyID uint, username, role, secret string, expireHour int) (string, error) {
+	return GenerateTokenWithPermissions(userID, companyID, username, role, nil, secret, expireHour)
 }
 
 // GenerateTokenWithPermissions 生成带权限的JWT Token
-func GenerateTokenWithPermissions(userID uint, username, role string, permissions []string, secret string, expireHour int) (string, error) {
+func GenerateTokenWithPermissions(userID, companyID uint, username, role string, permissions []string, secret string, expireHour int) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":     userID,
+		"company_id":  companyID,
 		"username":    username,
 		"role":        role,
 		"permissions": permissions,

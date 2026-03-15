@@ -2,12 +2,14 @@ package inventory
 
 // WarehouseQuery 仓库查询条件
 type WarehouseQuery struct {
+	CompanyID uint
 	Type   string // 仓库类型筛选
 	Status string // 状态筛选
 }
 
 // InventoryQuery 库存查询条件
 type InventoryQuery struct {
+	CompanyID   uint
 	Page        int
 	PageSize    int
 	WarehouseID uint
@@ -16,6 +18,7 @@ type InventoryQuery struct {
 
 // StockInOrderQuery 入库单查询条件
 type StockInOrderQuery struct {
+	CompanyID uint
 	Page     int
 	PageSize int
 	Status   string

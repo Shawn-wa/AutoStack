@@ -18,7 +18,9 @@ import (
 	"autostack/internal/modules/shipping"
 	"autostack/internal/modules/template"
 	"autostack/internal/modules/user"
+	companyRepo "autostack/internal/repository/company"
 	shippingRepo "autostack/internal/repository/shipping"
+	userRepo "autostack/internal/repository/user"
 	"autostack/internal/scheduler"
 )
 
@@ -40,6 +42,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 	// 自动迁移表结构
 	if err := database.AutoMigrate(
+		&companyRepo.Company{},
 		&user.User{},
 		&order.PlatformAuth{},
 		&order.Order{},
@@ -125,9 +128,9 @@ func (s *Server) setupRoutes() {
 				userGroup.PUT("/password", user.ChangePassword)
 			}
 
-			// 管理员接口
+			// 管理员接口（需 user:view 权限）
 			admin := authorized.Group("/admin")
-			admin.Use(middleware.RequireAdmin())
+			admin.Use(middleware.RequireAnyPermission(userRepo.PermUserView))
 			{
 				admin.GET("/permissions", user.GetPermissions)
 				admin.GET("/users", user.ListUsers)
@@ -152,7 +155,7 @@ func (s *Server) setupRoutes() {
 				})
 			}
 
-			// 项目管理
+			// 项目管理（暂无独立菜单，不做权限控制）
 			projects := authorized.Group("/projects")
 			{
 				projects.GET("", project.ListProjects)
@@ -180,8 +183,14 @@ func (s *Server) setupRoutes() {
 				templates.GET("/:id", template.GetTemplate)
 			}
 
-			// 订单管理模块
+			// 订单管理模块（包含仪表盘统计、平台授权、订单、现金流）
 			orderGroup := authorized.Group("/order")
+			orderGroup.Use(middleware.RequireAnyPermission(
+				userRepo.PermDashboardView,
+				userRepo.PermPlatformAuthView,
+				userRepo.PermOrderView,
+				userRepo.PermReportView,
+			))
 			{
 				// 仪表盘统计
 				orderGroup.GET("/dashboard/stats", order.GetDashboardStats)
@@ -218,6 +227,10 @@ func (s *Server) setupRoutes() {
 
 			// 产品管理模块
 			productGroup := authorized.Group("/product")
+			productGroup.Use(middleware.RequireAnyPermission(
+				userRepo.PermProductView,
+				userRepo.PermWarehouseView,
+			))
 			{
 				// 本地产品
 				productGroup.GET("/products", product.ListProducts)
@@ -272,6 +285,7 @@ func (s *Server) setupRoutes() {
 
 			// 物流管理模块
 			shippingGroup := authorized.Group("/shipping")
+			shippingGroup.Use(middleware.RequireAnyPermission(userRepo.PermShippingView))
 			{
 				// 运费模板
 				shippingGroup.GET("/templates", shipping.ListTemplates)

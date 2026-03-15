@@ -4,8 +4,14 @@ package user
 // 保持向后兼容，避免修改现有代码的导入路径
 
 import (
+	companyRepo "autostack/internal/repository/company"
 	userRepo "autostack/internal/repository/user"
 )
+
+// ========== 企业域类型别名 ==========
+
+// Company 企业模型
+type Company = companyRepo.Company
 
 // ========== 用户域类型别名 ==========
 
@@ -32,45 +38,17 @@ const (
 	StatusDisabled = userRepo.StatusDisabled
 )
 
-// ========== 权限常量别名 ==========
+// ========== 模块权限常量别名 ==========
 
 const (
-	// 用户管理权限
-	PermUserCreate = userRepo.PermUserCreate
-	PermUserUpdate = userRepo.PermUserUpdate
-	PermUserDelete = userRepo.PermUserDelete
-	PermUserList   = userRepo.PermUserList
-
-	// 项目管理权限
-	PermProjectCreate = userRepo.PermProjectCreate
-	PermProjectUpdate = userRepo.PermProjectUpdate
-	PermProjectDelete = userRepo.PermProjectDelete
-	PermProjectList   = userRepo.PermProjectList
-
-	// 部署管理权限
-	PermDeploymentCreate = userRepo.PermDeploymentCreate
-	PermDeploymentUpdate = userRepo.PermDeploymentUpdate
-	PermDeploymentDelete = userRepo.PermDeploymentDelete
-	PermDeploymentList   = userRepo.PermDeploymentList
-	PermDeploymentStart  = userRepo.PermDeploymentStart
-	PermDeploymentStop   = userRepo.PermDeploymentStop
-
-	// 模板管理权限
-	PermTemplateCreate = userRepo.PermTemplateCreate
-	PermTemplateUpdate = userRepo.PermTemplateUpdate
-	PermTemplateDelete = userRepo.PermTemplateDelete
-	PermTemplateList   = userRepo.PermTemplateList
-
-	// 平台授权权限
-	PermPlatformAuthCreate = userRepo.PermPlatformAuthCreate
-	PermPlatformAuthUpdate = userRepo.PermPlatformAuthUpdate
-	PermPlatformAuthDelete = userRepo.PermPlatformAuthDelete
-	PermPlatformAuthList   = userRepo.PermPlatformAuthList
-	PermPlatformAuthSync   = userRepo.PermPlatformAuthSync
-
-	// 订单管理权限
-	PermOrderList   = userRepo.PermOrderList
-	PermOrderDetail = userRepo.PermOrderDetail
+	PermDashboardView    = userRepo.PermDashboardView
+	PermProductView      = userRepo.PermProductView
+	PermPlatformAuthView = userRepo.PermPlatformAuthView
+	PermOrderView        = userRepo.PermOrderView
+	PermReportView       = userRepo.PermReportView
+	PermWarehouseView    = userRepo.PermWarehouseView
+	PermShippingView     = userRepo.PermShippingView
+	PermUserView         = userRepo.PermUserView
 )
 
 // ========== 权限列表别名 ==========

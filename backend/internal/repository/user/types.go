@@ -2,11 +2,12 @@ package user
 
 // UserQuery 用户查询条件
 type UserQuery struct {
-	Page     int
-	PageSize int
-	Role     string
-	Status   *int
-	Keyword  string
+	Page      int
+	PageSize  int
+	Role      string
+	Status    *int
+	Keyword   string
+	CompanyID uint
 }
 
 // PermissionsResponse 权限响应

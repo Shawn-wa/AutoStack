@@ -25,6 +25,7 @@ const (
 // PlatformSyncTask 平台同步任务
 type PlatformSyncTask struct {
 	ID             uint       `gorm:"primaryKey" json:"id"`
+	CompanyID      uint       `gorm:"index;not null;default:0" json:"company_id"`
 	PlatformAuthID uint       `gorm:"index;not null" json:"platform_auth_id"`
 	TaskType       string     `gorm:"size:32;not null;index" json:"task_type"`
 	Status         string     `gorm:"size:16;not null;default:pending;index" json:"status"`
@@ -48,6 +49,7 @@ func (PlatformSyncTask) TableName() string {
 // Product 本地产品模型
 type Product struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
+	CompanyID  uint      `gorm:"index;not null;default:0" json:"company_id"`
 	WID        uint      `gorm:"column:wid;index;default:0" json:"wid"` // 仓库ID
 	SKU        string    `gorm:"size:100;not null;uniqueIndex" json:"sku"`
 	Name       string    `gorm:"size:255;not null" json:"name"`
@@ -68,6 +70,7 @@ func (Product) TableName() string {
 // PlatformProduct 平台产品模型（同步数据）
 type PlatformProduct struct {
 	ID                uint      `gorm:"primaryKey" json:"id"`
+	CompanyID         uint      `gorm:"index;not null;default:0" json:"company_id"`
 	Platform          string    `gorm:"size:50;not null;index:idx_platform_auth_sku" json:"platform"`
 	PlatformAuthID    uint      `gorm:"index:idx_platform_auth_sku;not null" json:"platform_auth_id"`
 	PlatformSKU       string    `gorm:"size:100;not null;index:idx_platform_auth_sku" json:"platform_sku"`
@@ -95,6 +98,7 @@ func (PlatformProduct) TableName() string {
 // ProductMapping 产品映射关系
 type ProductMapping struct {
 	ID                uint      `gorm:"primaryKey" json:"id"`
+	CompanyID         uint      `gorm:"index;not null;default:0" json:"company_id"`
 	WID               uint      `gorm:"index:idx_mapping_unique,unique;not null;default:0" json:"wid"`                 // 仓库ID
 	PlatformAccountID uint      `gorm:"index:idx_mapping_unique,unique;not null;default:0" json:"platform_account_id"` // 授权账户ID (platform_auths.user_id)
 	ProductID         uint      `gorm:"index:idx_mapping_unique,unique;index;not null" json:"product_id"`              // 本地产品ID
@@ -115,6 +119,7 @@ func (ProductMapping) TableName() string {
 // ProductSupplier 产品供应商/采购信息（一个产品可以有多个采购来源）
 type ProductSupplier struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
+	CompanyID     uint      `gorm:"index;not null;default:0" json:"company_id"`
 	ProductID     uint      `gorm:"index;not null" json:"product_id"`                 // 关联本地产品
 	SupplierName  string    `gorm:"size:255;not null" json:"supplier_name"`           // 供应商/采购店铺名称
 	PurchaseLink  string    `gorm:"size:1000" json:"purchase_link"`                   // 采购链接

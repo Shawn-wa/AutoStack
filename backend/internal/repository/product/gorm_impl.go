@@ -16,6 +16,13 @@ type gormProductRepository struct {
 	db *gorm.DB
 }
 
+func scopeByCompanyID(ctx context.Context, db *gorm.DB) *gorm.DB {
+	if companyID := repository.GetCompanyID(ctx); companyID > 0 {
+		return db.Where("company_id = ?", companyID)
+	}
+	return db
+}
+
 // NewProductRepository 创建产品仓储实例
 func NewProductRepository(db *gorm.DB) ProductRepository {
 	return &gormProductRepository{db: db}
@@ -27,7 +34,7 @@ func (r *gormProductRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormProductRepository) FindByID(ctx context.Context, id uint) (*Product, error) {
 	var product Product
-	if err := r.getDB(ctx).First(&product, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).First(&product, id).Error; err != nil {
 		return nil, err
 	}
 	return &product, nil
@@ -35,7 +42,7 @@ func (r *gormProductRepository) FindByID(ctx context.Context, id uint) (*Product
 
 func (r *gormProductRepository) FindBySKU(ctx context.Context, sku string) (*Product, error) {
 	var product Product
-	if err := r.getDB(ctx).Where("sku = ?", sku).First(&product).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("sku = ?", sku).First(&product).Error; err != nil {
 		return nil, err
 	}
 	return &product, nil
@@ -47,6 +54,9 @@ func (r *gormProductRepository) List(ctx context.Context, query *ProductQuery) (
 	db := r.getDB(ctx)
 
 	q := db.Model(&Product{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
 	if query.Keyword != "" {
 		like := "%" + query.Keyword + "%"
 		q = q.Where("sku LIKE ? OR name LIKE ?", like, like)
@@ -76,29 +86,29 @@ func (r *gormProductRepository) Update(ctx context.Context, product *Product) er
 }
 
 func (r *gormProductRepository) UpdateFields(ctx context.Context, id uint, fields map[string]interface{}) error {
-	return r.getDB(ctx).Model(&Product{}).Where("id = ?", id).Updates(fields).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Model(&Product{}).Where("id = ?", id).Updates(fields).Error
 }
 
 func (r *gormProductRepository) Delete(ctx context.Context, id uint) error {
-	return r.getDB(ctx).Delete(&Product{}, id).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Delete(&Product{}, id).Error
 }
 
 func (r *gormProductRepository) CountBySKU(ctx context.Context, sku string) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&Product{}).Where("sku = ?", sku).Count(&count).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&Product{}).Where("sku = ?", sku).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
 func (r *gormProductRepository) UpdateStock(ctx context.Context, id uint, delta int) error {
-	return r.getDB(ctx).Model(&Product{}).Where("id = ?", id).
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Model(&Product{}).Where("id = ?", id).
 		Update("stock", gorm.Expr("stock + ?", delta)).Error
 }
 
 func (r *gormProductRepository) FindAll(ctx context.Context) ([]Product, error) {
 	var products []Product
-	if err := r.getDB(ctx).Find(&products).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Find(&products).Error; err != nil {
 		return nil, err
 	}
 	return products, nil
@@ -121,7 +131,7 @@ func (r *gormPlatformProductRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormPlatformProductRepository) FindByID(ctx context.Context, id uint) (*PlatformProduct, error) {
 	var product PlatformProduct
-	if err := r.getDB(ctx).First(&product, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).First(&product, id).Error; err != nil {
 		return nil, err
 	}
 	return &product, nil
@@ -129,7 +139,7 @@ func (r *gormPlatformProductRepository) FindByID(ctx context.Context, id uint) (
 
 func (r *gormPlatformProductRepository) FindByAccountAndUniqueCode(ctx context.Context, accountID uint, uniqueCode string) (*PlatformProduct, error) {
 	var product PlatformProduct
-	if err := r.getDB(ctx).Where("platform_account_id = ? AND unique_code = ?", accountID, uniqueCode).First(&product).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("platform_account_id = ? AND unique_code = ?", accountID, uniqueCode).First(&product).Error; err != nil {
 		return nil, err
 	}
 	return &product, nil
@@ -141,6 +151,12 @@ func (r *gormPlatformProductRepository) List(ctx context.Context, query *Platfor
 	db := r.getDB(ctx)
 
 	q := db.Model(&PlatformProduct{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
+	if query.Platform != "" {
+		q = q.Where("platform = ?", query.Platform)
+	}
 	if query.PlatformAuthID > 0 {
 		q = q.Where("platform_auth_id = ?", query.PlatformAuthID)
 	}
@@ -183,7 +199,7 @@ func (r *gormPlatformProductRepository) Save(ctx context.Context, product *Platf
 
 func (r *gormPlatformProductRepository) ListByAuthID(ctx context.Context, authID uint) ([]PlatformProduct, error) {
 	var products []PlatformProduct
-	if err := r.getDB(ctx).Where("platform_auth_id = ?", authID).Find(&products).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("platform_auth_id = ?", authID).Find(&products).Error; err != nil {
 		return nil, err
 	}
 	return products, nil
@@ -206,7 +222,7 @@ func (r *gormProductMappingRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormProductMappingRepository) FindByCompositeKey(ctx context.Context, wid, accountID, productID, platformProductID uint) (*ProductMapping, error) {
 	var mapping ProductMapping
-	if err := r.getDB(ctx).Where(
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where(
 		"wid = ? AND platform_account_id = ? AND product_id = ? AND platform_product_id = ?",
 		wid, accountID, productID, platformProductID,
 	).First(&mapping).Error; err != nil {
@@ -217,7 +233,7 @@ func (r *gormProductMappingRepository) FindByCompositeKey(ctx context.Context, w
 
 func (r *gormProductMappingRepository) FindByPlatformProductID(ctx context.Context, platformProductID uint) (*ProductMapping, error) {
 	var mapping ProductMapping
-	if err := r.getDB(ctx).Where("platform_product_id = ?", platformProductID).First(&mapping).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("platform_product_id = ?", platformProductID).First(&mapping).Error; err != nil {
 		return nil, err
 	}
 	return &mapping, nil
@@ -228,12 +244,12 @@ func (r *gormProductMappingRepository) Create(ctx context.Context, mapping *Prod
 }
 
 func (r *gormProductMappingRepository) DeleteByPlatformProductID(ctx context.Context, platformProductID uint) error {
-	return r.getDB(ctx).Where("platform_product_id = ?", platformProductID).Delete(&ProductMapping{}).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Where("platform_product_id = ?", platformProductID).Delete(&ProductMapping{}).Error
 }
 
 func (r *gormProductMappingRepository) CountByProductID(ctx context.Context, productID uint) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&ProductMapping{}).Where("product_id = ?", productID).Count(&count).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&ProductMapping{}).Where("product_id = ?", productID).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -256,7 +272,7 @@ func (r *gormSyncTaskRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormSyncTaskRepository) FindByID(ctx context.Context, id uint) (*PlatformSyncTask, error) {
 	var task PlatformSyncTask
-	if err := r.getDB(ctx).First(&task, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).First(&task, id).Error; err != nil {
 		return nil, err
 	}
 	return &task, nil
@@ -264,7 +280,7 @@ func (r *gormSyncTaskRepository) FindByID(ctx context.Context, id uint) (*Platfo
 
 func (r *gormSyncTaskRepository) FindPendingOrRunning(ctx context.Context, authID uint, taskType string) (*PlatformSyncTask, error) {
 	var task PlatformSyncTask
-	err := r.getDB(ctx).Where(
+	err := scopeByCompanyID(ctx, r.getDB(ctx)).Where(
 		"platform_auth_id = ? AND task_type = ? AND status IN ?",
 		authID, taskType, []string{SyncTaskStatusPending, SyncTaskStatusRunning},
 	).First(&task).Error
@@ -279,7 +295,7 @@ func (r *gormSyncTaskRepository) FindPendingTasks(ctx context.Context, lockTimeo
 	now := time.Now()
 	lockExpired := now.Add(-lockTimeout)
 
-	if err := r.getDB(ctx).Where(
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where(
 		"(status = ? OR (status = ? AND locked_at < ?)) AND retry_count < max_retry",
 		SyncTaskStatusPending, SyncTaskStatusRunning, lockExpired,
 	).Order("priority DESC, created_at ASC").Limit(limit).Find(&tasks).Error; err != nil {
@@ -294,6 +310,9 @@ func (r *gormSyncTaskRepository) List(ctx context.Context, query *SyncTaskQuery)
 	db := r.getDB(ctx)
 
 	q := db.Model(&PlatformSyncTask{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
 	if query.Status != "" {
 		q = q.Where("status = ?", query.Status)
 	}
@@ -315,15 +334,15 @@ func (r *gormSyncTaskRepository) Create(ctx context.Context, task *PlatformSyncT
 }
 
 func (r *gormSyncTaskRepository) UpdatePriority(ctx context.Context, id uint, priority int) error {
-	return r.getDB(ctx).Model(&PlatformSyncTask{}).Where("id = ?", id).Update("priority", priority).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Model(&PlatformSyncTask{}).Where("id = ?", id).Update("priority", priority).Error
 }
 
 func (r *gormSyncTaskRepository) UpdateStatus(ctx context.Context, id uint, updates map[string]interface{}) error {
-	return r.getDB(ctx).Model(&PlatformSyncTask{}).Where("id = ?", id).Updates(updates).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Model(&PlatformSyncTask{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *gormSyncTaskRepository) DeleteOldTasks(ctx context.Context, before time.Time, statuses []string) (int64, error) {
-	result := r.getDB(ctx).Where("created_at < ? AND status IN ?", before, statuses).Delete(&PlatformSyncTask{})
+	result := scopeByCompanyID(ctx, r.getDB(ctx)).Where("created_at < ? AND status IN ?", before, statuses).Delete(&PlatformSyncTask{})
 	return result.RowsAffected, result.Error
 }
 
@@ -331,7 +350,7 @@ func (r *gormSyncTaskRepository) TryLock(ctx context.Context, id uint, lockID st
 	now := time.Now()
 	lockExpired := now.Add(-lockTimeout)
 
-	result := r.getDB(ctx).Model(&PlatformSyncTask{}).
+	result := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&PlatformSyncTask{}).
 		Where("id = ? AND (status = ? OR (status = ? AND locked_at < ?))",
 			id, SyncTaskStatusPending, SyncTaskStatusRunning, lockExpired).
 		Updates(map[string]interface{}{
@@ -363,7 +382,7 @@ func (r *gormProductSupplierRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormProductSupplierRepository) FindByID(ctx context.Context, id uint) (*ProductSupplier, error) {
 	var supplier ProductSupplier
-	if err := r.getDB(ctx).Preload("Product").First(&supplier, id).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Preload("Product").First(&supplier, id).Error; err != nil {
 		return nil, err
 	}
 	return &supplier, nil
@@ -371,7 +390,7 @@ func (r *gormProductSupplierRepository) FindByID(ctx context.Context, id uint) (
 
 func (r *gormProductSupplierRepository) FindByProductID(ctx context.Context, productID uint) ([]ProductSupplier, error) {
 	var suppliers []ProductSupplier
-	if err := r.getDB(ctx).Where("product_id = ?", productID).
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("product_id = ?", productID).
 		Order("is_default DESC, id ASC").Find(&suppliers).Error; err != nil {
 		return nil, err
 	}
@@ -380,7 +399,7 @@ func (r *gormProductSupplierRepository) FindByProductID(ctx context.Context, pro
 
 func (r *gormProductSupplierRepository) FindDefaultByProductID(ctx context.Context, productID uint) (*ProductSupplier, error) {
 	var supplier ProductSupplier
-	if err := r.getDB(ctx).Where("product_id = ? AND is_default = ?", productID, true).
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("product_id = ? AND is_default = ?", productID, true).
 		First(&supplier).Error; err != nil {
 		return nil, err
 	}
@@ -392,7 +411,7 @@ func (r *gormProductSupplierRepository) FindDefaultByProductIDs(ctx context.Cont
 		return nil, nil
 	}
 	var suppliers []ProductSupplier
-	if err := r.getDB(ctx).Where("product_id IN ? AND is_default = ?", productIDs, true).
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("product_id IN ? AND is_default = ?", productIDs, true).
 		Find(&suppliers).Error; err != nil {
 		return nil, err
 	}
@@ -401,7 +420,7 @@ func (r *gormProductSupplierRepository) FindDefaultByProductIDs(ctx context.Cont
 
 func (r *gormProductSupplierRepository) FindByProductAndName(ctx context.Context, productID uint, supplierName string) (*ProductSupplier, error) {
 	var supplier ProductSupplier
-	if err := r.getDB(ctx).Where("product_id = ? AND supplier_name = ?", productID, supplierName).
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Where("product_id = ? AND supplier_name = ?", productID, supplierName).
 		First(&supplier).Error; err != nil {
 		return nil, err
 	}
@@ -414,6 +433,9 @@ func (r *gormProductSupplierRepository) List(ctx context.Context, query *Product
 	db := r.getDB(ctx)
 
 	q := db.Model(&ProductSupplier{})
+	if query.CompanyID > 0 {
+		q = q.Where("company_id = ?", query.CompanyID)
+	}
 
 	if query.ProductID > 0 {
 		q = q.Where("product_id = ?", query.ProductID)
@@ -448,11 +470,11 @@ func (r *gormProductSupplierRepository) Update(ctx context.Context, supplier *Pr
 }
 
 func (r *gormProductSupplierRepository) Delete(ctx context.Context, id uint) error {
-	return r.getDB(ctx).Delete(&ProductSupplier{}, id).Error
+	return scopeByCompanyID(ctx, r.getDB(ctx)).Delete(&ProductSupplier{}, id).Error
 }
 
 func (r *gormProductSupplierRepository) SetDefault(ctx context.Context, productID uint, supplierID uint) error {
-	db := r.getDB(ctx)
+	db := scopeByCompanyID(ctx, r.getDB(ctx))
 	// 先取消该产品所有供应商的默认状态
 	if err := db.Model(&ProductSupplier{}).Where("product_id = ?", productID).
 		Update("is_default", false).Error; err != nil {
@@ -465,7 +487,7 @@ func (r *gormProductSupplierRepository) SetDefault(ctx context.Context, productI
 
 func (r *gormProductSupplierRepository) CountByProductID(ctx context.Context, productID uint) (int64, error) {
 	var count int64
-	if err := r.getDB(ctx).Model(&ProductSupplier{}).Where("product_id = ?", productID).Count(&count).Error; err != nil {
+	if err := scopeByCompanyID(ctx, r.getDB(ctx)).Model(&ProductSupplier{}).Where("product_id = ?", productID).Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil

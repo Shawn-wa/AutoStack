@@ -37,29 +37,27 @@ func (s *Service) GetAllPlatformsInfo() []PlatformInfo {
 }
 
 // CreateAuth 创建平台授权
-func (s *Service) CreateAuth(userID uint, req *CreateAuthRequest) (*PlatformAuth, error) {
+func (s *Service) CreateAuth(companyID, createdByUserID uint, req *CreateAuthRequest) (*PlatformAuth, error) {
 	db := database.GetDB()
 
-	// 检查平台是否支持
 	adapter := GetAdapter(req.Platform)
 	if adapter == nil {
 		return nil, ErrPlatformNotFound
 	}
 
-	// 序列化凭证
 	credBytes, err := json.Marshal(req.Credentials)
 	if err != nil {
 		return nil, err
 	}
 
-	// 加密凭证
 	encryptedCreds, err := Encrypt(string(credBytes))
 	if err != nil {
 		return nil, err
 	}
 
 	auth := &PlatformAuth{
-		UserID:      userID,
+		CompanyID:   companyID,
+		CreatedBy:   createdByUserID,
 		Platform:    req.Platform,
 		ShopName:    req.ShopName,
 		Credentials: encryptedCreds,
@@ -74,11 +72,11 @@ func (s *Service) CreateAuth(userID uint, req *CreateAuthRequest) (*PlatformAuth
 }
 
 // GetAuthByID 根据ID获取授权
-func (s *Service) GetAuthByID(id uint, userID uint) (*PlatformAuth, error) {
+func (s *Service) GetAuthByID(id uint, companyID uint) (*PlatformAuth, error) {
 	db := database.GetDB()
 
 	var auth PlatformAuth
-	if err := db.Where("id = ? AND user_id = ?", id, userID).First(&auth).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", id, companyID).First(&auth).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrAuthNotFound
 		}
@@ -89,13 +87,13 @@ func (s *Service) GetAuthByID(id uint, userID uint) (*PlatformAuth, error) {
 }
 
 // ListAuths 获取授权列表
-func (s *Service) ListAuths(userID uint, page, pageSize int) ([]PlatformAuth, int64, error) {
+func (s *Service) ListAuths(companyID uint, page, pageSize int) ([]PlatformAuth, int64, error) {
 	db := database.GetDB()
 
 	var auths []PlatformAuth
 	var total int64
 
-	query := db.Model(&PlatformAuth{}).Where("user_id = ?", userID)
+	query := db.Model(&PlatformAuth{}).Where("company_id = ?", companyID)
 	query.Count(&total)
 
 	offset := (page - 1) * pageSize
@@ -138,10 +136,10 @@ func (s *Service) GetMaskedCredentials(auth *PlatformAuth) map[string]string {
 }
 
 // UpdateAuth 更新授权
-func (s *Service) UpdateAuth(id uint, userID uint, req *UpdateAuthRequest) (*PlatformAuth, error) {
+func (s *Service) UpdateAuth(id uint, companyID uint, req *UpdateAuthRequest) (*PlatformAuth, error) {
 	db := database.GetDB()
 
-	auth, err := s.GetAuthByID(id, userID)
+	auth, err := s.GetAuthByID(id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,10 +176,10 @@ func (s *Service) UpdateAuth(id uint, userID uint, req *UpdateAuthRequest) (*Pla
 }
 
 // DeleteAuth 删除授权
-func (s *Service) DeleteAuth(id uint, userID uint) error {
+func (s *Service) DeleteAuth(id uint, companyID uint) error {
 	db := database.GetDB()
 
-	result := db.Where("id = ? AND user_id = ?", id, userID).Delete(&PlatformAuth{})
+	result := db.Where("id = ? AND company_id = ?", id, companyID).Delete(&PlatformAuth{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -193,8 +191,8 @@ func (s *Service) DeleteAuth(id uint, userID uint) error {
 }
 
 // TestAuth 测试授权连接
-func (s *Service) TestAuth(id uint, userID uint) error {
-	auth, err := s.GetAuthByID(id, userID)
+func (s *Service) TestAuth(id uint, companyID uint) error {
+	auth, err := s.GetAuthByID(id, companyID)
 	if err != nil {
 		return err
 	}
@@ -219,10 +217,10 @@ func (s *Service) TestAuth(id uint, userID uint) error {
 
 // SyncOrders 同步订单
 // skipDelivered: 为 true 时跳过已签收订单的更新（定时任务使用），手动触发传 false
-func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time, skipDelivered bool) (*SyncOrdersResponse, error) {
+func (s *Service) SyncOrders(id uint, companyID uint, since, to time.Time, skipDelivered bool) (*SyncOrdersResponse, error) {
 	db := database.GetDB()
 
-	auth, err := s.GetAuthByID(id, userID)
+	auth, err := s.GetAuthByID(id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -232,13 +230,11 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time, skipDeli
 		return nil, ErrPlatformNotFound
 	}
 
-	// 解密凭证
 	credentials, err := Decrypt(auth.Credentials)
 	if err != nil {
 		return nil, ErrInvalidCredentials
 	}
 
-	// 调用适配器同步订单（优先使用带日志的方法）
 	var orders []*Order
 	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
 		orders, err = adapterWithLog.SyncOrdersWithLog(credentials, since, to, auth.ID)
@@ -254,9 +250,8 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time, skipDeli
 
 	result := &SyncOrdersResponse{}
 
-	// 保存订单
 	for _, ord := range orders {
-		ord.UserID = userID
+		ord.CompanyID = companyID
 		ord.PlatformAuthID = auth.ID
 
 		// 检查订单是否已存在
@@ -346,18 +341,16 @@ func (s *Service) SyncOrders(id uint, userID uint, since, to time.Time, skipDeli
 }
 
 // SyncOrderCommission 同步单个订单的佣金
-func (s *Service) SyncOrderCommission(userID, orderID uint) (*Order, error) {
+func (s *Service) SyncOrderCommission(companyID, orderID uint) (*Order, error) {
 	db := database.GetDB()
 
-	// 获取订单信息
 	var ord Order
-	if err := db.Where("id = ? AND user_id = ?", orderID, userID).First(&ord).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", orderID, companyID).First(&ord).Error; err != nil {
 		return nil, ErrOrderNotFound
 	}
 
-	// 获取授权信息
 	var auth PlatformAuth
-	if err := db.Where("id = ? AND user_id = ?", ord.PlatformAuthID, userID).First(&auth).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", ord.PlatformAuthID, companyID).First(&auth).Error; err != nil {
 		return nil, ErrAuthNotFound
 	}
 
@@ -411,18 +404,16 @@ func (s *Service) SyncOrderCommission(userID, orderID uint) (*Order, error) {
 
 // SyncSingleOrder 同步单个订单信息（从平台获取最新状态）
 // 优先使用订单详情接口（/v3/posting/fbs/get），效率更高
-func (s *Service) SyncSingleOrder(userID, orderID uint) (*Order, error) {
+func (s *Service) SyncSingleOrder(companyID, orderID uint) (*Order, error) {
 	db := database.GetDB()
 
-	// 获取订单信息
 	var ord Order
-	if err := db.Where("id = ? AND user_id = ?", orderID, userID).First(&ord).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", orderID, companyID).First(&ord).Error; err != nil {
 		return nil, ErrOrderNotFound
 	}
 
-	// 获取授权信息
 	var auth PlatformAuth
-	if err := db.Where("id = ? AND user_id = ?", ord.PlatformAuthID, userID).First(&auth).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", ord.PlatformAuthID, companyID).First(&auth).Error; err != nil {
 		return nil, ErrAuthNotFound
 	}
 
@@ -505,13 +496,13 @@ func (s *Service) SyncSingleOrder(userID, orderID uint) (*Order, error) {
 }
 
 // ListOrders 获取订单列表
-func (s *Service) ListOrders(userID uint, req *OrderListRequest) ([]Order, int64, error) {
+func (s *Service) ListOrders(companyID uint, req *OrderListRequest) ([]Order, int64, error) {
 	db := database.GetDB()
 
 	var orders []Order
 	var total int64
 
-	query := db.Model(&Order{}).Where("user_id = ?", userID)
+	query := db.Model(&Order{}).Where("company_id = ?", companyID)
 
 	// 应用过滤条件
 	if req.Platform != "" {
@@ -596,11 +587,11 @@ func (s *Service) ListOrders(userID uint, req *OrderListRequest) ([]Order, int64
 }
 
 // GetOrderByID 根据ID获取订单详情
-func (s *Service) GetOrderByID(id uint, userID uint) (*Order, error) {
+func (s *Service) GetOrderByID(id uint, companyID uint) (*Order, error) {
 	db := database.GetDB()
 
 	var ord Order
-	if err := db.Preload("Items").Where("id = ? AND user_id = ?", id, userID).First(&ord).Error; err != nil {
+	if err := db.Preload("Items").Where("id = ? AND company_id = ?", id, companyID).First(&ord).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrOrderNotFound
 		}
@@ -611,10 +602,10 @@ func (s *Service) GetOrderByID(id uint, userID uint) (*Order, error) {
 }
 
 // SyncCommission 同步佣金信息（使用 transaction/totals 逐个订单获取）
-func (s *Service) SyncCommission(userID, authID uint, since, to time.Time) (*SyncCommissionResponse, error) {
+func (s *Service) SyncCommission(companyID, authID uint, since, to time.Time) (*SyncCommissionResponse, error) {
 	db := database.GetDB()
 
-	auth, err := s.GetAuthByID(authID, userID)
+	auth, err := s.GetAuthByID(authID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -712,7 +703,7 @@ type CashFlowSyncResult struct {
 }
 
 // SyncCashFlowStatements 同步现金流报表
-func (s *Service) SyncCashFlowStatements(authID, userID uint, since, to time.Time) (*CashFlowSyncResult, error) {
+func (s *Service) SyncCashFlowStatements(authID, companyID uint, since, to time.Time) (*CashFlowSyncResult, error) {
 	db := database.GetDB()
 	result := &CashFlowSyncResult{}
 
@@ -722,11 +713,10 @@ func (s *Service) SyncCashFlowStatements(authID, userID uint, since, to time.Tim
 		return nil, fmt.Errorf("获取授权信息失败: %w", err)
 	}
 
-	if auth.UserID != userID {
+	if auth.CompanyID != companyID {
 		return nil, fmt.Errorf("无权访问该授权")
 	}
 
-	// 获取平台适配器
 	baseAdapter := GetAdapter(auth.Platform)
 	if baseAdapter == nil {
 		return nil, ErrPlatformNotFound
@@ -778,8 +768,8 @@ func (s *Service) SyncCashFlowStatements(authID, userID uint, since, to time.Tim
 			}
 			result.Updated++
 		} else {
-			// 创建新记录
-			cf.UserID = userID
+		// 创建新记录
+		cf.CompanyID = companyID
 			cf.PlatformAuthID = authID
 			cf.Platform = auth.Platform
 			cf.SyncedAt = time.Now()
@@ -794,12 +784,12 @@ func (s *Service) SyncCashFlowStatements(authID, userID uint, since, to time.Tim
 }
 
 // ListCashFlowStatements 查询现金流报表列表
-func (s *Service) ListCashFlowStatements(userID uint, authID uint, page, pageSize int) ([]CashFlowStatement, int64, error) {
+func (s *Service) ListCashFlowStatements(companyID uint, authID uint, page, pageSize int) ([]CashFlowStatement, int64, error) {
 	db := database.GetDB()
 	var statements []CashFlowStatement
 	var total int64
 
-	query := db.Model(&CashFlowStatement{}).Where("user_id = ?", userID)
+	query := db.Model(&CashFlowStatement{}).Where("company_id = ?", companyID)
 	if authID > 0 {
 		query = query.Where("platform_auth_id = ?", authID)
 	}
@@ -819,11 +809,11 @@ func (s *Service) ListCashFlowStatements(userID uint, authID uint, page, pageSiz
 }
 
 // GetCashFlowStatement 获取现金流报表详情
-func (s *Service) GetCashFlowStatement(id, userID uint) (*CashFlowStatement, error) {
+func (s *Service) GetCashFlowStatement(id, companyID uint) (*CashFlowStatement, error) {
 	db := database.GetDB()
 	var statement CashFlowStatement
 
-	if err := db.Where("id = ? AND user_id = ?", id, userID).First(&statement).Error; err != nil {
+	if err := db.Where("id = ? AND company_id = ?", id, companyID).First(&statement).Error; err != nil {
 		return nil, err
 	}
 
@@ -832,7 +822,7 @@ func (s *Service) GetCashFlowStatement(id, userID uint) (*CashFlowStatement, err
 
 // GetMutualSettlement 获取结算报告
 // API: POST /v1/finance/mutual-settlement
-func (s *Service) GetMutualSettlement(authID, userID uint, since, to time.Time) (interface{}, error) {
+func (s *Service) GetMutualSettlement(authID, companyID uint, since, to time.Time) (interface{}, error) {
 	db := database.GetDB()
 
 	// 获取授权信息
@@ -841,7 +831,7 @@ func (s *Service) GetMutualSettlement(authID, userID uint, since, to time.Time) 
 		return nil, ErrAuthNotFound
 	}
 
-	if auth.UserID != userID {
+	if auth.CompanyID != companyID {
 		return nil, fmt.Errorf("无权访问该授权")
 	}
 
@@ -877,52 +867,38 @@ func (s *Service) GetMutualSettlement(authID, userID uint, since, to time.Time) 
 }
 
 // GetDashboardStats 获取仪表盘统计数据
-func (s *Service) GetDashboardStats(userID uint) (*DashboardStatsResponse, error) {
+func (s *Service) GetDashboardStats(companyID uint) (*DashboardStatsResponse, error) {
 	db := database.GetDB()
 	stats := &DashboardStatsResponse{
 		Currency: "RUB",
 	}
 
-	// 订单统计查询基础条件
-	orderQuery := db.Model(&Order{}).Where("user_id = ?", userID)
-
-	// 总订单数
+	orderQuery := db.Model(&Order{}).Where("company_id = ?", companyID)
 	orderQuery.Count(&stats.TotalOrders)
 
-	// 已签收订单数
-	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusDelivered).Count(&stats.DeliveredOrders)
+	db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusDelivered).Count(&stats.DeliveredOrders)
+	db.Model(&Order{}).Where("company_id = ? AND status IN ?", companyID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders)
+	db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusShipped).Count(&stats.ShippedOrders)
+	db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusCancelled).Count(&stats.CancelledOrders)
 
-	// 待处理订单数（待处理+待发货状态）
-	db.Model(&Order{}).Where("user_id = ? AND status IN ?", userID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders)
-
-	// 已发货订单数
-	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusShipped).Count(&stats.ShippedOrders)
-
-	// 已取消订单数
-	db.Model(&Order{}).Where("user_id = ? AND status = ?", userID, OrderStatusCancelled).Count(&stats.CancelledOrders)
-
-	// 即将超时订单数（待处理+待发货状态，且发货截止时间距当前不足1天）
 	now := time.Now()
-	deadline := now.Add(24 * time.Hour) // 1天后
+	deadline := now.Add(24 * time.Hour)
 	db.Model(&Order{}).Where(
-		"user_id = ? AND status IN ? AND ship_deadline IS NOT NULL AND ship_deadline < ?",
-		userID, []string{OrderStatusPending, OrderStatusReadyToShip}, deadline,
+		"company_id = ? AND status IN ? AND ship_deadline IS NOT NULL AND ship_deadline < ?",
+		companyID, []string{OrderStatusPending, OrderStatusReadyToShip}, deadline,
 	).Count(&stats.TimeoutOrders)
 
-	// 今日订单数（使用本地时区的今天零点）
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	db.Model(&Order{}).Where("user_id = ? AND order_time >= ?", userID, today).Count(&stats.TodayOrders)
+	db.Model(&Order{}).Where("company_id = ? AND order_time >= ?", companyID, today).Count(&stats.TodayOrders)
 
-	// 订单总金额（所有非取消订单，按币种分别统计）
 	var totalAmounts []CurrencyAmount
 	db.Model(&Order{}).
 		Select("currency, COALESCE(SUM(total_amount), 0) as amount").
-		Where("user_id = ? AND status != ?", userID, OrderStatusCancelled).
+		Where("company_id = ? AND status != ?", companyID, OrderStatusCancelled).
 		Group("currency").
 		Scan(&totalAmounts)
 	stats.TotalAmounts = totalAmounts
 
-	// 佣金统计（已签收订单）
 	var commissionStats struct {
 		TotalProfit     float64
 		TotalCommission float64
@@ -934,21 +910,20 @@ func (s *Service) GetDashboardStats(userID uint) (*DashboardStatsResponse, error
 			COALESCE(SUM(sale_commission), 0) as total_commission,
 			COALESCE(SUM(services_amount), 0) as total_service_fee
 		`).
-		Where("user_id = ? AND status = ?", userID, OrderStatusDelivered).
+		Where("company_id = ? AND status = ?", companyID, OrderStatusDelivered).
 		Scan(&commissionStats)
 	stats.TotalProfit = commissionStats.TotalProfit
 	stats.TotalCommission = commissionStats.TotalCommission
 	stats.TotalServiceFee = commissionStats.TotalServiceFee
 
-	// 授权统计
-	db.Model(&PlatformAuth{}).Where("user_id = ?", userID).Count(&stats.TotalAuths)
-	db.Model(&PlatformAuth{}).Where("user_id = ? AND status = ?", userID, AuthStatusActive).Count(&stats.ActiveAuths)
+	db.Model(&PlatformAuth{}).Where("company_id = ?", companyID).Count(&stats.TotalAuths)
+	db.Model(&PlatformAuth{}).Where("company_id = ? AND status = ?", companyID, AuthStatusActive).Count(&stats.ActiveAuths)
 
 	return stats, nil
 }
 
 // GetRecentOrders 获取最近订单
-func (s *Service) GetRecentOrders(userID uint, limit int) ([]RecentOrderResponse, error) {
+func (s *Service) GetRecentOrders(companyID uint, limit int) ([]RecentOrderResponse, error) {
 	db := database.GetDB()
 
 	if limit <= 0 {
@@ -956,7 +931,7 @@ func (s *Service) GetRecentOrders(userID uint, limit int) ([]RecentOrderResponse
 	}
 
 	var orders []Order
-	if err := db.Where("user_id = ?", userID).
+	if err := db.Where("company_id = ?", companyID).
 		Order("order_time DESC").
 		Limit(limit).
 		Find(&orders).Error; err != nil {
@@ -980,26 +955,22 @@ func (s *Service) GetRecentOrders(userID uint, limit int) ([]RecentOrderResponse
 
 // InitOrderTrendStats 初始化订单走势统计数据（如果不存在则计算）
 // forceUpdate: 为true时强制重新计算，忽略已有数据
-func (s *Service) InitOrderTrendStats(userID uint, forceUpdate bool) error {
+func (s *Service) InitOrderTrendStats(companyID uint, forceUpdate bool) error {
 	db := database.GetDB()
 
-	// 检查是否有统计数据
 	var count int64
-	db.Model(&OrderDailyStat{}).Where("user_id = ?", userID).Count(&count)
+	db.Model(&OrderDailyStat{}).Where("company_id = ?", companyID).Count(&count)
 
 	if count > 0 && !forceUpdate {
-		// 已有数据且非强制更新，无需初始化
 		return nil
 	}
 
-	// 强制更新时，先删除旧数据
 	if forceUpdate && count > 0 {
-		db.Where("user_id = ?", userID).Delete(&OrderDailyStat{})
-		log.Printf("[Service] 用户 %d 强制刷新，已清除旧统计数据", userID)
+		db.Where("company_id = ?", companyID).Delete(&OrderDailyStat{})
+		log.Printf("[Service] 企业 %d 强制刷新，已清除旧统计数据", companyID)
 	}
 
-	// 执行统计（最近30天）
-	log.Printf("[Service] 用户 %d %s订单走势统计...", userID, map[bool]string{true: "刷新", false: "首次访问，初始化"}[forceUpdate])
+	log.Printf("[Service] 企业 %d %s订单走势统计...", companyID, map[bool]string{true: "刷新", false: "首次访问，初始化"}[forceUpdate])
 
 	days := 30
 	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour)
@@ -1020,7 +991,7 @@ func (s *Service) InitOrderTrendStats(userID uint, forceUpdate bool) error {
 			COUNT(*) as count, 
 			COALESCE(SUM(total_amount), 0) as amount
 		`).
-		Where("user_id = ? AND order_time >= ? AND order_time < ?", userID, startDate, endDate).
+		Where("company_id = ? AND order_time >= ? AND order_time < ?", companyID, startDate, endDate).
 		Group("DATE(order_time), currency").
 		Order("date ASC").
 		Scan(&dailyStats).Error
@@ -1029,12 +1000,11 @@ func (s *Service) InitOrderTrendStats(userID uint, forceUpdate bool) error {
 		return err
 	}
 
-	log.Printf("[Service] 用户 %d 共查询到 %d 条日期统计数据", userID, len(dailyStats))
+	log.Printf("[Service] 企业 %d 共查询到 %d 条日期统计数据", companyID, len(dailyStats))
 
-	// 存储统计数据
 	for _, stat := range dailyStats {
 		newStat := OrderDailyStat{
-			UserID:      userID,
+			CompanyID:   companyID,
 			StatDate:    stat.Date,
 			Currency:    stat.Currency,
 			OrderCount:  stat.Count,
@@ -1043,12 +1013,12 @@ func (s *Service) InitOrderTrendStats(userID uint, forceUpdate bool) error {
 		db.Create(&newStat)
 	}
 
-	log.Printf("[Service] 用户 %d 订单走势统计初始化完成，共 %d 条记录", userID, len(dailyStats))
+	log.Printf("[Service] 企业 %d 订单走势统计初始化完成，共 %d 条记录", companyID, len(dailyStats))
 	return nil
 }
 
 // GetOrderTrend 获取订单趋势数据（优先从统计表读取，回退到实时查询）
-func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderTrendResponse, error) {
+func (s *Service) GetOrderTrend(companyID uint, days int, currency string) (*OrderTrendResponse, error) {
 	db := database.GetDB()
 
 	if days <= 0 {
@@ -1065,7 +1035,7 @@ func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderT
 
 	// 优先从 order_daily_stats 表读取
 	var cachedStats []OrderDailyStat
-	err := db.Where("user_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", userID, currency, startDate, endDate).
+	err := db.Where("company_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", companyID, currency, startDate, endDate).
 		Order("stat_date ASC").
 		Find(&cachedStats).Error
 
@@ -1093,7 +1063,7 @@ func (s *Service) GetOrderTrend(userID uint, days int, currency string) (*OrderT
 		var dailyStats []DailyStats
 		err = db.Model(&Order{}).
 			Select("DATE(order_time) as date, COUNT(*) as count, COALESCE(SUM(total_amount), 0) as amount").
-			Where("user_id = ? AND currency = ? AND order_time >= ? AND order_time < ?", userID, currency, startDate, endDate).
+			Where("company_id = ? AND currency = ? AND order_time >= ? AND order_time < ?", companyID, currency, startDate, endDate).
 			Group("DATE(order_time)").
 			Order("date ASC").
 			Scan(&dailyStats).Error
@@ -1143,7 +1113,7 @@ type orderSummaryRaw struct {
 }
 
 // GetOrderSummary 获取订单汇总（按本地SKU合并）
-func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]OrderSummaryItem, error) {
+func (s *Service) GetOrderSummary(companyID uint, req *OrderSummaryRequest) ([]OrderSummaryItem, error) {
 	db := database.GetDB()
 	var rawItems []orderSummaryRaw
 
@@ -1163,7 +1133,7 @@ func (s *Service) GetOrderSummary(userID uint, req *OrderSummaryRequest) ([]Orde
 		Joins("LEFT JOIN platform_products pp ON pp.platform_sku = oi.sku AND pp.platform_auth_id = o.platform_auth_id").
 		Joins("LEFT JOIN product_mappings pm ON pm.platform_product_id = pp.id").
 		Joins("LEFT JOIN products p ON p.id = pm.product_id").
-		Where("o.user_id = ?", userID).
+		Where("o.company_id = ?", companyID).
 		Group("local_sku, product_name, platform_sku, platform_name, platform_img, o.status, oi.currency")
 
 	// 过滤条件

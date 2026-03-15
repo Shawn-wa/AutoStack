@@ -10,6 +10,7 @@ import (
 type ctxKey string
 
 const txKey ctxKey = "db_tx"
+const companyIDKey ctxKey = "company_id"
 
 // WithTx 将事务注入 context
 func WithTx(ctx context.Context, tx *gorm.DB) context.Context {
@@ -29,4 +30,21 @@ func GetDB(ctx context.Context, defaultDB *gorm.DB) *gorm.DB {
 func HasTx(ctx context.Context) bool {
 	tx, ok := ctx.Value(txKey).(*gorm.DB)
 	return ok && tx != nil
+}
+
+// WithCompanyID 将企业ID注入 context
+func WithCompanyID(ctx context.Context, companyID uint) context.Context {
+	return context.WithValue(ctx, companyIDKey, companyID)
+}
+
+// GetCompanyID 从 context 获取企业ID
+func GetCompanyID(ctx context.Context) uint {
+	val := ctx.Value(companyIDKey)
+	if val == nil {
+		return 0
+	}
+	if v, ok := val.(uint); ok {
+		return v
+	}
+	return 0
 }

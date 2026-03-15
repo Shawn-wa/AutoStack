@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import api, { type OrderSummaryItem, type StockInOrderItemRequest, type WarehouseResponse } from '../api'
-import { getAuths, type AuthResponse } from '@/modules/order/api'
+import { getAuths, getPlatforms, type AuthResponse, type PlatformInfo } from '@/modules/order/api'
 import ImagePreview from '@/components/ImagePreview.vue'
 
 defineOptions({ name: 'OrderSummary' })
@@ -18,11 +18,18 @@ const hideImagePreview = () => {
 
 const loading = ref(false)
 const tableData = ref<OrderSummaryItem[]>([])
+const platform = ref('')
 const authId = ref<number | undefined>(undefined)
 const authOptions = ref<AuthResponse[]>([])
+const platforms = ref<PlatformInfo[]>([])
 const dateRange = ref<[Date, Date] | null>(null)
 const keyword = ref('')
 const status = ref('')
+
+const filteredAuthOptions = computed(() => {
+  if (!platform.value) return authOptions.value
+  return authOptions.value.filter(item => item.platform === platform.value)
+})
 
 // 订单状态选项
 const statusOptions = [
@@ -56,6 +63,16 @@ const fetchAuths = async () => {
   }
 }
 
+// 获取平台列表
+const fetchPlatforms = async () => {
+  try {
+    const res = await getPlatforms()
+    platforms.value = res.data || []
+  } catch (error) {
+    console.error('获取平台列表失败', error)
+  }
+}
+
 // 获取汇总数据
 const fetchSummary = async () => {
   loading.value = true
@@ -63,6 +80,9 @@ const fetchSummary = async () => {
     const params: any = {}
     if (authId.value) {
       params.auth_id = authId.value
+    }
+    if (platform.value) {
+      params.platform = platform.value
     }
     if (dateRange.value) {
       params.start_time = formatDate(dateRange.value[0])
@@ -86,8 +106,21 @@ const fetchSummary = async () => {
 
 // 重置搜索
 const handleReset = () => {
+  platform.value = ''
+  authId.value = undefined
   keyword.value = ''
   status.value = ''
+  defaultDateRange()
+  fetchSummary()
+}
+
+const handlePlatformChange = () => {
+  if (authId.value) {
+    const selected = authOptions.value.find(item => item.id === authId.value)
+    if (!selected || (platform.value && selected.platform !== platform.value)) {
+      authId.value = undefined
+    }
+  }
   fetchSummary()
 }
 
@@ -250,6 +283,7 @@ const submitStockIn = async () => {
 
 onMounted(() => {
   defaultDateRange()
+  fetchPlatforms()
   fetchAuths()
   fetchWarehouses()
 })
@@ -266,10 +300,20 @@ onMounted(() => {
 
     <div class="filter-card">
       <el-form inline>
+        <el-form-item label="平台">
+          <el-select v-model="platform" placeholder="全部平台" clearable style="width: 160px" @change="handlePlatformChange">
+            <el-option
+              v-for="item in platforms"
+              :key="item.name"
+              :label="item.label"
+              :value="item.name"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="店铺">
           <el-select v-model="authId" placeholder="全部店铺" clearable style="width: 200px" @change="fetchSummary">
             <el-option
-              v-for="item in authOptions"
+              v-for="item in filteredAuthOptions"
               :key="item.id"
               :label="`${item.platform} - ${item.shop_name}`"
               :value="item.id"

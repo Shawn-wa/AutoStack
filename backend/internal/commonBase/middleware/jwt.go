@@ -40,9 +40,9 @@ func JWTAuth(secret string) gin.HandlerFunc {
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			c.Set("user_id", claims["user_id"])
+			c.Set("company_id", claims["company_id"])
 			c.Set("username", claims["username"])
 			c.Set("role", claims["role"])
-			// 设置权限信息
 			if perms, exists := claims["permissions"]; exists {
 				c.Set("permissions", perms)
 			}

@@ -15,6 +15,8 @@ export const useUserStore = defineStore('user', () => {
   const isSuperAdmin = computed(() => user.value?.role === 'super_admin')
   const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'super_admin')
   const username = computed(() => user.value?.username || '')
+  const companyName = computed(() => user.value?.company_name || '')
+  const companyId = computed(() => user.value?.company_id || 0)
   const permissions = computed(() => user.value?.permissions || [])
 
   // 登录
@@ -29,6 +31,9 @@ export const useUserStore = defineStore('user', () => {
     // 持久化到 localStorage
     storage.set('token', newToken)
     storage.set('user', userInfo)
+
+    // 登录后立即获取完整 profile（确保权限最新）
+    await fetchProfile()
 
     return res
   }
@@ -98,6 +103,8 @@ export const useUserStore = defineStore('user', () => {
     isSuperAdmin,
     isAdmin,
     username,
+    companyName,
+    companyId,
     permissions,
     // 方法
     login,
