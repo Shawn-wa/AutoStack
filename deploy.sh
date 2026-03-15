@@ -69,7 +69,17 @@ docker_compose() {
 # 获取远程 tags
 fetch_tags() {
     log_info "正在获取远程 tags..."
-    git fetch --tags --force
+    git fetch --tags --force --prune --no-recurse-submodules
+}
+
+# 仅拉取指定 tag（浅拉取，提升慢网环境部署速度）
+fetch_tag() {
+    TAG=$1
+    if [ -z "$TAG" ]; then
+        return 1
+    fi
+    log_info "正在拉取版本 $TAG（浅拉取）..."
+    git fetch --depth 1 --force --no-recurse-submodules origin "refs/tags/${TAG}:refs/tags/${TAG}"
 }
 
 # 列出所有可用的 tags
@@ -134,9 +144,15 @@ deploy_tag() {
         exit 1
     fi
     
-    fetch_tags
-    
-    # 检查 tag 是否存在
+    # 优先按目标 tag 浅拉取，慢网环境下明显更快
+    if ! git rev-parse "$TAG" &>/dev/null; then
+        if ! fetch_tag "$TAG"; then
+            log_warn "浅拉取失败，回退到全量 tags 拉取..."
+            fetch_tags
+        fi
+    fi
+
+    # 再次检查 tag 是否存在
     if ! git rev-parse "$TAG" &>/dev/null; then
         log_error "版本 $TAG 不存在"
         echo ""
@@ -163,7 +179,7 @@ deploy_tag() {
     
     # 切换到指定 tag
     log_info "切换到版本 $TAG..."
-    git checkout "$TAG"
+    git checkout -f "$TAG"
     
     # 记录部署版本
     echo "$TAG" > "$VERSION_FILE"
