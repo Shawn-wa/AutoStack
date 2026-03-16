@@ -7,6 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"autostack/internal/commonBase/database"
+	"autostack/internal/migration/companyid"
 	companyRepo "autostack/internal/repository/company"
 	"autostack/internal/repository"
 	userRepo "autostack/internal/repository/user"
@@ -473,6 +475,29 @@ func DeleteUser(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "删除成功", nil)
+}
+
+// RunCompanyIDMigration 手动触发 company_id 全量迁移（可重复调用，幂等）
+func RunCompanyIDMigration(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	if !currentUser.IsSuperAdmin() {
+		response.Error(c, http.StatusForbidden, "仅超级管理员可执行迁移")
+		return
+	}
+
+	if err := companyid.Run(database.GetDB()); err != nil {
+		response.Error(c, http.StatusInternalServerError, "迁移失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "company_id 迁移执行完成", gin.H{
+		"repeatable": true,
+		"idempotent": true,
+	})
 }
 
 // getCurrentUser 获取当前登录用户

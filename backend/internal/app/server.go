@@ -153,6 +153,8 @@ func (s *Server) setupRoutes() {
 					scheduler.TriggerSyncTasks()
 					c.JSON(200, gin.H{"message": "同步任务扫描已触发，请查看日志"})
 				})
+				// 手动触发 company_id 迁移（幂等、可重复调用）
+				admin.POST("/migrations/company-id", user.RunCompanyIDMigration)
 			}
 
 			// 项目管理（暂无独立菜单，不做权限控制）
