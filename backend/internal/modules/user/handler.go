@@ -9,8 +9,8 @@ import (
 
 	"autostack/internal/commonBase/database"
 	"autostack/internal/migration/companyid"
-	companyRepo "autostack/internal/repository/company"
 	"autostack/internal/repository"
+	companyRepo "autostack/internal/repository/company"
 	userRepo "autostack/internal/repository/user"
 	"autostack/pkg/response"
 )
@@ -77,7 +77,7 @@ func GetProfile(c *gin.Context) {
 		Email:       user.Email,
 		Role:        user.Role,
 		Status:      user.Status,
-		Permissions: user.GetPermissions(),
+		Permissions: userService.GetEffectivePermissions(user),
 	})
 }
 
@@ -125,7 +125,7 @@ func UpdateProfile(c *gin.Context) {
 		Email:       user.Email,
 		Role:        user.Role,
 		Status:      user.Status,
-		Permissions: user.GetPermissions(),
+		Permissions: userService.GetEffectivePermissions(user),
 	})
 }
 
@@ -168,6 +168,85 @@ func GetPermissions(c *gin.Context) {
 	response.Success(c, http.StatusOK, "获取成功", perms)
 }
 
+// GetPermissionRoutes 获取当前用户可见权限路由树
+func GetPermissionRoutes(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	permissionCodes := userService.GetEffectivePermissions(currentUser)
+	routeTree, err := userService.GetPermissionRouteTree()
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取权限路由失败")
+		return
+	}
+	filteredTree := userService.FilterPermissionRouteTree(routeTree, permissionCodes)
+
+	response.Success(c, http.StatusOK, "获取成功", PermissionRoutesResponse{
+		Permissions: permissionCodes,
+		RouteTree:   filteredTree,
+	})
+}
+
+// GetRolePermissions 获取角色权限配置（管理员）
+func GetRolePermissions(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	rolePerms, err := userService.GetRolePermissions(currentUser.CompanyID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取角色权限失败")
+		return
+	}
+	perms := userService.GetAllPermissions()
+	routeTree, treeErr := userService.GetPermissionRouteTree()
+	if treeErr != nil {
+		routeTree = PermissionRouteTree
+	}
+	response.Success(c, http.StatusOK, "获取成功", RolePermissionsResponse{
+		Permissions:     perms.Permissions,
+		Modules:         perms.Modules,
+		RouteTree:       routeTree,
+		RolePermissions: rolePerms,
+	})
+}
+
+// UpdateRolePermissions 更新角色权限（管理员）
+func UpdateRolePermissions(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	role := c.Param("role")
+	if role != RoleAdmin && role != RoleUser && role != RoleSuperAdmin {
+		response.Error(c, http.StatusBadRequest, "无效的角色")
+		return
+	}
+	if role == RoleSuperAdmin {
+		response.Error(c, http.StatusForbidden, "超级管理员权限不可编辑")
+		return
+	}
+	var req UpdateRolePermissionsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+	if err := userService.UpdateRolePermissions(currentUser, role, req.Permissions); err != nil {
+		if err == ErrPermissionDenied {
+			response.Error(c, http.StatusForbidden, "无权修改该角色权限")
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "更新角色权限失败")
+		return
+	}
+	response.Success(c, http.StatusOK, "更新成功", nil)
+}
+
 // CreateUser 创建用户（管理员）
 func CreateUser(c *gin.Context) {
 	currentUser, err := getCurrentUser(c)
@@ -192,20 +271,13 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	if len(req.Permissions) > 0 {
-		if err := userService.ValidatePermissions(currentUser, req.Role, req.Permissions); err != nil {
-			response.Error(c, http.StatusForbidden, "包含无法授予的权限")
-			return
-		}
-	}
-
 	createdBy := currentUser.ID
 	user, err := userService.CreateUserWithPermissions(
 		req.Username,
 		req.Password,
 		req.Email,
 		req.Role,
-		req.Permissions,
+		nil,
 		&createdBy,
 		currentUser.CompanyID,
 	)
@@ -226,7 +298,7 @@ func CreateUser(c *gin.Context) {
 		Email:       user.Email,
 		Role:        user.Role,
 		Status:      user.Status,
-		Permissions: user.GetPermissions(),
+		Permissions: userService.GetEffectivePermissions(user),
 		CreatedBy:   user.CreatedBy,
 		CreatedAt:   user.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:   user.UpdatedAt.Format("2006-01-02 15:04:05"),
@@ -271,7 +343,7 @@ func ListUsers(c *gin.Context) {
 			Email:       u.Email,
 			Role:        u.Role,
 			Status:      u.Status,
-			Permissions: u.GetPermissions(),
+			Permissions: userService.GetEffectivePermissions(&u),
 			CreatedBy:   u.CreatedBy,
 			CreatedAt:   u.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
@@ -311,7 +383,7 @@ func GetUser(c *gin.Context) {
 		Email:       user.Email,
 		Role:        user.Role,
 		Status:      user.Status,
-		Permissions: user.GetPermissions(),
+		Permissions: userService.GetEffectivePermissions(user),
 		CreatedBy:   user.CreatedBy,
 		CreatedAt:   user.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:   user.UpdatedAt.Format("2006-01-02 15:04:05"),
@@ -366,7 +438,6 @@ func UpdateUser(c *gin.Context) {
 		updates["status"] = *req.Status
 	}
 
-	newRole := targetUser.Role
 	if req.Role != "" && req.Role != targetUser.Role {
 		if !currentUser.CanManageRole(req.Role) {
 			response.Error(c, http.StatusForbidden, "无权设置该角色")
@@ -381,19 +452,6 @@ func UpdateUser(c *gin.Context) {
 			return
 		}
 		updates["role"] = req.Role
-		newRole = req.Role
-	}
-
-	if req.Permissions != nil {
-		if err := userService.ValidatePermissions(currentUser, newRole, req.Permissions); err != nil {
-			response.Error(c, http.StatusForbidden, "包含无法授予的权限")
-			return
-		}
-		if err := targetUser.SetPermissions(req.Permissions); err != nil {
-			response.Error(c, http.StatusInternalServerError, "设置权限失败")
-			return
-		}
-		updates["permissions"] = targetUser.Permissions
 	}
 
 	if len(updates) == 0 {
@@ -419,7 +477,7 @@ func UpdateUser(c *gin.Context) {
 		Email:       user.Email,
 		Role:        user.Role,
 		Status:      user.Status,
-		Permissions: user.GetPermissions(),
+		Permissions: userService.GetEffectivePermissions(user),
 		CreatedBy:   user.CreatedBy,
 		CreatedAt:   user.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:   user.UpdatedAt.Format("2006-01-02 15:04:05"),

@@ -44,6 +44,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	if err := database.AutoMigrate(
 		&companyRepo.Company{},
 		&user.User{},
+		&user.Permission{},
+		&user.RolePermission{},
+		&user.RolePermissionBinding{},
 		&order.PlatformAuth{},
 		&order.Order{},
 		&order.OrderItem{},
@@ -124,20 +127,23 @@ func (s *Server) setupRoutes() {
 			userGroup := authorized.Group("/user")
 			{
 				userGroup.GET("/profile", user.GetProfile)
+				userGroup.GET("/permission-routes", user.GetPermissionRoutes)
 				userGroup.PUT("/profile", user.UpdateProfile)
 				userGroup.PUT("/password", user.ChangePassword)
 			}
 
 			// 管理员接口（需 user:view 权限）
 			admin := authorized.Group("/admin")
-			admin.Use(middleware.RequireAnyPermission(userRepo.PermUserView))
+			admin.Use(middleware.RequireAnyPermission(userRepo.PermUserView, userRepo.PermRoleView))
 			{
 				admin.GET("/permissions", user.GetPermissions)
+				admin.GET("/role-permissions", user.GetRolePermissions)
+				admin.PUT("/role-permissions/:role", middleware.RequirePermission("route:system.roles:update"), user.UpdateRolePermissions)
 				admin.GET("/users", user.ListUsers)
-				admin.POST("/users", user.CreateUser)
+				admin.POST("/users", middleware.RequirePermission("route:system.users:create"), user.CreateUser)
 				admin.GET("/users/:id", user.GetUser)
-				admin.PUT("/users/:id", user.UpdateUser)
-				admin.DELETE("/users/:id", user.DeleteUser)
+				admin.PUT("/users/:id", middleware.RequirePermission("route:system.users:update"), user.UpdateUser)
+				admin.DELETE("/users/:id", middleware.RequirePermission("route:system.users:delete"), user.DeleteUser)
 				// 手动触发同步任务
 				admin.POST("/trigger-sync", func(c *gin.Context) {
 					scheduler.TriggerSync()
@@ -160,164 +166,169 @@ func (s *Server) setupRoutes() {
 			// 项目管理（暂无独立菜单，不做权限控制）
 			projects := authorized.Group("/projects")
 			{
-				projects.GET("", project.ListProjects)
-				projects.POST("", project.CreateProject)
-				projects.GET("/:id", project.GetProject)
-				projects.PUT("/:id", project.UpdateProject)
-				projects.DELETE("/:id", project.DeleteProject)
+				projects.GET("", middleware.RequirePermission("route:system.projects:read"), project.ListProjects)
+				projects.POST("", middleware.RequirePermission("route:system.projects:create"), project.CreateProject)
+				projects.GET("/:id", middleware.RequirePermission("route:system.projects:read"), project.GetProject)
+				projects.PUT("/:id", middleware.RequirePermission("route:system.projects:update"), project.UpdateProject)
+				projects.DELETE("/:id", middleware.RequirePermission("route:system.projects:delete"), project.DeleteProject)
 			}
 
 			// 部署管理
 			deployments := authorized.Group("/deployments")
 			{
-				deployments.GET("", deployment.ListDeployments)
-				deployments.POST("", deployment.CreateDeployment)
-				deployments.GET("/:id", deployment.GetDeployment)
-				deployments.POST("/:id/start", deployment.StartDeployment)
-				deployments.POST("/:id/stop", deployment.StopDeployment)
+				deployments.GET("", middleware.RequirePermission("route:system.deployments:read"), deployment.ListDeployments)
+				deployments.POST("", middleware.RequirePermission("route:system.deployments:create"), deployment.CreateDeployment)
+				deployments.GET("/:id", middleware.RequirePermission("route:system.deployments:read"), deployment.GetDeployment)
+				deployments.POST("/:id/start", middleware.RequirePermission("route:system.deployments:update"), deployment.StartDeployment)
+				deployments.POST("/:id/stop", middleware.RequirePermission("route:system.deployments:update"), deployment.StopDeployment)
 			}
 
 			// 模板管理
 			templates := authorized.Group("/templates")
 			{
-				templates.GET("", template.ListTemplates)
-				templates.POST("", template.CreateTemplate)
-				templates.GET("/:id", template.GetTemplate)
+				templates.GET("", middleware.RequirePermission("route:system.templates:read"), template.ListTemplates)
+				templates.POST("", middleware.RequirePermission("route:system.templates:create"), template.CreateTemplate)
+				templates.GET("/:id", middleware.RequirePermission("route:system.templates:read"), template.GetTemplate)
 			}
 
 			// 订单管理模块（包含仪表盘统计、平台授权、订单、现金流）
 			orderGroup := authorized.Group("/order")
 			orderGroup.Use(middleware.RequireAnyPermission(
-				userRepo.PermDashboardView,
-				userRepo.PermPlatformAuthView,
-				userRepo.PermOrderView,
-				userRepo.PermReportView,
+				"route:dashboard.home:read",
+				"route:order.platform_auths:read",
+				"route:order.orders:read",
+				"route:order.cashflow:read",
+				"route:order.settlement:read",
 			))
 			{
 				// 仪表盘统计
-				orderGroup.GET("/dashboard/stats", order.GetDashboardStats)
-				orderGroup.GET("/dashboard/recent-orders", order.GetRecentOrders)
-				orderGroup.GET("/dashboard/trend", order.GetOrderTrend)
-				orderGroup.GET("/stats/summary", order.GetOrderSummary)
-				orderGroup.POST("/dashboard/init", order.InitDashboardStats)
-				orderGroup.POST("/dashboard/refresh", order.RefreshDashboardStats)
+				orderGroup.GET("/dashboard/stats", middleware.RequirePermission("route:dashboard.home:read"), order.GetDashboardStats)
+				orderGroup.GET("/dashboard/recent-orders", middleware.RequirePermission("route:dashboard.home:read"), order.GetRecentOrders)
+				orderGroup.GET("/dashboard/trend", middleware.RequirePermission("route:dashboard.home:read"), order.GetOrderTrend)
+				orderGroup.GET("/stats/summary", middleware.RequirePermission("route:product.order_summary:read"), order.GetOrderSummary)
+				orderGroup.POST("/dashboard/init", middleware.RequirePermission("route:dashboard.home:update"), order.InitDashboardStats)
+				orderGroup.POST("/dashboard/refresh", middleware.RequirePermission("route:dashboard.home:update"), order.RefreshDashboardStats)
 
 				// 平台列表
-				orderGroup.GET("/platforms", order.ListPlatforms)
+				orderGroup.GET("/platforms", middleware.RequirePermission("route:order.platform_auths:read"), order.ListPlatforms)
 
 				// 平台授权管理
-				orderGroup.GET("/auths", order.ListAuths)
-				orderGroup.POST("/auths", order.CreateAuth)
-				orderGroup.PUT("/auths/:id", order.UpdateAuth)
-				orderGroup.DELETE("/auths/:id", order.DeleteAuth)
-				orderGroup.POST("/auths/:id/test", order.TestAuth)
-				orderGroup.POST("/auths/:id/sync", order.SyncOrders)
-				orderGroup.POST("/auths/:id/sync-commission", order.SyncCommission)
-				orderGroup.POST("/auths/:id/sync-cashflow", order.SyncCashFlow)
-				orderGroup.POST("/auths/:id/mutual-settlement", order.GetMutualSettlement)
+				orderGroup.GET("/auths", middleware.RequirePermission("route:order.platform_auths:read"), order.ListAuths)
+				orderGroup.POST("/auths", middleware.RequirePermission("route:order.platform_auths:create"), order.CreateAuth)
+				orderGroup.PUT("/auths/:id", middleware.RequirePermission("route:order.platform_auths:update"), order.UpdateAuth)
+				orderGroup.DELETE("/auths/:id", middleware.RequirePermission("route:order.platform_auths:delete"), order.DeleteAuth)
+				orderGroup.POST("/auths/:id/test", middleware.RequirePermission("route:order.platform_auths:update"), order.TestAuth)
+				orderGroup.POST("/auths/:id/sync", middleware.RequirePermission("route:order.platform_auths:update"), order.SyncOrders)
+				orderGroup.POST("/auths/:id/sync-commission", middleware.RequirePermission("route:order.platform_auths:update"), order.SyncCommission)
+				orderGroup.POST("/auths/:id/sync-cashflow", middleware.RequirePermission("route:order.platform_auths:update"), order.SyncCashFlow)
+				orderGroup.POST("/auths/:id/mutual-settlement", middleware.RequirePermission("route:order.platform_auths:update"), order.GetMutualSettlement)
 
 				// 订单管理
-				orderGroup.GET("/orders", order.ListOrders)
-				orderGroup.GET("/orders/:id", order.GetOrder)
-				orderGroup.POST("/orders/:id/sync", order.SyncSingleOrder)
-				orderGroup.POST("/orders/:id/sync-commission", order.SyncOrderCommission)
+				orderGroup.GET("/orders", middleware.RequirePermission("route:order.orders:read"), order.ListOrders)
+				orderGroup.GET("/orders/:id", middleware.RequirePermission("route:order.orders:read"), order.GetOrder)
+				orderGroup.POST("/orders/:id/sync", middleware.RequirePermission("route:order.orders:update"), order.SyncSingleOrder)
+				orderGroup.POST("/orders/:id/sync-commission", middleware.RequirePermission("route:order.orders:update"), order.SyncOrderCommission)
 
 				// 现金流报表
-				orderGroup.GET("/cashflow", order.ListCashFlow)
-				orderGroup.GET("/cashflow/:id", order.GetCashFlow)
+				orderGroup.GET("/cashflow", middleware.RequirePermission("route:order.cashflow:read"), order.ListCashFlow)
+				orderGroup.GET("/cashflow/:id", middleware.RequirePermission("route:order.cashflow:read"), order.GetCashFlow)
 			}
 
 			// 产品管理模块
 			productGroup := authorized.Group("/product")
 			productGroup.Use(middleware.RequireAnyPermission(
-				userRepo.PermProductView,
-				userRepo.PermWarehouseView,
+				"route:product.local_products:read",
+				"route:product.platform_products:read",
+				"route:product.order_summary:read",
+				"route:warehouse.list:read",
+				"route:warehouse.inventory:read",
+				"route:warehouse.stock_in_orders:read",
 			))
 			{
 				// 本地产品
-				productGroup.GET("/products", product.ListProducts)
-				productGroup.POST("/products", product.CreateProduct)
-				productGroup.PUT("/products/:id", product.UpdateProduct)
-				productGroup.DELETE("/products/:id", product.DeleteProduct)
-				productGroup.GET("/products/:id/suppliers", product.GetProductSuppliers) // 获取产品的供应商列表
-				productGroup.POST("/init", product.InitProducts)                         // 根据平台SKU初始化本地产品
+				productGroup.GET("/products", middleware.RequirePermission("route:product.local_products:read"), product.ListProducts)
+				productGroup.POST("/products", middleware.RequirePermission("route:product.local_products:create"), product.CreateProduct)
+				productGroup.PUT("/products/:id", middleware.RequirePermission("route:product.local_products:update"), product.UpdateProduct)
+				productGroup.DELETE("/products/:id", middleware.RequirePermission("route:product.local_products:delete"), product.DeleteProduct)
+				productGroup.GET("/products/:id/suppliers", middleware.RequirePermission("route:product.local_products:read"), product.GetProductSuppliers) // 获取产品的供应商列表
+				productGroup.POST("/init", middleware.RequirePermission("route:product.local_products:update"), product.InitProducts)                       // 根据平台SKU初始化本地产品
 
 				// 供应商/采购信息
-				productGroup.GET("/suppliers", product.ListSuppliers)
-				productGroup.POST("/suppliers", product.CreateSupplier)
-				productGroup.PUT("/suppliers/:id", product.UpdateSupplier)
-				productGroup.DELETE("/suppliers/:id", product.DeleteSupplier)
-				productGroup.PUT("/suppliers/batch", product.BatchUpdateSuppliers)             // 批量更新供应商
-				productGroup.GET("/suppliers/export-template", product.ExportSupplierTemplate) // 导出导入模板
-				productGroup.POST("/suppliers/import", product.ImportSuppliers)                // 导入供应商数据
+				productGroup.GET("/suppliers", middleware.RequirePermission("route:product.local_products:read"), product.ListSuppliers)
+				productGroup.POST("/suppliers", middleware.RequirePermission("route:product.local_products:create"), product.CreateSupplier)
+				productGroup.PUT("/suppliers/:id", middleware.RequirePermission("route:product.local_products:update"), product.UpdateSupplier)
+				productGroup.DELETE("/suppliers/:id", middleware.RequirePermission("route:product.local_products:delete"), product.DeleteSupplier)
+				productGroup.PUT("/suppliers/batch", middleware.RequirePermission("route:product.local_products:update"), product.BatchUpdateSuppliers)           // 批量更新供应商
+				productGroup.GET("/suppliers/export-template", middleware.RequirePermission("route:product.local_products:read"), product.ExportSupplierTemplate) // 导出导入模板
+				productGroup.POST("/suppliers/import", middleware.RequirePermission("route:product.local_products:update"), product.ImportSuppliers)              // 导入供应商数据
 
 				// 产品带供应商信息
-				productGroup.GET("/products-with-supplier", product.ListProductsWithSupplier)
+				productGroup.GET("/products-with-supplier", middleware.RequirePermission("route:product.local_products:read"), product.ListProductsWithSupplier)
 
 				// 平台产品
-				productGroup.GET("/platform-products", product.ListPlatformProducts)
-				productGroup.POST("/sync", product.SyncPlatformProducts)
-				productGroup.POST("/sync-direct", product.SyncPlatformProductsDirect) // 直接同步，不走任务队列
-				productGroup.POST("/map", product.MapProduct)
-				productGroup.DELETE("/map/:id", product.UnmapProduct)
+				productGroup.GET("/platform-products", middleware.RequirePermission("route:product.platform_products:read"), product.ListPlatformProducts)
+				productGroup.POST("/sync", middleware.RequirePermission("route:product.platform_products:update"), product.SyncPlatformProducts)
+				productGroup.POST("/sync-direct", middleware.RequirePermission("route:product.platform_products:update"), product.SyncPlatformProductsDirect) // 直接同步，不走任务队列
+				productGroup.POST("/map", middleware.RequirePermission("route:product.platform_products:update"), product.MapProduct)
+				productGroup.DELETE("/map/:id", middleware.RequirePermission("route:product.platform_products:delete"), product.UnmapProduct)
 
 				// 同步任务
-				productGroup.GET("/sync-tasks", product.ListSyncTasks)
-				productGroup.POST("/sync-tasks/trigger", product.TriggerSyncTasks)
+				productGroup.GET("/sync-tasks", middleware.RequirePermission("route:product.platform_products:read"), product.ListSyncTasks)
+				productGroup.POST("/sync-tasks/trigger", middleware.RequirePermission("route:product.platform_products:update"), product.TriggerSyncTasks)
 
 				// 入库单
-				productGroup.GET("/stock-in-orders", product.ListStockInOrders)
-				productGroup.POST("/stock-in-orders", product.CreateStockInOrder)
-				productGroup.GET("/stock-in-orders/:id", product.GetStockInOrder)
-				productGroup.GET("/stock-in-template", product.ExportStockInTemplate)
-				productGroup.POST("/stock-in-import", product.ImportStockInOrders)
+				productGroup.GET("/stock-in-orders", middleware.RequirePermission("route:warehouse.stock_in_orders:read"), product.ListStockInOrders)
+				productGroup.POST("/stock-in-orders", middleware.RequirePermission("route:warehouse.stock_in_orders:create"), product.CreateStockInOrder)
+				productGroup.GET("/stock-in-orders/:id", middleware.RequirePermission("route:warehouse.stock_in_orders:read"), product.GetStockInOrder)
+				productGroup.GET("/stock-in-template", middleware.RequirePermission("route:warehouse.stock_in_orders:read"), product.ExportStockInTemplate)
+				productGroup.POST("/stock-in-import", middleware.RequirePermission("route:warehouse.stock_in_orders:update"), product.ImportStockInOrders)
 
 				// 仓库
-				productGroup.GET("/warehouses", product.ListWarehouses)
-				productGroup.GET("/warehouses/available", product.ListAvailableWarehouses) // 获取当前用户可用仓库
-				productGroup.GET("/warehouses/all", product.ListAllWarehouses)
-			productGroup.POST("/warehouses", product.CreateWarehouse)
-			productGroup.PUT("/warehouses/:id", product.UpdateWarehouse)
+				productGroup.GET("/warehouses", middleware.RequirePermission("route:warehouse.list:read"), product.ListWarehouses)
+				productGroup.GET("/warehouses/available", middleware.RequirePermission("route:warehouse.list:read"), product.ListAvailableWarehouses) // 获取当前用户可用仓库
+				productGroup.GET("/warehouses/all", middleware.RequirePermission("route:warehouse.list:read"), product.ListAllWarehouses)
+				productGroup.POST("/warehouses", middleware.RequirePermission("route:warehouse.list:create"), product.CreateWarehouse)
+				productGroup.PUT("/warehouses/:id", middleware.RequirePermission("route:warehouse.list:update"), product.UpdateWarehouse)
 
-			// 库存
-				productGroup.GET("/inventory", product.ListInventory)
-				productGroup.PUT("/inventory", product.UpdateInventory)
-				productGroup.POST("/inventory/init", product.InitInventory)
+				// 库存
+				productGroup.GET("/inventory", middleware.RequirePermission("route:warehouse.inventory:read"), product.ListInventory)
+				productGroup.PUT("/inventory", middleware.RequirePermission("route:warehouse.inventory:update"), product.UpdateInventory)
+				productGroup.POST("/inventory/init", middleware.RequirePermission("route:warehouse.inventory:update"), product.InitInventory)
 			}
 
 			// 物流管理模块
 			shippingGroup := authorized.Group("/shipping")
-			shippingGroup.Use(middleware.RequireAnyPermission(userRepo.PermShippingView))
+			shippingGroup.Use(middleware.RequireAnyPermission("route:shipping.templates:read"))
 			{
 				// 运费模板
-				shippingGroup.GET("/templates", shipping.ListTemplates)
-				shippingGroup.GET("/templates/all", shipping.ListAllTemplates) // 获取所有启用模板（下拉选择）
-				shippingGroup.POST("/templates", shipping.CreateTemplate)
-				shippingGroup.GET("/templates/:id", shipping.GetTemplate)
-				shippingGroup.PUT("/templates/:id", shipping.UpdateTemplate)
-				shippingGroup.DELETE("/templates/:id", shipping.DeleteTemplate)
+				shippingGroup.GET("/templates", middleware.RequirePermission("route:shipping.templates:read"), shipping.ListTemplates)
+				shippingGroup.GET("/templates/all", middleware.RequirePermission("route:shipping.templates:read"), shipping.ListAllTemplates) // 获取所有启用模板（下拉选择）
+				shippingGroup.POST("/templates", middleware.RequirePermission("route:shipping.templates:create"), shipping.CreateTemplate)
+				shippingGroup.GET("/templates/:id", middleware.RequirePermission("route:shipping.templates:read"), shipping.GetTemplate)
+				shippingGroup.PUT("/templates/:id", middleware.RequirePermission("route:shipping.templates:update"), shipping.UpdateTemplate)
+				shippingGroup.DELETE("/templates/:id", middleware.RequirePermission("route:shipping.templates:delete"), shipping.DeleteTemplate)
 
 				// 运费规则
-				shippingGroup.GET("/templates/:id/rules", shipping.GetTemplateRules)
-				shippingGroup.POST("/templates/:id/rules", shipping.CreateRule)
-				shippingGroup.PUT("/templates/:id/rules/:ruleId", shipping.UpdateRule)
-				shippingGroup.DELETE("/templates/:id/rules/:ruleId", shipping.DeleteRule)
+				shippingGroup.GET("/templates/:id/rules", middleware.RequirePermission("route:shipping.templates:read"), shipping.GetTemplateRules)
+				shippingGroup.POST("/templates/:id/rules", middleware.RequirePermission("route:shipping.templates:update"), shipping.CreateRule)
+				shippingGroup.PUT("/templates/:id/rules/:ruleId", middleware.RequirePermission("route:shipping.templates:update"), shipping.UpdateRule)
+				shippingGroup.DELETE("/templates/:id/rules/:ruleId", middleware.RequirePermission("route:shipping.templates:delete"), shipping.DeleteRule)
 
 				// 运费计算
-				shippingGroup.POST("/calculate", shipping.CalculateShippingHandler)
-				shippingGroup.POST("/calculate/batch", shipping.BatchCalculateShippingHandler)
+				shippingGroup.POST("/calculate", middleware.RequirePermission("route:shipping.templates:read"), shipping.CalculateShippingHandler)
+				shippingGroup.POST("/calculate/batch", middleware.RequirePermission("route:shipping.templates:read"), shipping.BatchCalculateShippingHandler)
 
 				// 本地产品运费模版绑定
-				shippingGroup.POST("/product-templates", shipping.BindProductShippingTemplate)
-				shippingGroup.DELETE("/product-templates/:id", shipping.UnbindProductShippingTemplate)
-				shippingGroup.GET("/products/:productId/templates", shipping.GetProductShippingTemplates)
-				shippingGroup.PUT("/products/:productId/default-template", shipping.SetProductDefaultShippingTemplate)
+				shippingGroup.POST("/product-templates", middleware.RequirePermission("route:shipping.templates:update"), shipping.BindProductShippingTemplate)
+				shippingGroup.DELETE("/product-templates/:id", middleware.RequirePermission("route:shipping.templates:delete"), shipping.UnbindProductShippingTemplate)
+				shippingGroup.GET("/products/:productId/templates", middleware.RequirePermission("route:shipping.templates:read"), shipping.GetProductShippingTemplates)
+				shippingGroup.PUT("/products/:productId/default-template", middleware.RequirePermission("route:shipping.templates:update"), shipping.SetProductDefaultShippingTemplate)
 
 				// 平台产品运费模版绑定
-				shippingGroup.POST("/platform-product-templates", shipping.BindPlatformProductShippingTemplate)
-				shippingGroup.DELETE("/platform-product-templates/:id", shipping.UnbindPlatformProductShippingTemplate)
-				shippingGroup.GET("/platform-products/:platformProductId/templates", shipping.GetPlatformProductShippingTemplates)
-				shippingGroup.PUT("/platform-products/:platformProductId/default-template", shipping.SetPlatformProductDefaultShippingTemplate)
+				shippingGroup.POST("/platform-product-templates", middleware.RequirePermission("route:shipping.templates:update"), shipping.BindPlatformProductShippingTemplate)
+				shippingGroup.DELETE("/platform-product-templates/:id", middleware.RequirePermission("route:shipping.templates:delete"), shipping.UnbindPlatformProductShippingTemplate)
+				shippingGroup.GET("/platform-products/:platformProductId/templates", middleware.RequirePermission("route:shipping.templates:read"), shipping.GetPlatformProductShippingTemplates)
+				shippingGroup.PUT("/platform-products/:platformProductId/default-template", middleware.RequirePermission("route:shipping.templates:update"), shipping.SetPlatformProductDefaultShippingTemplate)
 			}
 		}
 	}

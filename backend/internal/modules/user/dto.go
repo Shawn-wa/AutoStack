@@ -25,19 +25,17 @@ type ChangePasswordRequest struct {
 
 // CreateUserRequest 创建用户请求（管理员）
 type CreateUserRequest struct {
-	Username    string   `json:"username" binding:"required,min=3,max=20"`
-	Password    string   `json:"password" binding:"required,min=6"`
-	Email       string   `json:"email" binding:"required,email"`
-	Role        string   `json:"role" binding:"required,oneof=admin user"`
-	Permissions []string `json:"permissions"`
+	Username string `json:"username" binding:"required,min=3,max=20"`
+	Password string `json:"password" binding:"required,min=6"`
+	Email    string `json:"email" binding:"required,email"`
+	Role     string `json:"role" binding:"required,oneof=admin user"`
 }
 
 // UpdateUserRequest 更新用户请求（管理员）
 type UpdateUserRequest struct {
-	Email       string   `json:"email" binding:"omitempty,email"`
-	Role        string   `json:"role" binding:"omitempty,oneof=super_admin admin user"`
-	Status      *int     `json:"status" binding:"omitempty,oneof=0 1"`
-	Permissions []string `json:"permissions" binding:"omitempty"`
+	Email  string `json:"email" binding:"omitempty,email"`
+	Role   string `json:"role" binding:"omitempty,oneof=super_admin admin user"`
+	Status *int   `json:"status" binding:"omitempty,oneof=0 1"`
 }
 
 // UserDetailResponse 用户详情响应
@@ -81,4 +79,23 @@ type UserListResponse struct {
 type PermissionsResponse struct {
 	Permissions []PermissionDef            `json:"permissions"`
 	Modules     map[string][]PermissionDef `json:"modules"`
+}
+
+// RolePermissionsResponse 角色权限配置响应
+type RolePermissionsResponse struct {
+	Permissions     []PermissionDef            `json:"permissions"`
+	Modules         map[string][]PermissionDef `json:"modules"`
+	RouteTree       []PermissionRouteNode      `json:"route_tree"`
+	RolePermissions map[string][]string        `json:"role_permissions"`
+}
+
+// PermissionRoutesResponse 当前用户权限路由响应
+type PermissionRoutesResponse struct {
+	Permissions []string              `json:"permissions"`
+	RouteTree   []PermissionRouteNode `json:"route_tree"`
+}
+
+// UpdateRolePermissionsRequest 更新角色权限请求
+type UpdateRolePermissionsRequest struct {
+	Permissions []string `json:"permissions" binding:"required"`
 }

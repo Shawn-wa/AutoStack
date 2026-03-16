@@ -27,109 +27,121 @@ const routes: RouteRecordRaw[] = [
         path: '',
         name: 'Dashboard',
         component: () => import('@/modules/dashboard/pages/Dashboard.vue'),
-        meta: { title: '控制台', requiredPermission: 'dashboard:view' }
+        meta: { title: '控制台', requiredPermission: 'route:dashboard.home:read' }
       },
       {
         path: 'projects',
         name: 'Projects',
         component: () => import('@/modules/project/pages/Projects.vue'),
-        meta: { title: '项目管理' }
+        meta: { title: '项目管理', requiredPermission: 'route:system.projects:read' }
       },
       {
         path: 'deployments',
         name: 'Deployments',
         component: () => import('@/modules/deployment/pages/Deployments.vue'),
-        meta: { title: '部署管理' }
+        meta: { title: '部署管理', requiredPermission: 'route:system.deployments:read' }
       },
       {
         path: 'templates',
         name: 'Templates',
         component: () => import('@/modules/template/pages/Templates.vue'),
-        meta: { title: '模板市场' }
+        meta: { title: '模板市场', requiredPermission: 'route:system.templates:read' }
       },
       {
         path: 'users',
         name: 'UserManagement',
         component: () => import('@/modules/user/pages/UserManagement.vue'),
-        meta: { title: '用户管理', requiredPermission: 'user:view' }
+        meta: { title: '用户管理', requiredPermission: 'route:system.users:read' }
+      },
+      {
+        path: 'users/roles',
+        name: 'RoleManagement',
+        component: () => import('@/modules/user/pages/RoleManagement.vue'),
+        meta: { title: '角色管理', requiredPermission: 'route:system.roles:read' }
+      },
+      {
+        path: 'users/roles/:role',
+        name: 'RolePermissionDetail',
+        component: () => import('@/modules/user/pages/RolePermissionDetail.vue'),
+        meta: { title: '角色权限详情', requiredPermission: 'route:system.roles:read' }
       },
       {
         path: 'product/products',
         name: 'LocalProducts',
         component: () => import('@/modules/product/pages/LocalProducts.vue'),
-        meta: { title: '系统产品', requiredPermission: 'product:view' }
+        meta: { title: '系统产品', requiredPermission: 'route:product.local_products:read' }
       },
       {
         path: 'product/platform-products',
         name: 'PlatformProducts',
         component: () => import('@/modules/product/pages/PlatformProducts.vue'),
-        meta: { title: '平台产品', requiredPermission: 'product:view' }
+        meta: { title: '平台产品', requiredPermission: 'route:product.platform_products:read' }
       },
       {
         path: 'product/summary',
         name: 'OrderSummary',
         component: () => import('@/modules/product/pages/OrderSummary.vue'),
-        meta: { title: '订单汇总', requiredPermission: 'product:view' }
+        meta: { title: '订单汇总', requiredPermission: 'route:product.order_summary:read' }
       },
       {
         path: 'order/auths',
         name: 'PlatformAuths',
         component: () => import('@/modules/order/pages/PlatformAuths.vue'),
-        meta: { title: '平台授权', requiredPermission: 'platform_auth:view' }
+        meta: { title: '平台授权', requiredPermission: 'route:order.platform_auths:read' }
       },
       {
         path: 'order/orders',
         name: 'Orders',
         component: () => import('@/modules/order/pages/Orders.vue'),
-        meta: { title: '订单列表', requiredPermission: 'order:view' }
+        meta: { title: '订单列表', requiredPermission: 'route:order.orders:read' }
       },
       {
         path: 'order/orders/:id',
         name: 'OrderDetail',
         component: () => import('@/modules/order/pages/OrderDetail.vue'),
-        meta: { title: '订单详情', requiredPermission: 'order:view' }
+        meta: { title: '订单详情', requiredPermission: 'route:order.orders:read' }
       },
       {
         path: 'order/cashflow',
         name: 'CashFlow',
         component: () => import('@/modules/order/pages/CashFlow.vue'),
-        meta: { title: '财务报告', requiredPermission: 'report:view' }
+        meta: { title: '财务报告', requiredPermission: 'route:order.cashflow:read' }
       },
       {
         path: 'order/settlement',
         name: 'Settlement',
         component: () => import('@/modules/order/pages/Settlement.vue'),
-        meta: { title: '结算报告', requiredPermission: 'report:view' }
+        meta: { title: '结算报告', requiredPermission: 'route:order.settlement:read' }
       },
       {
         path: 'warehouse/stock-in',
         name: 'StockInOrders',
         component: () => import('@/modules/product/pages/StockInOrders.vue'),
-        meta: { title: '入库单', requiredPermission: 'warehouse:view' }
+        meta: { title: '入库单', requiredPermission: 'route:warehouse.stock_in_orders:read' }
       },
       {
         path: 'warehouse/stock-in/create',
         name: 'StockInCreate',
         component: () => import('@/modules/product/pages/StockInCreate.vue'),
-        meta: { title: '新建入库单', requiredPermission: 'warehouse:view' }
+        meta: { title: '新建入库单', requiredPermission: 'route:warehouse.stock_in_orders:read' }
       },
       {
         path: 'warehouse/inventory',
         name: 'InventoryList',
         component: () => import('@/modules/product/pages/InventoryList.vue'),
-        meta: { title: '库存明细', requiredPermission: 'warehouse:view' }
+        meta: { title: '库存明细', requiredPermission: 'route:warehouse.inventory:read' }
       },
       {
         path: 'warehouse/list',
         name: 'WarehouseList',
         component: () => import('@/modules/product/pages/WarehouseList.vue'),
-        meta: { title: '仓库列表', requiredPermission: 'warehouse:view' }
+        meta: { title: '仓库列表', requiredPermission: 'route:warehouse.list:read' }
       },
       {
         path: 'shipping/templates',
         name: 'ShippingTemplates',
         component: () => import('@/modules/shipping/pages/ShippingTemplates.vue'),
-        meta: { title: '运费模板', requiredPermission: 'shipping:view' }
+        meta: { title: '运费模板', requiredPermission: 'route:shipping.templates:read' }
       }
     ]
   },

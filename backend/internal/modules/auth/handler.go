@@ -64,7 +64,7 @@ func Login(c *gin.Context) {
 			Username:    u.Username,
 			Email:       u.Email,
 			Role:        u.Role,
-			Permissions: u.GetPermissions(),
+			Permissions: user.GetService().GetEffectivePermissions(u),
 		},
 	})
 }

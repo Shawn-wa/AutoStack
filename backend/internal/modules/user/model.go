@@ -18,8 +18,20 @@ type Company = companyRepo.Company
 // User 用户模型
 type User = userRepo.User
 
+// RolePermission 角色权限模型
+type RolePermission = userRepo.RolePermission
+
+// Permission 权限节点模型
+type Permission = userRepo.Permission
+
+// RolePermissionBinding 角色权限绑定模型
+type RolePermissionBinding = userRepo.RolePermissionBinding
+
 // PermissionDef 权限定义
 type PermissionDef = userRepo.PermissionDef
+
+// PermissionRouteNode 路由权限树节点
+type PermissionRouteNode = userRepo.PermissionRouteNode
 
 // 注意：PermissionsResponse 在 dto.go 中定义，不在此处别名
 
@@ -55,3 +67,8 @@ const (
 
 var AllPermissions = userRepo.AllPermissions
 var UserManagePermissions = userRepo.UserManagePermissions
+var PermissionRouteTree = userRepo.PermissionRouteTree
+
+func DefaultRolePermissionsByRole(role string) []string {
+	return userRepo.DefaultRolePermissionsByRole(role)
+}

@@ -28,14 +28,12 @@ export interface CreateUserParams {
   password: string
   email: string
   role: string
-  permissions: string[]
 }
 
 export interface UpdateUserParams {
   email?: string
   role?: string
   status?: number
-  permissions?: string[]
 }
 
 export interface UserListResult {
@@ -49,11 +47,34 @@ export interface PermissionDef {
   code: string
   name: string
   module: string
+  route_key: string
+  parent_route: string
+  action: 'create' | 'read' | 'update' | 'delete'
 }
 
 export interface PermissionsResult {
   permissions: PermissionDef[]
   modules: Record<string, PermissionDef[]>
+}
+
+export interface PermissionRouteNode {
+  key: string
+  name: string
+  level: number
+  permissions: PermissionDef[]
+  children?: PermissionRouteNode[]
+}
+
+export interface RolePermissionsResult {
+  permissions: PermissionDef[]
+  modules: Record<string, PermissionDef[]>
+  route_tree: PermissionRouteNode[]
+  role_permissions: Record<string, string[]>
+}
+
+export interface PermissionRoutesResult {
+  permissions: string[]
+  route_tree: PermissionRouteNode[]
 }
 
 // 获取当前用户信息
@@ -74,6 +95,21 @@ export function changePassword(data: ChangePasswordParams) {
 // 获取权限列表（管理员）
 export function getPermissions() {
   return request.get<any, { data: PermissionsResult }>('/admin/permissions')
+}
+
+// 获取角色权限配置（管理员）
+export function getRolePermissions() {
+  return request.get<any, { data: RolePermissionsResult }>('/admin/role-permissions')
+}
+
+// 获取当前用户可见权限路由树
+export function getPermissionRoutes() {
+  return request.get<any, { data: PermissionRoutesResult }>('/user/permission-routes')
+}
+
+// 更新角色权限配置（管理员）
+export function updateRolePermissions(role: string, permissions: string[]) {
+  return request.put<any, { data: null }>(`/admin/role-permissions/${role}`, { permissions })
 }
 
 // 获取用户列表（管理员）

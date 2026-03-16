@@ -1,0 +1,137 @@
+[
+  {
+    "key": "dashboard.home",
+    "label": "首页",
+    "icon": "🏠",
+    "path": "/",
+    "name": "Dashboard",
+    "permission": "route:dashboard.home:read"
+  },
+  {
+    "key": "product",
+    "label": "产品管理",
+    "icon": "📦",
+    "children": [
+      {
+        "key": "product.local_products",
+        "label": "系统产品",
+        "path": "/product/products",
+        "name": "LocalProducts",
+        "permission": "route:product.local_products:read"
+      },
+      {
+        "key": "product.platform_products",
+        "label": "平台产品",
+        "path": "/product/platform-products",
+        "name": "PlatformProducts",
+        "permission": "route:product.platform_products:read"
+      },
+      {
+        "key": "product.order_summary",
+        "label": "订单汇总",
+        "path": "/product/summary",
+        "name": "OrderSummary",
+        "permission": "route:product.order_summary:read"
+      }
+    ]
+  },
+  {
+    "key": "order.orders",
+    "label": "订单列表",
+    "icon": "📋",
+    "path": "/order/orders",
+    "name": "Orders",
+    "permission": "route:order.orders:read"
+  },
+  {
+    "key": "report",
+    "label": "报表",
+    "icon": "📊",
+    "children": [
+      {
+        "key": "order.cashflow",
+        "label": "财务报告",
+        "path": "/order/cashflow",
+        "name": "CashFlow",
+        "permission": "route:order.cashflow:read"
+      },
+      {
+        "key": "order.settlement",
+        "label": "结算报告",
+        "path": "/order/settlement",
+        "name": "Settlement",
+        "permission": "route:order.settlement:read"
+      }
+    ]
+  },
+  {
+    "key": "warehouse",
+    "label": "仓库",
+    "icon": "🏭",
+    "children": [
+      {
+        "key": "warehouse.list",
+        "label": "仓库列表",
+        "path": "/warehouse/list",
+        "name": "WarehouseList",
+        "permission": "route:warehouse.list:read"
+      },
+      {
+        "key": "warehouse.inventory",
+        "label": "库存明细",
+        "path": "/warehouse/inventory",
+        "name": "InventoryList",
+        "permission": "route:warehouse.inventory:read"
+      },
+      {
+        "key": "warehouse.stock_in_orders",
+        "label": "入库单",
+        "path": "/warehouse/stock-in",
+        "name": "StockInOrders",
+        "permission": "route:warehouse.stock_in_orders:read"
+      }
+    ]
+  },
+  {
+    "key": "shipping",
+    "label": "物流",
+    "icon": "🚚",
+    "children": [
+      {
+        "key": "shipping.templates",
+        "label": "运费模板",
+        "path": "/shipping/templates",
+        "name": "ShippingTemplates",
+        "permission": "route:shipping.templates:read"
+      }
+    ]
+  },
+  {
+    "key": "system",
+    "label": "系统",
+    "icon": "👤",
+    "children": [
+      {
+        "key": "order.platform_auths",
+        "label": "平台授权",
+        "path": "/order/auths",
+        "name": "PlatformAuths",
+        "permission": "route:order.platform_auths:read"
+      },
+      {
+        "key": "system.users",
+        "label": "用户管理",
+        "path": "/users",
+        "name": "UserManagement",
+        "permission": "route:system.users:read"
+      },
+      {
+        "key": "system.roles",
+        "label": "角色管理",
+        "path": "/users/roles",
+        "name": "RoleManagement",
+        "permission": "route:system.roles:read"
+      }
+    ]
+  }
+]

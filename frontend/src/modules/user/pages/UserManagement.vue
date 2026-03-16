@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 
@@ -7,15 +7,12 @@ defineOptions({ name: 'UserManagement' })
 
 import { 
   getUsers, 
-  getPermissions,
   createUser, 
   updateUser, 
   deleteUser, 
   type UserInfo, 
   type UpdateUserParams,
-  type CreateUserParams,
-  type PermissionDef,
-  type PermissionsResult
+  type CreateUserParams
 } from '@/modules/user/api'
 import { useUserStore } from '@/modules/auth/stores'
 import { formatDateTime } from '@/utils/format'
@@ -32,9 +29,6 @@ const pageSize = ref(10)
 const filterKeyword = ref('')
 const filterRole = ref('')
 
-// 权限数据
-const permissionsData = ref<PermissionsResult | null>(null)
-
 // 创建对话框
 const createDialogVisible = ref(false)
 const createFormId = ref('')  // 用于生成唯一的 name 属性，防止浏览器自动填充
@@ -43,8 +37,7 @@ const createForm = ref<CreateUserParams>({
   username: '',
   password: '',
   email: '',
-  role: 'user',
-  permissions: []
+  role: 'user'
 })
 const createLoading = ref(false)
 
@@ -55,8 +48,7 @@ const editForm = ref<UpdateUserParams & { id: number; username: string }>({
   username: '',
   email: '',
   role: '',
-  status: 1,
-  permissions: []
+  status: 1
 })
 const editLoading = ref(false)
 
@@ -75,49 +67,6 @@ const statusOptions = [
   { label: '正常', value: 1 },
   { label: '禁用', value: 0 }
 ]
-
-// 模块名称映射
-const moduleNames: Record<string, string> = {
-  dashboard: '控制台',
-  product: '产品管理',
-  platform_auth: '平台授权',
-  order: '订单管理',
-  report: '报表',
-  warehouse: '仓库管理',
-  shipping: '物流管理',
-  user: '用户管理',
-}
-
-// 获取权限列表
-const fetchPermissions = async () => {
-  try {
-    const res = await getPermissions()
-    permissionsData.value = res.data
-  } catch (error) {
-    console.error('获取权限列表失败', error)
-  }
-}
-
-// 获取可分配的权限（根据目标角色过滤）
-const getAssignablePermissions = (targetRole: string): Record<string, PermissionDef[]> => {
-  if (!permissionsData.value) return {}
-  
-  const result: Record<string, PermissionDef[]> = {}
-  
-  for (const [module, perms] of Object.entries(permissionsData.value.modules)) {
-    // 用户管理权限只有超级管理员可以分配给管理员
-    if (module === 'user') {
-      if (userStore.isSuperAdmin && targetRole === 'admin') {
-        result[module] = perms
-      }
-      continue
-    }
-    // 其他权限都可以分配
-    result[module] = perms
-  }
-  
-  return result
-}
 
 // 获取用户列表
 const fetchUsers = async () => {
@@ -172,8 +121,7 @@ const resetCreateForm = () => {
     username: '',
     password: '',
     email: '',
-    role: 'user',
-    permissions: []
+    role: 'user'
   }
 }
 
@@ -230,8 +178,7 @@ const handleEdit = (row: UserInfo) => {
     username: row.username,
     email: row.email,
     role: row.role,
-    status: row.status,
-    permissions: row.permissions || []
+    status: row.status
   }
   editDialogVisible.value = true
 }
@@ -243,8 +190,7 @@ const handleSaveEdit = async () => {
     await updateUser(editForm.value.id, {
       email: editForm.value.email,
       role: editForm.value.role,
-      status: editForm.value.status,
-      permissions: editForm.value.permissions
+      status: editForm.value.status
     })
     ElMessage.success('更新成功')
     editDialogVisible.value = false
@@ -330,19 +276,8 @@ const getStatusTagType = (status: number) => {
   return status === 1 ? 'success' : 'danger'
 }
 
-// 当创建表单角色变化时，清空不适用的权限
-const onCreateRoleChange = () => {
-  createForm.value.permissions = []
-}
-
-// 当编辑表单角色变化时，清空不适用的权限
-const onEditRoleChange = () => {
-  editForm.value.permissions = []
-}
-
 onMounted(() => {
   fetchUsers()
-  fetchPermissions()
 })
 </script>
 
@@ -486,7 +421,7 @@ onMounted(() => {
           <el-input v-model="createForm.email" placeholder="请输入邮箱" />
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="createForm.role" placeholder="请选择角色" style="width: 100%" @change="onCreateRoleChange">
+          <el-select v-model="createForm.role" placeholder="请选择角色" style="width: 100%">
             <el-option
               v-for="item in roleOptions"
               :key="item.value"
@@ -494,25 +429,6 @@ onMounted(() => {
               :value="item.value"
             />
           </el-select>
-        </el-form-item>
-        <el-form-item label="权限">
-          <div class="permissions-container">
-            <template v-for="(perms, module) in getAssignablePermissions(createForm.role)" :key="module">
-              <div class="permission-module">
-                <div class="module-title">{{ moduleNames[module] || module }}</div>
-                <el-checkbox-group v-model="createForm.permissions">
-                  <el-checkbox
-                    v-for="perm in perms"
-                    :key="perm.code"
-                    :label="perm.code"
-                  >
-                    {{ perm.name }}
-                  </el-checkbox>
-                </el-checkbox-group>
-              </div>
-            </template>
-            <el-empty v-if="Object.keys(getAssignablePermissions(createForm.role)).length === 0" description="无可分配权限" :image-size="60" />
-          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -539,7 +455,7 @@ onMounted(() => {
           <el-input v-model="editForm.email" placeholder="请输入邮箱" />
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="editForm.role" placeholder="请选择角色" style="width: 100%" @change="onEditRoleChange">
+          <el-select v-model="editForm.role" placeholder="请选择角色" style="width: 100%">
             <el-option
               v-for="item in roleOptions"
               :key="item.value"
@@ -557,25 +473,6 @@ onMounted(() => {
               :value="item.value"
             />
           </el-select>
-        </el-form-item>
-        <el-form-item label="权限">
-          <div class="permissions-container">
-            <template v-for="(perms, module) in getAssignablePermissions(editForm.role || '')" :key="module">
-              <div class="permission-module">
-                <div class="module-title">{{ moduleNames[module] || module }}</div>
-                <el-checkbox-group v-model="editForm.permissions">
-                  <el-checkbox
-                    v-for="perm in perms"
-                    :key="perm.code"
-                    :label="perm.code"
-                  >
-                    {{ perm.name }}
-                  </el-checkbox>
-                </el-checkbox-group>
-              </div>
-            </template>
-            <el-empty v-if="Object.keys(getAssignablePermissions(editForm.role || '')).length === 0" description="无可分配权限" :image-size="60" />
-          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -637,39 +534,4 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.permissions-container {
-  width: 100%;
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 12px;
-}
-
-.permission-module {
-  margin-bottom: 16px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.module-title {
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-:deep(.el-checkbox-group) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-
-:deep(.el-checkbox) {
-  margin-right: 0;
-}
 </style>

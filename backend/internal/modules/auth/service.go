@@ -57,7 +57,7 @@ func (s *Service) Login(username, password string) (*user.User, string, error) {
 		u.CompanyID,
 		u.Username,
 		u.Role,
-		u.GetPermissions(),
+		userSvc.GetEffectivePermissions(u),
 		s.jwtSecret,
 		s.jwtExpireHour,
 	)

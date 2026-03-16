@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useTabsStore, type TabItem } from '@/stores/tabs'
 import { ElMessageBox } from 'element-plus'
 import { Close } from '@element-plus/icons-vue'
+import pageStructure from '@/config/page-structure.json'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,49 +16,17 @@ const tabsStore = useTabsStore()
 const sidebarCollapsed = ref(false)
 
 // 所有菜单项（带 permission 字段）
-const allMenuItems = [
-  { path: '/', name: 'Dashboard', icon: '🏠', label: '首页', permission: 'dashboard:view' },
-  { 
-    icon: '📦', 
-    label: '产品管理',
-    permission: 'product:view',
-    children: [
-      { path: '/product/products', name: 'LocalProducts', label: '系统产品' },
-      { path: '/product/platform-products', name: 'PlatformProducts', label: '平台产品' },
-      { path: '/product/summary', name: 'OrderSummary', label: '订单汇总' },
-    ]
-  },
-  { path: '/order/auths', name: 'PlatformAuths', icon: '🔑', label: '平台授权', permission: 'platform_auth:view' },
-  { path: '/order/orders', name: 'Orders', icon: '📋', label: '订单列表', permission: 'order:view' },
-  { 
-    icon: '📊', 
-    label: '报表',
-    permission: 'report:view',
-    children: [
-      { path: '/order/cashflow', name: 'CashFlow', label: '财务报告' },
-      { path: '/order/settlement', name: 'Settlement', label: '结算报告' },
-    ]
-  },
-  { 
-    icon: '🏭', 
-    label: '仓库',
-    permission: 'warehouse:view',
-    children: [
-      { path: '/warehouse/list', name: 'WarehouseList', label: '仓库列表' },
-      { path: '/warehouse/inventory', name: 'InventoryList', label: '库存明细' },
-      { path: '/warehouse/stock-in', name: 'StockInOrders', label: '入库单' },
-    ]
-  },
-  { 
-    icon: '🚚', 
-    label: '物流',
-    permission: 'shipping:view',
-    children: [
-      { path: '/shipping/templates', name: 'ShippingTemplates', label: '运费模板' },
-    ]
-  },
-  { path: '/users', name: 'UserManagement', icon: '👤', label: '用户管理', permission: 'user:view' },
-]
+interface MenuNode {
+  key: string
+  label: string
+  icon?: string
+  path?: string
+  name?: string
+  permission?: string
+  children?: MenuNode[]
+}
+
+const allMenuItems = pageStructure as MenuNode[]
 
 // 展开的菜单
 const expandedMenus = ref<string[]>(['报表'])
@@ -83,10 +52,26 @@ const isChildActive = (item: any) => {
 
 // 计算显示的菜单项（根据用户权限过滤）
 const menuItems = computed(() => {
-  return allMenuItems.filter(item => {
-    if (!item.permission) return true
-    return userStore.hasPermission(item.permission)
-  })
+  const hasRouteAccess = (node: MenuNode): boolean => {
+    if (!node.permission) return true
+    if (!userStore.permissionRoutes.length) return userStore.hasPermission(node.permission)
+    const parts = node.permission.split(':')
+    if (parts.length === 3 && parts[0] === 'route') {
+      return userStore.hasRouteAction(parts[1], parts[2])
+    }
+    return userStore.hasPermission(node.permission)
+  }
+
+  return allMenuItems
+    .map(item => {
+      if (!item.children) return item
+      const children = item.children.filter((child: any) => hasRouteAccess(child))
+      return { ...item, children }
+    })
+    .filter((item: any) => {
+      if (item.children) return item.children.length > 0
+      return hasRouteAccess(item)
+    })
 })
 
 // 路由名称到标题的映射
@@ -106,6 +91,8 @@ const routeTitleMap: Record<string, string> = {
   'WarehouseList': '仓库列表',
   'ShippingTemplates': '运费模板',
   'UserManagement': '用户管理',
+  'RoleManagement': '角色管理',
+  'RolePermissionDetail': '角色权限详情',
 }
 
 // 不可关闭的标签
@@ -124,7 +111,15 @@ const userRoleDisplay = computed(() => {
   return '用户'
 })
 
-const isActive = (path: string) => route.path === path
+const isPathMatch = (path: string) => route.path === path || route.path.startsWith(path + '/')
+
+const getActiveChildPath = (item: any): string => {
+  if (!item?.children?.length) return ''
+  const matched = item.children
+    .filter((child: any) => isPathMatch(child.path))
+    .sort((a: any, b: any) => b.path.length - a.path.length)
+  return matched[0]?.path || ''
+}
 
 // 导航并添加标签
 const navigateTo = (path: string) => {
@@ -349,7 +344,7 @@ const handleLogout = async () => {
                 v-for="child in item.children"
                 :key="child.path"
                 class="nav-item nav-child"
-                :class="{ active: isActive(child.path) }"
+                :class="{ active: child.path === getActiveChildPath(item) }"
                 @click="navigateTo(child.path)"
               >
                 <span class="nav-label">{{ child.label }}</span>
@@ -360,7 +355,7 @@ const handleLogout = async () => {
           <button
             v-else
             class="nav-item"
-            :class="{ active: isActive(item.path) }"
+            :class="{ active: isPathMatch(item.path) }"
             @click="navigateTo(item.path)"
           >
             <span class="nav-icon">{{ item.icon }}</span>
@@ -581,12 +576,28 @@ const handleLogout = async () => {
   
   .nav-arrow {
     margin-left: auto;
-    font-size: 10px;
-    color: var(--text-muted);
-    transition: transform var(--transition-fast);
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-primary);
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.35);
+    border-radius: 50%;
+    transition: all var(--transition-fast);
   }
   
   &.expanded .nav-arrow {
+    transform: rotate(180deg);
+    background: rgba(0, 212, 255, 0.22);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.25);
+  }
+
+  &.expanded {
+    background: rgba(0, 212, 255, 0.08);
     color: var(--color-primary);
   }
 }
@@ -596,8 +607,11 @@ const handleLogout = async () => {
   flex-direction: column;
   gap: 2px;
   margin-left: 20px;
-  padding-left: 16px;
-  border-left: 1px solid var(--border-color);
+  margin-top: 4px;
+  padding: 8px 8px 8px 12px;
+  border-left: 2px solid rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.04);
+  border-radius: 8px;
 }
 
 .nav-child {

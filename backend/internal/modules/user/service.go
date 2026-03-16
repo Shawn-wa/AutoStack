@@ -8,8 +8,8 @@ import (
 
 	"gorm.io/gorm"
 
-	companyRepo "autostack/internal/repository/company"
 	"autostack/internal/repository"
+	companyRepo "autostack/internal/repository/company"
 	userRepo "autostack/internal/repository/user"
 	"autostack/internal/utils"
 )
@@ -46,7 +46,7 @@ func (s *Service) CreateUser(username, password, email, role string, companyID u
 	return s.CreateUserWithPermissions(username, password, email, role, nil, nil, companyID)
 }
 
-// CreateUserWithPermissions 创建用户（管理员创建，可指定角色和权限）
+// CreateUserWithPermissions 创建用户（管理员创建，权限按角色模板继承）
 func (s *Service) CreateUserWithPermissions(username, password, email, role string, permissions []string, createdBy *uint, companyID uint) (*User, error) {
 	ctx := context.Background()
 
@@ -73,11 +73,8 @@ func (s *Service) CreateUserWithPermissions(username, password, email, role stri
 		CreatedBy:    createdBy,
 	}
 
-	if len(permissions) > 0 {
-		if err := user.SetPermissions(permissions); err != nil {
-			return nil, err
-		}
-	}
+	// 权限统一在角色上维护，用户级 permissions 字段保留但不再写入。
+	_ = permissions
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
@@ -133,6 +130,11 @@ func (s *Service) RegisterWithCompany(username, password, email, companyName str
 	})
 
 	if err != nil {
+		return nil, nil, err
+	}
+
+	// 初始化该企业的默认角色权限模板
+	if err := s.EnsureDefaultRolePermissions(resultCompany.ID); err != nil {
 		return nil, nil, err
 	}
 
@@ -242,6 +244,116 @@ func (s *Service) ListUsers(companyID uint, keyword, role string, page, pageSize
 	})
 }
 
+// EnsureDefaultRolePermissions 确保企业具备默认角色权限模板
+func (s *Service) EnsureDefaultRolePermissions(companyID uint) error {
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+
+	if err := s.ensurePermissionCatalog(ctx); err != nil {
+		return err
+	}
+	codeIDMap, err := s.getPermissionCodeIDMap(ctx)
+	if err != nil {
+		return err
+	}
+
+	roles := []string{RoleAdmin, RoleUser}
+	for _, role := range roles {
+		var count int64
+		if err := db.Model(&RolePermissionBinding{}).
+			Where("company_id = ? AND role = ?", companyID, role).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+
+		// 尝试从旧版 JSON 表迁移
+		var legacy RolePermission
+		var seedCodes []string
+		if err := db.Where("company_id = ? AND role = ?", companyID, role).First(&legacy).Error; err == nil {
+			seedCodes = legacy.GetPermissions()
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		if len(seedCodes) == 0 {
+			seedCodes = DefaultRolePermissionsByRole(role)
+		}
+
+		if err := s.replaceRoleBindings(ctx, companyID, role, seedCodes, codeIDMap); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetRolePermissions 获取企业角色权限（super_admin 固定全权限）
+func (s *Service) GetRolePermissions(companyID uint) (map[string][]string, error) {
+	if err := s.EnsureDefaultRolePermissions(companyID); err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	allCodes, err := s.getAllActionPermissionCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := map[string][]string{
+		RoleSuperAdmin: allCodes,
+	}
+	for _, role := range []string{RoleAdmin, RoleUser} {
+		codes, err := s.getRolePermissionCodes(ctx, companyID, role)
+		if err != nil {
+			return nil, err
+		}
+		result[role] = codes
+	}
+	return result, nil
+}
+
+// GetEffectivePermissions 获取用户实际权限（按角色模板）
+func (s *Service) GetEffectivePermissions(u *User) []string {
+	if u == nil {
+		return []string{}
+	}
+	if u.IsSuperAdmin() {
+		return DefaultRolePermissionsByRole(RoleSuperAdmin)
+	}
+	rolePerms, err := s.GetRolePermissions(u.CompanyID)
+	if err != nil {
+		return []string{}
+	}
+	if perms, ok := rolePerms[u.Role]; ok {
+		return perms
+	}
+	return []string{}
+}
+
+// UpdateRolePermissions 更新角色权限（仅角色维度管理）
+func (s *Service) UpdateRolePermissions(currentUser *User, role string, permissions []string) error {
+	if role == RoleSuperAdmin {
+		return ErrPermissionDenied
+	}
+	if !currentUser.CanManageRole(role) {
+		return ErrPermissionDenied
+	}
+	if role == RoleAdmin && !currentUser.IsSuperAdmin() {
+		return ErrPermissionDenied
+	}
+
+	if err := s.ValidatePermissions(currentUser, role, permissions); err != nil {
+		return err
+	}
+	ctx := context.Background()
+	codeIDMap, err := s.getPermissionCodeIDMap(ctx)
+	if err != nil {
+		return err
+	}
+	return s.replaceRoleBindings(ctx, currentUser.CompanyID, role, permissions, codeIDMap)
+}
+
 // DeleteUser 删除用户
 func (s *Service) DeleteUser(id uint) error {
 	ctx := context.Background()
@@ -277,6 +389,7 @@ func (s *Service) InitDefaultSuperAdmin() error {
 		if existingAdmin.CompanyID == 0 {
 			return s.migrateExistingData(ctx, existingAdmin)
 		}
+		_ = s.EnsureDefaultRolePermissions(existingAdmin.CompanyID)
 		return nil
 	}
 
@@ -508,14 +621,202 @@ func isMissingTableOrColumnError(err error) bool {
 
 // GetAllPermissions 获取所有权限定义
 func (s *Service) GetAllPermissions() PermissionsResponse {
-	modules := make(map[string][]PermissionDef)
-	for _, p := range AllPermissions {
-		modules[p.Module] = append(modules[p.Module], p)
+	ctx := context.Background()
+	if err := s.ensurePermissionCatalog(ctx); err != nil {
+		modules := make(map[string][]PermissionDef)
+		for _, p := range AllPermissions {
+			modules[p.Module] = append(modules[p.Module], p)
+		}
+		return PermissionsResponse{
+			Permissions: AllPermissions,
+			Modules:     modules,
+		}
 	}
+
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []Permission
+	if err := db.Where("node_type = ? AND enabled = ?", "action", 1).Order("id ASC").Find(&rows).Error; err != nil {
+		modules := make(map[string][]PermissionDef)
+		for _, p := range AllPermissions {
+			modules[p.Module] = append(modules[p.Module], p)
+		}
+		return PermissionsResponse{
+			Permissions: AllPermissions,
+			Modules:     modules,
+		}
+	}
+
+	permissions := make([]PermissionDef, 0, len(rows))
+	modules := make(map[string][]PermissionDef)
+
+	for _, row := range rows {
+		code := row.Code
+		if code == "" {
+			continue
+		}
+		routeKey := ""
+		action := row.Action
+		if strings.HasPrefix(code, "route:") {
+			trimmed := strings.TrimPrefix(code, "route:")
+			lastIdx := strings.LastIndex(trimmed, ":")
+			if lastIdx > 0 {
+				routeKey = trimmed[:lastIdx]
+				if action == "" {
+					action = trimmed[lastIdx+1:]
+				}
+			}
+		}
+		if routeKey == "" {
+			continue
+		}
+		module := routeKey
+		if dot := strings.Index(routeKey, "."); dot > 0 {
+			module = routeKey[:dot]
+		}
+
+		def := PermissionDef{
+			Code:        code,
+			Name:        row.Name,
+			Module:      module,
+			RouteKey:    routeKey,
+			ParentRoute: module,
+			Action:      action,
+		}
+		permissions = append(permissions, def)
+		modules[module] = append(modules[module], def)
+	}
+
 	return PermissionsResponse{
-		Permissions: AllPermissions,
+		Permissions: permissions,
 		Modules:     modules,
 	}
+}
+
+// GetPermissionRouteTree 获取权限路由树（数据库）
+func (s *Service) GetPermissionRouteTree() ([]PermissionRouteNode, error) {
+	ctx := context.Background()
+	if err := s.ensurePermissionCatalog(ctx); err != nil {
+		return nil, err
+	}
+
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []Permission
+	if err := db.Where("enabled = ?", 1).Order("sort ASC, id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	permByID := make(map[uint]Permission, len(rows))
+	nodeByID := make(map[uint]*PermissionRouteNode)
+	children := make(map[uint][]uint)
+	var roots []uint
+
+	for _, r := range rows {
+		permByID[r.ID] = r
+		if r.NodeType == "action" {
+			continue
+		}
+		n := &PermissionRouteNode{
+			Key:   r.NodeKey,
+			Name:  r.Name,
+			Level: 1,
+		}
+		nodeByID[r.ID] = n
+	}
+
+	for id, n := range nodeByID {
+		p := permByID[id]
+		if p.ParentID != nil {
+			if _, ok := nodeByID[*p.ParentID]; ok {
+				children[*p.ParentID] = append(children[*p.ParentID], id)
+				continue
+			}
+		}
+		roots = append(roots, id)
+		_ = n
+	}
+
+	getModuleKey := func(parentID uint) string {
+		curr := permByID[parentID]
+		moduleKey := curr.NodeKey
+		for curr.ParentID != nil {
+			up, ok := permByID[*curr.ParentID]
+			if !ok {
+				break
+			}
+			moduleKey = up.NodeKey
+			curr = up
+		}
+		return moduleKey
+	}
+
+	for _, r := range rows {
+		if r.NodeType != "action" || r.ParentID == nil {
+			continue
+		}
+		parentNode, ok := nodeByID[*r.ParentID]
+		if !ok {
+			continue
+		}
+		parentPerm := permByID[*r.ParentID]
+		moduleKey := getModuleKey(*r.ParentID)
+		parentNode.Permissions = append(parentNode.Permissions, PermissionDef{
+			Code:        r.Code,
+			Name:        r.Name,
+			Module:      moduleKey,
+			RouteKey:    parentPerm.NodeKey,
+			ParentRoute: moduleKey,
+			Action:      r.Action,
+		})
+	}
+
+	var build func(id uint, level int) PermissionRouteNode
+	build = func(id uint, level int) PermissionRouteNode {
+		out := *nodeByID[id]
+		out.Level = level
+		childIDs := children[id]
+		out.Children = make([]PermissionRouteNode, 0, len(childIDs))
+		for _, cid := range childIDs {
+			out.Children = append(out.Children, build(cid, level+1))
+		}
+		return out
+	}
+
+	result := make([]PermissionRouteNode, 0, len(roots))
+	for _, rid := range roots {
+		result = append(result, build(rid, 1))
+	}
+	return result, nil
+}
+
+// FilterPermissionRouteTree 按权限过滤路由树（仅保留当前用户可见功能节点）
+func (s *Service) FilterPermissionRouteTree(routeTree []PermissionRouteNode, permissionCodes []string) []PermissionRouteNode {
+	permSet := make(map[string]struct{}, len(permissionCodes))
+	for _, code := range permissionCodes {
+		permSet[code] = struct{}{}
+	}
+
+	var filter func(nodes []PermissionRouteNode) []PermissionRouteNode
+	filter = func(nodes []PermissionRouteNode) []PermissionRouteNode {
+		result := make([]PermissionRouteNode, 0, len(nodes))
+		for _, n := range nodes {
+			filteredPerms := make([]PermissionDef, 0, len(n.Permissions))
+			for _, p := range n.Permissions {
+				if _, ok := permSet[p.Code]; ok {
+					filteredPerms = append(filteredPerms, p)
+				}
+			}
+			filteredChildren := filter(n.Children)
+			if len(filteredPerms) == 0 && len(filteredChildren) == 0 {
+				continue
+			}
+			n.Permissions = filteredPerms
+			n.Children = filteredChildren
+			result = append(result, n)
+		}
+		return result
+	}
+
+	return filter(routeTree)
 }
 
 // GetAssignablePermissions 获取当前用户可分配的权限
@@ -523,10 +824,7 @@ func (s *Service) GetAssignablePermissions(currentUser *User, targetRole string)
 	var assignable []PermissionDef
 
 	for _, p := range AllPermissions {
-		if isUserManagePermission(p.Code) {
-			if currentUser.IsSuperAdmin() && targetRole == RoleAdmin {
-				assignable = append(assignable, p)
-			}
+		if targetRole == RoleAdmin && !currentUser.IsSuperAdmin() {
 			continue
 		}
 		assignable = append(assignable, p)
@@ -535,18 +833,11 @@ func (s *Service) GetAssignablePermissions(currentUser *User, targetRole string)
 	return assignable
 }
 
-// isUserManagePermission 判断是否为用户管理权限
-func isUserManagePermission(perm string) bool {
-	for _, p := range UserManagePermissions {
-		if p == perm {
-			return true
-		}
-	}
-	return false
-}
-
 // ValidatePermissions 验证权限是否可被授予
 func (s *Service) ValidatePermissions(currentUser *User, targetRole string, permissions []string) error {
+	if err := s.ensurePermissionCatalog(context.Background()); err != nil {
+		return err
+	}
 	assignable := s.GetAssignablePermissions(currentUser, targetRole)
 	assignableMap := make(map[string]bool)
 	for _, p := range assignable {
@@ -559,6 +850,173 @@ func (s *Service) ValidatePermissions(currentUser *User, targetRole string, perm
 		}
 	}
 	return nil
+}
+
+func (s *Service) ensurePermissionCatalog(ctx context.Context) error {
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		tx := repository.GetDB(txCtx, s.txManager.DB())
+		var upsertNode func(parentID *uint, node PermissionRouteNode, order int) (uint, error)
+		upsertNode = func(parentID *uint, node PermissionRouteNode, order int) (uint, error) {
+			nodeType := "route"
+			if parentID == nil {
+				nodeType = "module"
+			}
+
+			var item Permission
+			err := tx.Where("node_key = ?", node.Key).First(&item).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				item = Permission{
+					ParentID: parentID,
+					NodeKey:  node.Key,
+					Name:     node.Name,
+					NodeType: nodeType,
+					Sort:     order,
+					Enabled:  1,
+				}
+				if err := tx.Create(&item).Error; err != nil {
+					return 0, err
+				}
+			} else if err != nil {
+				return 0, err
+			} else {
+				if err := tx.Model(&Permission{}).Where("id = ?", item.ID).Updates(map[string]interface{}{
+					"parent_id":  parentID,
+					"name":       node.Name,
+					"node_type":  nodeType,
+					"sort":       order,
+					"enabled":    1,
+					"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+				}).Error; err != nil {
+					return 0, err
+				}
+			}
+
+			for idx, p := range node.Permissions {
+				var actionNode Permission
+				err := tx.Where("node_key = ?", p.Code).First(&actionNode).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					actionNode = Permission{
+						ParentID: &item.ID,
+						NodeKey:  p.Code,
+						Code:     p.Code,
+						Name:     p.Name,
+						NodeType: "action",
+						Action:   p.Action,
+						Sort:     idx,
+						Enabled:  1,
+					}
+					if err := tx.Create(&actionNode).Error; err != nil {
+						return 0, err
+					}
+				} else if err != nil {
+					return 0, err
+				} else {
+					if err := tx.Model(&Permission{}).Where("id = ?", actionNode.ID).Updates(map[string]interface{}{
+						"parent_id":  item.ID,
+						"code":       p.Code,
+						"name":       p.Name,
+						"node_type":  "action",
+						"action":     p.Action,
+						"sort":       idx,
+						"enabled":    1,
+						"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+					}).Error; err != nil {
+						return 0, err
+					}
+				}
+			}
+
+			for idx, child := range node.Children {
+				if _, err := upsertNode(&item.ID, child, idx); err != nil {
+					return 0, err
+				}
+			}
+
+			return item.ID, nil
+		}
+
+		for idx, root := range PermissionRouteTree {
+			if _, err := upsertNode(nil, root, idx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Service) getPermissionCodeIDMap(ctx context.Context) (map[string]uint, error) {
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []Permission
+	if err := db.Where("node_type = ? AND enabled = ?", "action", 1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]uint, len(rows))
+	for _, r := range rows {
+		if r.Code != "" {
+			result[r.Code] = r.ID
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) getAllActionPermissionCodes(ctx context.Context) ([]string, error) {
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []Permission
+	if err := db.Where("node_type = ? AND enabled = ?", "action", 1).Order("id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	codes := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.Code != "" {
+			codes = append(codes, r.Code)
+		}
+	}
+	return codes, nil
+}
+
+func (s *Service) getRolePermissionCodes(ctx context.Context, companyID uint, role string) ([]string, error) {
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var codes []string
+	if err := db.Table("role_permission_bindings AS b").
+		Select("p.code").
+		Joins("JOIN permissions p ON p.id = b.permission_id").
+		Where("b.company_id = ? AND b.role = ? AND p.enabled = ?", companyID, role, 1).
+		Order("p.id ASC").
+		Pluck("p.code", &codes).Error; err != nil {
+		return nil, err
+	}
+	return codes, nil
+}
+
+func (s *Service) replaceRoleBindings(ctx context.Context, companyID uint, role string, codes []string, codeIDMap map[string]uint) error {
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		tx := repository.GetDB(txCtx, s.txManager.DB())
+		if err := tx.Where("company_id = ? AND role = ?", companyID, role).Delete(&RolePermissionBinding{}).Error; err != nil {
+			return err
+		}
+
+		seen := make(map[string]struct{})
+		items := make([]RolePermissionBinding, 0, len(codes))
+		for _, code := range codes {
+			if _, ok := seen[code]; ok {
+				continue
+			}
+			seen[code] = struct{}{}
+			id, ok := codeIDMap[code]
+			if !ok {
+				continue
+			}
+			items = append(items, RolePermissionBinding{
+				CompanyID:    companyID,
+				Role:         role,
+				PermissionID: id,
+			})
+		}
+		if len(items) == 0 {
+			return nil
+		}
+		return tx.Create(&items).Error
+	})
 }
 
 // CanManageUser 检查当前用户是否可以管理目标用户
