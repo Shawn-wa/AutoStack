@@ -77,6 +77,34 @@ export interface PermissionRoutesResult {
   route_tree: PermissionRouteNode[]
 }
 
+export interface RoleItem {
+  id: number
+  role: string
+  role_name: string
+  description: string
+  enabled: boolean
+  is_system: boolean
+  permission_count: number
+}
+
+export interface RoleListResult {
+  list: RoleItem[]
+}
+
+export interface CreateRoleParams {
+  role: string
+  role_name: string
+  description?: string
+  enabled?: number
+}
+
+export interface UpdateRoleParams {
+  role: string
+  role_name: string
+  description?: string
+  enabled?: number
+}
+
 // 获取当前用户信息
 export function getProfile() {
   return request.get<any, { data: UserInfo }>('/user/profile')
@@ -105,6 +133,24 @@ export function getRolePermissions() {
 // 获取当前用户可见权限路由树
 export function getPermissionRoutes() {
   return request.get<any, { data: PermissionRoutesResult }>('/user/permission-routes')
+}
+
+// 获取角色列表（管理员）
+export function getRoles() {
+  return request.get<any, { data: RoleListResult }>('/admin/roles')
+}
+
+// 创建自定义角色（管理员）
+export function createRole(data: CreateRoleParams) {
+  return request.post<any, { data: null }>('/admin/roles', data)
+}
+
+export function updateRole(id: number, data: UpdateRoleParams) {
+  return request.put<any, { data: null }>(`/admin/roles/${id}`, data)
+}
+
+export function deleteRole(id: number) {
+  return request.delete<any, { data: null }>(`/admin/roles/${id}`)
 }
 
 // 更新角色权限配置（管理员）

@@ -28,13 +28,13 @@ type CreateUserRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=20"`
 	Password string `json:"password" binding:"required,min=6"`
 	Email    string `json:"email" binding:"required,email"`
-	Role     string `json:"role" binding:"required,oneof=admin user"`
+	Role     string `json:"role" binding:"required,min=2,max=50"`
 }
 
 // UpdateUserRequest 更新用户请求（管理员）
 type UpdateUserRequest struct {
 	Email  string `json:"email" binding:"omitempty,email"`
-	Role   string `json:"role" binding:"omitempty,oneof=super_admin admin user"`
+	Role   string `json:"role" binding:"omitempty,min=2,max=50"`
 	Status *int   `json:"status" binding:"omitempty,oneof=0 1"`
 }
 
@@ -98,4 +98,36 @@ type PermissionRoutesResponse struct {
 // UpdateRolePermissionsRequest 更新角色权限请求
 type UpdateRolePermissionsRequest struct {
 	Permissions []string `json:"permissions" binding:"required"`
+}
+
+// RoleItem 角色列表项
+type RoleItem struct {
+	ID              uint   `json:"id"`
+	Role            string `json:"role"` // 角色编码
+	RoleName        string `json:"role_name"`
+	Description     string `json:"description"`
+	Enabled         bool   `json:"enabled"`
+	IsSystem        bool   `json:"is_system"`
+	PermissionCount int    `json:"permission_count"`
+}
+
+// RoleListResponse 角色列表响应
+type RoleListResponse struct {
+	List []RoleItem `json:"list"`
+}
+
+// CreateRoleRequest 创建角色请求
+type CreateRoleRequest struct {
+	Role        string `json:"role" binding:"required,min=2,max=50"`
+	RoleName    string `json:"role_name" binding:"required,min=2,max=60"`
+	Description string `json:"description" binding:"omitempty,max=255"`
+	Enabled     *int   `json:"enabled" binding:"omitempty,oneof=0 1"`
+}
+
+// UpdateRoleRequest 更新角色请求
+type UpdateRoleRequest struct {
+	Role        string `json:"role" binding:"required,min=2,max=50"`
+	RoleName    string `json:"role_name" binding:"required,min=2,max=60"`
+	Description string `json:"description" binding:"omitempty,max=255"`
+	Enabled     *int   `json:"enabled" binding:"omitempty,oneof=0 1"`
 }

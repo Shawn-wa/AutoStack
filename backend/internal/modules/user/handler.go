@@ -205,7 +205,8 @@ func GetRolePermissions(c *gin.Context) {
 	perms := userService.GetAllPermissions()
 	routeTree, treeErr := userService.GetPermissionRouteTree()
 	if treeErr != nil {
-		routeTree = PermissionRouteTree
+		response.Error(c, http.StatusInternalServerError, "获取权限路由树失败")
+		return
 	}
 	response.Success(c, http.StatusOK, "获取成功", RolePermissionsResponse{
 		Permissions:     perms.Permissions,
@@ -213,6 +214,120 @@ func GetRolePermissions(c *gin.Context) {
 		RouteTree:       routeTree,
 		RolePermissions: rolePerms,
 	})
+}
+
+// ListRoles 获取角色列表
+func ListRoles(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	roles, err := userService.ListRoles(currentUser.CompanyID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取角色列表失败")
+		return
+	}
+	response.Success(c, http.StatusOK, "获取成功", RoleListResponse{List: roles})
+}
+
+// CreateRole 创建自定义角色
+func CreateRole(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	var req CreateRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+	enabled := 1
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	if err := userService.CreateRole(currentUser, req.Role, req.RoleName, req.Description, enabled); err != nil {
+		switch err {
+		case ErrPermissionDenied:
+			response.Error(c, http.StatusForbidden, "无权创建该角色")
+		case ErrRoleExists:
+			response.Error(c, http.StatusConflict, "角色编码已存在")
+		case ErrRoleNameExists:
+			response.Error(c, http.StatusConflict, "角色名已存在")
+		default:
+			response.Error(c, http.StatusInternalServerError, "创建角色失败")
+		}
+		return
+	}
+	response.Success(c, http.StatusCreated, "创建成功", nil)
+}
+
+// UpdateRole 更新角色
+func UpdateRole(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的角色ID")
+		return
+	}
+	var req UpdateRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "请求参数错误")
+		return
+	}
+	enabled := 1
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	if err := userService.UpdateRole(currentUser, uint(id), req.Role, req.RoleName, req.Description, enabled); err != nil {
+		switch err {
+		case ErrPermissionDenied:
+			response.Error(c, http.StatusForbidden, "无权更新该角色")
+		case ErrRoleNotFound:
+			response.Error(c, http.StatusNotFound, "角色不存在")
+		case ErrRoleExists:
+			response.Error(c, http.StatusConflict, "角色编码已存在")
+		case ErrRoleNameExists:
+			response.Error(c, http.StatusConflict, "角色名已存在")
+		default:
+			response.Error(c, http.StatusInternalServerError, "更新角色失败")
+		}
+		return
+	}
+	response.Success(c, http.StatusOK, "更新成功", nil)
+}
+
+// DeleteRole 删除角色
+func DeleteRole(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的角色ID")
+		return
+	}
+	if err := userService.DeleteRole(currentUser, uint(id)); err != nil {
+		switch err {
+		case ErrPermissionDenied:
+			response.Error(c, http.StatusForbidden, "无权删除该角色")
+		case ErrRoleNotFound:
+			response.Error(c, http.StatusNotFound, "角色不存在")
+		case ErrRoleInUse:
+			response.Error(c, http.StatusConflict, "角色已被用户使用，无法删除")
+		default:
+			response.Error(c, http.StatusInternalServerError, "删除角色失败")
+		}
+		return
+	}
+	response.Success(c, http.StatusOK, "删除成功", nil)
 }
 
 // UpdateRolePermissions 更新角色权限（管理员）
@@ -223,10 +338,6 @@ func UpdateRolePermissions(c *gin.Context) {
 		return
 	}
 	role := c.Param("role")
-	if role != RoleAdmin && role != RoleUser && role != RoleSuperAdmin {
-		response.Error(c, http.StatusBadRequest, "无效的角色")
-		return
-	}
 	if role == RoleSuperAdmin {
 		response.Error(c, http.StatusForbidden, "超级管理员权限不可编辑")
 		return
@@ -239,6 +350,10 @@ func UpdateRolePermissions(c *gin.Context) {
 	if err := userService.UpdateRolePermissions(currentUser, role, req.Permissions); err != nil {
 		if err == ErrPermissionDenied {
 			response.Error(c, http.StatusForbidden, "无权修改该角色权限")
+			return
+		}
+		if err == ErrRoleNotFound {
+			response.Error(c, http.StatusNotFound, "角色不存在")
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, "更新角色权限失败")
@@ -261,13 +376,8 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	if !currentUser.CanManageRole(req.Role) {
+	if !userService.CanManageRole(currentUser, req.Role) {
 		response.Error(c, http.StatusForbidden, "无权创建该角色用户")
-		return
-	}
-
-	if req.Role == RoleAdmin && !currentUser.IsSuperAdmin() {
-		response.Error(c, http.StatusForbidden, "只有超级管理员可以创建管理员")
 		return
 	}
 
@@ -284,6 +394,14 @@ func CreateUser(c *gin.Context) {
 	if err != nil {
 		if err == ErrUserExists {
 			response.Error(c, http.StatusConflict, "用户名或邮箱已存在")
+			return
+		}
+		if err == ErrRoleNotFound {
+			response.Error(c, http.StatusBadRequest, "角色不存在，请先在角色管理中创建")
+			return
+		}
+		if err == ErrRoleDisabled {
+			response.Error(c, http.StatusBadRequest, "角色已禁用，不能分配给用户")
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, "创建用户失败")
@@ -439,12 +557,26 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if req.Role != "" && req.Role != targetUser.Role {
-		if !currentUser.CanManageRole(req.Role) {
+		if !userService.CanManageRole(currentUser, req.Role) {
 			response.Error(c, http.StatusForbidden, "无权设置该角色")
 			return
 		}
-		if req.Role == RoleAdmin && !currentUser.IsSuperAdmin() {
-			response.Error(c, http.StatusForbidden, "只有超级管理员可以设置管理员角色")
+		exists, err := userService.RoleExists(currentUser.CompanyID, req.Role)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, "校验角色失败")
+			return
+		}
+		if !exists {
+			response.Error(c, http.StatusBadRequest, "角色不存在，请先在角色管理中创建")
+			return
+		}
+		roleDef, err := userService.GetRoleDefinitionByCode(currentUser.CompanyID, req.Role)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, "校验角色失败")
+			return
+		}
+		if roleDef != nil && roleDef.Enabled != 1 {
+			response.Error(c, http.StatusBadRequest, "角色已禁用，不能分配给用户")
 			return
 		}
 		if targetUser.IsSuperAdmin() {

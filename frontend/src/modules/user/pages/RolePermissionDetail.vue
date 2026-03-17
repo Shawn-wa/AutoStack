@@ -15,23 +15,13 @@ const userStore = useUserStore()
 const rolePermissionsData = ref<RolePermissionsResult | null>(null)
 const savingRolePermissions = ref(false)
 
-const selectedRole = computed<'super_admin' | 'admin' | 'user'>(() => {
-  const raw = String(route.params.role || 'user')
-  if (raw === 'super_admin' || raw === 'admin' || raw === 'user') return raw
-  return 'user'
-})
+const selectedRole = computed<string>(() => String(route.params.role || ''))
 
 const roleNameMap: Record<string, string> = {
   super_admin: '超级管理员',
   admin: '管理员',
   user: '普通用户'
 }
-
-const editableRoles = computed(() => {
-  if (userStore.isSuperAdmin) return ['admin', 'user']
-  if (userStore.isAdmin) return ['user']
-  return []
-})
 
 const rolePermissionTree = computed<PermissionRouteNode[]>(() => rolePermissionsData.value?.route_tree || [])
 
@@ -43,7 +33,12 @@ const selectedRolePermissions = computed<string[]>(() => {
 const selectedPermissionSet = computed(() => new Set(selectedRolePermissions.value))
 
 const isSuperAdminRoleSelected = computed(() => selectedRole.value === 'super_admin')
-const canEditSelectedRolePermissions = computed(() => !isSuperAdminRoleSelected.value && editableRoles.value.includes(selectedRole.value))
+const canEditSelectedRolePermissions = computed(() => {
+  if (isSuperAdminRoleSelected.value) return false
+  if (userStore.isSuperAdmin) return true
+  if (userStore.isAdmin) return selectedRole.value !== 'admin'
+  return false
+})
 
 const actionLabelMap: Record<string, string> = {
   create: '添加',
@@ -110,7 +105,7 @@ const handleBack = () => {
 }
 
 onMounted(() => {
-  if (selectedRole.value === 'super_admin') {
+  if (!selectedRole.value || selectedRole.value === 'super_admin') {
     ElMessage.warning('超级管理员默认拥有全部权限，无需在页面管理')
     handleBack()
     return
@@ -124,7 +119,7 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h1 class="page-title">角色权限详情</h1>
-        <p class="page-desc">{{ roleNameMap[selectedRole] }} - 权限配置</p>
+        <p class="page-desc">{{ roleNameMap[selectedRole] || selectedRole }} - 权限配置</p>
       </div>
       <el-button :icon="ArrowLeft" @click="handleBack">返回角色列表</el-button>
     </div>
@@ -132,7 +127,7 @@ onMounted(() => {
     <div class="content-card">
       <div class="role-permission-tip">
         <span v-if="isSuperAdminRoleSelected">`super_admin` 默认拥有全部权限，且不可编辑。</span>
-        <span v-else-if="!canEditSelectedRolePermissions">当前账号无权编辑 {{ roleNameMap[selectedRole] }} 的权限。</span>
+        <span v-else-if="!canEditSelectedRolePermissions">当前账号无权编辑 {{ roleNameMap[selectedRole] || selectedRole }} 的权限。</span>
         <span v-else>仅支持按一级/二级目录做批量勾选，动作维度请单独勾选。</span>
       </div>
 

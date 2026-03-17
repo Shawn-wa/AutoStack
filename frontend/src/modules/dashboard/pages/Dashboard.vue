@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import { getDashboardStats, getRecentOrders, getOrderTrend, initDashboardStats, refreshDashboardStats, type DashboardStats, type RecentOrder, type OrderTrendItem } from '@/modules/order/api'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { cacheStore } from '@/utils/storage'
+import { useThemeStore } from '@/stores/theme'
 import * as echarts from 'echarts'
 
 const STATS_CACHE_KEY = 'dashboard_stats'
@@ -13,6 +14,7 @@ const STATS_CACHE_MINUTES = 30 // 缓存30分钟
 defineOptions({ name: 'Dashboard' })
 
 const router = useRouter()
+const themeStore = useThemeStore()
 const loading = ref(false)
 const stats = ref<DashboardStats | null>(null)
 const recentOrders = ref<RecentOrder[]>([])
@@ -279,19 +281,26 @@ const initChart = () => {
   })
   const counts = trendData.value.map(item => item.count)
   const amounts = trendData.value.map(item => item.amount)
+  const isDark = themeStore.isDark
+  const axisLineColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.35)'
+  const axisLabelColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(30,41,59,0.72)'
+  const splitLineColorX = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(100,116,139,0.25)'
+  const splitLineColorY = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(100,116,139,0.30)'
+  const axisNameColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(30,41,59,0.72)'
   
   const option: echarts.EChartsOption = {
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(30, 30, 30, 0.95)',
-      borderColor: '#333',
+      backgroundColor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255,255,255,0.96)',
+      borderColor: isDark ? '#333' : 'rgba(148,163,184,0.5)',
       borderWidth: 1,
       textStyle: {
-        color: '#fff'
+        color: isDark ? '#fff' : '#111827'
       },
       formatter: (params: any) => {
         const index = params[0].dataIndex
         const item = trendData.value[index]
+        const amountText = formatAmount(item.amount, currentTrendCurrency.value)
         return `<div style="padding: 4px;">
           <div style="color: #999; margin-bottom: 6px; font-size: 12px;">${item.date}</div>
           <div style="display: flex; justify-content: space-between; gap: 16px; margin-bottom: 4px;">
@@ -300,15 +309,15 @@ const initChart = () => {
           </div>
           <div style="display: flex; justify-content: space-between; gap: 16px;">
             <span style="color: #ffd700;">● 销售额</span>
-            <span style="font-weight: bold;">₽${item.amount.toLocaleString()}</span>
+            <span style="font-weight: bold;">${amountText}</span>
           </div>
         </div>`
       }
     },
     legend: {
       data: ['订单量', '销售额'],
-      bottom: 0,
-      textStyle: { color: 'rgba(255, 255, 255, 0.6)', fontSize: 11 },
+      bottom: 2,
+      textStyle: { color: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(30,41,59,0.72)', fontSize: 11 },
       itemWidth: 12,
       itemHeight: 12
     },
@@ -316,25 +325,26 @@ const initChart = () => {
       left: 40,
       right: 60,
       top: 30,
-      bottom: 30
+      bottom: 60
     },
     xAxis: {
       type: 'category',
       data: dates,
       axisLine: {
         show: true,
-        lineStyle: { color: 'rgba(255,255,255,0.2)' }
+        lineStyle: { color: axisLineColor }
       },
       axisLabel: {
-        color: 'rgba(255,255,255,0.5)',
+        color: axisLabelColor,
         fontSize: 10,
+        margin: 14,
         interval: Math.floor(dates.length / 10)
       },
       axisTick: { show: false },
       splitLine: {
         show: true,
         lineStyle: { 
-          color: 'rgba(255,255,255,0.06)',
+          color: splitLineColorX,
           type: 'dashed'
         }
       }
@@ -343,35 +353,35 @@ const initChart = () => {
       {
         type: 'value',
         name: '订单量',
-        nameTextStyle: { color: 'rgba(255,255,255,0.4)', padding: [0, 20, 0, 0] },
+        nameTextStyle: { color: axisNameColor, padding: [0, 20, 0, 0] },
         splitNumber: 5,
         splitLine: {
           show: true,
           lineStyle: { 
-            color: 'rgba(255,255,255,0.08)',
+            color: splitLineColorY,
             type: 'dashed'
           }
         },
         axisLine: { 
           show: true,
-          lineStyle: { color: 'rgba(255,255,255,0.1)' }
+          lineStyle: { color: axisLineColor }
         },
         axisLabel: {
-          color: 'rgba(255,255,255,0.5)',
+          color: axisLabelColor,
           fontSize: 11
         }
       },
       {
         type: 'value',
         name: '销售额',
-        nameTextStyle: { color: 'rgba(255,255,255,0.4)', padding: [0, 0, 0, 20] },
+        nameTextStyle: { color: axisNameColor, padding: [0, 0, 0, 20] },
         splitLine: { show: false },
         axisLine: { 
           show: true,
-          lineStyle: { color: 'rgba(255,255,255,0.1)' }
+          lineStyle: { color: axisLineColor }
         },
         axisLabel: {
-          color: 'rgba(255,255,255,0.5)',
+          color: axisLabelColor,
           fontSize: 10,
           formatter: (value: number) => value >= 1000 ? `${(value/1000).toFixed(0)}k` : `${value}`
         }
@@ -433,6 +443,12 @@ const handleResize = () => {
 
 // 监听主题变化
 watch(() => trendData.value, () => {
+  if (chartRef.value) {
+    initChart()
+  }
+})
+
+watch(() => themeStore.isDark, () => {
   if (chartRef.value) {
     initChart()
   }
@@ -579,7 +595,7 @@ onUnmounted(() => {
             </div>
             <span class="trend-period">近30天</span>
             <button class="refresh-btn" @click="refreshTrendStats" :disabled="trendRefreshing">
-              <span class="refresh-icon" :class="{ 'spinning': trendRefreshing }">🔄</span>
+              <span class="refresh-icon" :class="{ 'spinning': trendRefreshing }">↻</span>
             </button>
           </div>
         </div>
@@ -915,18 +931,31 @@ onUnmounted(() => {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 4px 8px;
+    color: var(--text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
+    line-height: 1;
     
     &:hover:not(:disabled) {
       background: var(--color-primary);
       border-color: var(--color-primary);
-      .refresh-icon {
-        filter: brightness(10);
-      }
+      color: #fff;
+    }
+
+    &:focus {
+      outline: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 1px;
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.96);
     }
     
     &:disabled {
@@ -937,6 +966,7 @@ onUnmounted(() => {
     .refresh-icon {
       font-size: 14px;
       display: inline-block;
+      font-family: inherit;
       
       &.spinning {
         animation: spin 1s linear infinite;

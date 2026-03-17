@@ -23,6 +23,11 @@ var (
 	ErrPermissionDenied   = errors.New("权限不足")
 	ErrCannotModifySelf   = errors.New("不能修改自己")
 	ErrCompanyNotFound    = errors.New("企业不存在")
+	ErrRoleExists         = errors.New("角色已存在")
+	ErrRoleNameExists     = errors.New("角色名已存在")
+	ErrRoleNotFound       = errors.New("角色不存在")
+	ErrRoleDisabled       = errors.New("角色已禁用")
+	ErrRoleInUse          = errors.New("角色已被用户使用")
 )
 
 // Service 用户服务
@@ -49,6 +54,23 @@ func (s *Service) CreateUser(username, password, email, role string, companyID u
 // CreateUserWithPermissions 创建用户（管理员创建，权限按角色模板继承）
 func (s *Service) CreateUserWithPermissions(username, password, email, role string, permissions []string, createdBy *uint, companyID uint) (*User, error) {
 	ctx := context.Background()
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return nil, ErrRoleNotFound
+	}
+
+	if role != RoleSuperAdmin {
+		roleDef, err := s.GetRoleDefinitionByCode(companyID, role)
+		if err != nil {
+			return nil, err
+		}
+		if roleDef == nil {
+			return nil, ErrRoleNotFound
+		}
+		if roleDef.Enabled != 1 {
+			return nil, ErrRoleDisabled
+		}
+	}
 
 	count, err := s.userRepo.CountByUsernameOrEmail(ctx, username, email)
 	if err != nil {
@@ -135,6 +157,9 @@ func (s *Service) RegisterWithCompany(username, password, email, companyName str
 
 	// 初始化该企业的默认角色权限模板
 	if err := s.EnsureDefaultRolePermissions(resultCompany.ID); err != nil {
+		return nil, nil, err
+	}
+	if err := s.EnsureDefaultRoles(resultCompany.ID); err != nil {
 		return nil, nil, err
 	}
 
@@ -249,7 +274,11 @@ func (s *Service) EnsureDefaultRolePermissions(companyID uint) error {
 	ctx := context.Background()
 	db := repository.GetDB(ctx, s.txManager.DB())
 
-	if err := s.ensurePermissionCatalog(ctx); err != nil {
+	if err := s.EnsureDefaultRoles(companyID); err != nil {
+		return err
+	}
+
+	if err := s.ensurePermissionCatalogInitialized(ctx); err != nil {
 		return err
 	}
 	codeIDMap, err := s.getPermissionCodeIDMap(ctx)
@@ -257,7 +286,10 @@ func (s *Service) EnsureDefaultRolePermissions(companyID uint) error {
 		return err
 	}
 
-	roles := []string{RoleAdmin, RoleUser}
+	roles, err := s.ListRoleCodes(companyID)
+	if err != nil {
+		return err
+	}
 	for _, role := range roles {
 		var count int64
 		if err := db.Model(&RolePermissionBinding{}).
@@ -300,10 +332,15 @@ func (s *Service) GetRolePermissions(companyID uint) (map[string][]string, error
 		return nil, err
 	}
 
-	result := map[string][]string{
-		RoleSuperAdmin: allCodes,
+	result := map[string][]string{RoleSuperAdmin: allCodes}
+	roles, err := s.ListRoleCodes(companyID)
+	if err != nil {
+		return nil, err
 	}
-	for _, role := range []string{RoleAdmin, RoleUser} {
+	for _, role := range roles {
+		if role == RoleSuperAdmin {
+			continue
+		}
 		codes, err := s.getRolePermissionCodes(ctx, companyID, role)
 		if err != nil {
 			return nil, err
@@ -333,14 +370,19 @@ func (s *Service) GetEffectivePermissions(u *User) []string {
 
 // UpdateRolePermissions 更新角色权限（仅角色维度管理）
 func (s *Service) UpdateRolePermissions(currentUser *User, role string, permissions []string) error {
+	role = strings.TrimSpace(role)
 	if role == RoleSuperAdmin {
 		return ErrPermissionDenied
 	}
-	if !currentUser.CanManageRole(role) {
+	if !s.CanManageRole(currentUser, role) {
 		return ErrPermissionDenied
 	}
-	if role == RoleAdmin && !currentUser.IsSuperAdmin() {
-		return ErrPermissionDenied
+	ok, err := s.RoleExists(currentUser.CompanyID, role)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrRoleNotFound
 	}
 
 	if err := s.ValidatePermissions(currentUser, role, permissions); err != nil {
@@ -622,7 +664,7 @@ func isMissingTableOrColumnError(err error) bool {
 // GetAllPermissions 获取所有权限定义
 func (s *Service) GetAllPermissions() PermissionsResponse {
 	ctx := context.Background()
-	if err := s.ensurePermissionCatalog(ctx); err != nil {
+	if err := s.ensurePermissionCatalogInitialized(ctx); err != nil {
 		modules := make(map[string][]PermissionDef)
 		for _, p := range AllPermissions {
 			modules[p.Module] = append(modules[p.Module], p)
@@ -695,7 +737,7 @@ func (s *Service) GetAllPermissions() PermissionsResponse {
 // GetPermissionRouteTree 获取权限路由树（数据库）
 func (s *Service) GetPermissionRouteTree() ([]PermissionRouteNode, error) {
 	ctx := context.Background()
-	if err := s.ensurePermissionCatalog(ctx); err != nil {
+	if err := s.ensurePermissionCatalogInitialized(ctx); err != nil {
 		return nil, err
 	}
 
@@ -723,16 +765,17 @@ func (s *Service) GetPermissionRouteTree() ([]PermissionRouteNode, error) {
 		nodeByID[r.ID] = n
 	}
 
-	for id, n := range nodeByID {
-		p := permByID[id]
-		if p.ParentID != nil {
-			if _, ok := nodeByID[*p.ParentID]; ok {
-				children[*p.ParentID] = append(children[*p.ParentID], id)
+	for _, r := range rows {
+		if r.NodeType == "action" {
+			continue
+		}
+		if r.ParentID != nil {
+			if _, ok := nodeByID[*r.ParentID]; ok {
+				children[*r.ParentID] = append(children[*r.ParentID], r.ID)
 				continue
 			}
 		}
-		roots = append(roots, id)
-		_ = n
+		roots = append(roots, r.ID)
 	}
 
 	getModuleKey := func(parentID uint) string {
@@ -783,6 +826,9 @@ func (s *Service) GetPermissionRouteTree() ([]PermissionRouteNode, error) {
 
 	result := make([]PermissionRouteNode, 0, len(roots))
 	for _, rid := range roots {
+		if _, ok := nodeByID[rid]; !ok {
+			continue
+		}
 		result = append(result, build(rid, 1))
 	}
 	return result, nil
@@ -835,7 +881,7 @@ func (s *Service) GetAssignablePermissions(currentUser *User, targetRole string)
 
 // ValidatePermissions 验证权限是否可被授予
 func (s *Service) ValidatePermissions(currentUser *User, targetRole string, permissions []string) error {
-	if err := s.ensurePermissionCatalog(context.Background()); err != nil {
+	if err := s.ensurePermissionCatalogInitialized(context.Background()); err != nil {
 		return err
 	}
 	assignable := s.GetAssignablePermissions(currentUser, targetRole)
@@ -850,6 +896,305 @@ func (s *Service) ValidatePermissions(currentUser *User, targetRole string, perm
 		}
 	}
 	return nil
+}
+
+// EnsureDefaultRoles 初始化企业默认角色定义
+func (s *Service) EnsureDefaultRoles(companyID uint) error {
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	defaults := []RoleDefinition{
+		{CompanyID: companyID, Role: RoleAdmin, RoleName: "管理员", Desc: "管理员", Enabled: 1, IsSystem: 1},
+		{CompanyID: companyID, Role: RoleUser, RoleName: "普通用户", Desc: "普通用户", Enabled: 1, IsSystem: 1},
+	}
+	for _, d := range defaults {
+		var existing RoleDefinition
+		err := db.Where("company_id = ? AND role = ?", companyID, d.Role).First(&existing).Error
+		if err == nil {
+			updates := map[string]interface{}{
+				"enabled": d.Enabled,
+			}
+			if strings.TrimSpace(existing.RoleName) == "" {
+				updates["role_name"] = d.RoleName
+			}
+			if strings.TrimSpace(existing.Desc) == "" {
+				updates["desc"] = d.Desc
+			}
+			if len(updates) > 0 {
+				_ = db.Model(&RoleDefinition{}).Where("id = ?", existing.ID).Updates(updates).Error
+			}
+			continue
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err := db.Create(&d).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListRoleCodes 返回企业可分配角色编码（不含 super_admin）
+func (s *Service) ListRoleCodes(companyID uint) ([]string, error) {
+	ctx := context.Background()
+	if err := s.EnsureDefaultRoles(companyID); err != nil {
+		return nil, err
+	}
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []RoleDefinition
+	if err := db.Where("company_id = ?", companyID).Order("is_system DESC, role ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]string, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, r.Role)
+	}
+	return result, nil
+}
+
+func (s *Service) RoleExists(companyID uint, role string) (bool, error) {
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var count int64
+	if err := db.Model(&RoleDefinition{}).Where("company_id = ? AND role = ?", companyID, role).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (s *Service) RoleNameExists(companyID uint, roleName string, excludeID uint) (bool, error) {
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	query := db.Model(&RoleDefinition{}).Where("company_id = ? AND role_name = ?", companyID, roleName)
+	if excludeID > 0 {
+		query = query.Where("id <> ?", excludeID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (s *Service) GetRoleDefinitionByCode(companyID uint, role string) (*RoleDefinition, error) {
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var item RoleDefinition
+	err := db.Where("company_id = ? AND role = ?", companyID, role).First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+// CanManageRole 是否可管理目标角色
+func (s *Service) CanManageRole(currentUser *User, targetRole string) bool {
+	if currentUser == nil {
+		return false
+	}
+	if currentUser.IsSuperAdmin() {
+		return targetRole != RoleSuperAdmin
+	}
+	if currentUser.Role == RoleAdmin {
+		if targetRole == RoleSuperAdmin || targetRole == RoleAdmin {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// ListRoles 角色列表（含备注和权限数）
+func (s *Service) ListRoles(companyID uint) ([]RoleItem, error) {
+	ctx := context.Background()
+	if err := s.EnsureDefaultRoles(companyID); err != nil {
+		return nil, err
+	}
+	rolePerms, err := s.GetRolePermissions(companyID)
+	if err != nil {
+		return nil, err
+	}
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []RoleDefinition
+	if err := db.Where("company_id = ?", companyID).Order("is_system DESC, role ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]RoleItem, 0, len(rows))
+	for _, r := range rows {
+		perms := rolePerms[r.Role]
+		result = append(result, RoleItem{
+			ID:              r.ID,
+			Role:            r.Role,
+			RoleName:        r.RoleName,
+			Description:     r.Desc,
+			Enabled:         r.Enabled == 1,
+			IsSystem:        r.IsSystem == 1,
+			PermissionCount: len(perms),
+		})
+	}
+	return result, nil
+}
+
+// CreateRole 创建自定义角色
+func (s *Service) CreateRole(currentUser *User, role, roleName, description string, enabled int) error {
+	if currentUser == nil || !currentUser.IsAdmin() {
+		return ErrPermissionDenied
+	}
+	role = strings.ToLower(strings.TrimSpace(role))
+	roleName = strings.TrimSpace(roleName)
+	if role == "" || roleName == "" || role == RoleSuperAdmin {
+		return ErrPermissionDenied
+	}
+	ok, err := s.RoleExists(currentUser.CompanyID, role)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return ErrRoleExists
+	}
+	nameExists, err := s.RoleNameExists(currentUser.CompanyID, roleName, 0)
+	if err != nil {
+		return err
+	}
+	if nameExists {
+		return ErrRoleNameExists
+	}
+	if enabled != 0 && enabled != 1 {
+		enabled = 1
+	}
+
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	roleDef := RoleDefinition{
+		CompanyID: currentUser.CompanyID,
+		Role:      role,
+		RoleName:  roleName,
+		Desc:      strings.TrimSpace(description),
+		Enabled:   enabled,
+		IsSystem:  0,
+	}
+	if err := db.Create(&roleDef).Error; err != nil {
+		return err
+	}
+
+	// 新角色默认复用普通用户权限
+	codeIDMap, err := s.getPermissionCodeIDMap(ctx)
+	if err != nil {
+		return err
+	}
+	return s.replaceRoleBindings(ctx, currentUser.CompanyID, role, DefaultRolePermissionsByRole(RoleUser), codeIDMap)
+}
+
+func (s *Service) UpdateRole(currentUser *User, id uint, role, roleName, description string, enabled int) error {
+	if currentUser == nil || !currentUser.IsAdmin() {
+		return ErrPermissionDenied
+	}
+	role = strings.ToLower(strings.TrimSpace(role))
+	roleName = strings.TrimSpace(roleName)
+	if role == "" || roleName == "" || role == RoleSuperAdmin {
+		return ErrPermissionDenied
+	}
+
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var existing RoleDefinition
+	if err := db.Where("id = ? AND company_id = ?", id, currentUser.CompanyID).First(&existing).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrRoleNotFound
+		}
+		return err
+	}
+	if !s.CanManageRole(currentUser, existing.Role) {
+		return ErrPermissionDenied
+	}
+	if existing.Role != role && !s.CanManageRole(currentUser, role) {
+		return ErrPermissionDenied
+	}
+
+	codeExists, err := s.RoleExists(currentUser.CompanyID, role)
+	if err != nil {
+		return err
+	}
+	if codeExists && existing.Role != role {
+		return ErrRoleExists
+	}
+	nameExists, err := s.RoleNameExists(currentUser.CompanyID, roleName, existing.ID)
+	if err != nil {
+		return err
+	}
+	if nameExists {
+		return ErrRoleNameExists
+	}
+	if enabled != 0 && enabled != 1 {
+		enabled = existing.Enabled
+	}
+
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		tx := repository.GetDB(txCtx, s.txManager.DB())
+		if err := tx.Model(&RoleDefinition{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+			"role":      role,
+			"role_name": roleName,
+			"desc":      strings.TrimSpace(description),
+			"enabled":   enabled,
+		}).Error; err != nil {
+			return err
+		}
+		if existing.Role != role {
+			if err := tx.Model(&RolePermissionBinding{}).Where("company_id = ? AND role = ?", currentUser.CompanyID, existing.Role).Update("role", role).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&User{}).Where("company_id = ? AND role = ?", currentUser.CompanyID, existing.Role).Update("role", role).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&RolePermission{}).Where("company_id = ? AND role = ?", currentUser.CompanyID, existing.Role).Update("role", role).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Service) DeleteRole(currentUser *User, id uint) error {
+	if currentUser == nil || !currentUser.IsAdmin() {
+		return ErrPermissionDenied
+	}
+	ctx := context.Background()
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var existing RoleDefinition
+	if err := db.Where("id = ? AND company_id = ?", id, currentUser.CompanyID).First(&existing).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrRoleNotFound
+		}
+		return err
+	}
+	if !s.CanManageRole(currentUser, existing.Role) {
+		return ErrPermissionDenied
+	}
+
+	var userCount int64
+	if err := db.Model(&User{}).Where("company_id = ? AND role = ?", currentUser.CompanyID, existing.Role).Count(&userCount).Error; err != nil {
+		return err
+	}
+	if userCount > 0 {
+		return ErrRoleInUse
+	}
+
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		tx := repository.GetDB(txCtx, s.txManager.DB())
+		if err := tx.Where("company_id = ? AND role = ?", currentUser.CompanyID, existing.Role).Delete(&RolePermissionBinding{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("company_id = ? AND role = ?", currentUser.CompanyID, existing.Role).Delete(&RolePermission{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&RoleDefinition{}, existing.ID).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (s *Service) ensurePermissionCatalog(ctx context.Context) error {
@@ -944,6 +1289,167 @@ func (s *Service) ensurePermissionCatalog(ctx context.Context) error {
 	})
 }
 
+// ensurePermissionCatalogInitialized 仅在权限目录为空时做一次初始化，避免页面读取触发回写
+func (s *Service) ensurePermissionCatalogInitialized(ctx context.Context) error {
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var count int64
+	if err := db.Model(&Permission{}).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		if err := s.migrateReportHierarchy(ctx); err != nil {
+			return err
+		}
+		if err := s.migratePermissionDisplayNames(ctx); err != nil {
+			return err
+		}
+		return s.pruneRemovedPermissionNodes(ctx)
+	}
+	if err := s.ensurePermissionCatalog(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateReportHierarchy(ctx); err != nil {
+		return err
+	}
+	if err := s.migratePermissionDisplayNames(ctx); err != nil {
+		return err
+	}
+	return s.pruneRemovedPermissionNodes(ctx)
+}
+
+// migrateReportHierarchy 将财务/结算节点迁移到报表一级目录（幂等）
+func (s *Service) migrateReportHierarchy(ctx context.Context) error {
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		tx := repository.GetDB(txCtx, s.txManager.DB())
+
+		var report Permission
+		err := tx.Where("node_key = ? AND node_type = ?", userRepo.RouteReport, "module").First(&report).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			var maxSort int
+			_ = tx.Model(&Permission{}).Where("node_type = ? AND parent_id IS NULL", "module").Select("COALESCE(MAX(sort), 0)").Scan(&maxSort).Error
+			report = Permission{
+				NodeKey:  userRepo.RouteReport,
+				Name:     "报表",
+				NodeType: "module",
+				Sort:     maxSort + 1,
+				Enabled:  1,
+			}
+			if err := tx.Create(&report).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+
+		routeKeys := []string{userRepo.RouteOrderCashFlow, userRepo.RouteOrderSettlement}
+		if err := tx.Model(&Permission{}).
+			Where("node_key IN ? AND node_type = ?", routeKeys, "route").
+			Updates(map[string]interface{}{
+				"parent_id":  report.ID,
+				"node_type":  "route",
+				"enabled":    1,
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// migratePermissionDisplayNames 同步目录展示名称到数据库（幂等）
+func (s *Service) migratePermissionDisplayNames(ctx context.Context) error {
+	db := repository.GetDB(ctx, s.txManager.DB())
+	updates := map[string]string{
+		userRepo.RouteWarehouse: "仓库",
+		userRepo.RouteShipping:  "物流",
+	}
+	for key, name := range updates {
+		if err := db.Model(&Permission{}).
+			Where("node_key = ? AND node_type = ?", key, "module").
+			Updates(map[string]interface{}{
+				"name":       name,
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+			}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pruneRemovedPermissionNodes 删除已下线功能对应的历史权限节点及绑定
+func (s *Service) pruneRemovedPermissionNodes(ctx context.Context) error {
+	db := repository.GetDB(ctx, s.txManager.DB())
+	var rows []Permission
+	if err := db.Find(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	removedPrefixes := []string{
+		"route:system.projects:",
+		"route:system.deployments:",
+		"route:system.templates:",
+	}
+	removedRouteKeys := map[string]struct{}{
+		"system.projects":    {},
+		"system.deployments": {},
+		"system.templates":   {},
+	}
+
+	children := make(map[uint][]uint, len(rows))
+	for _, r := range rows {
+		if r.ParentID != nil {
+			children[*r.ParentID] = append(children[*r.ParentID], r.ID)
+		}
+	}
+
+	toDelete := make(map[uint]struct{})
+	var mark func(id uint)
+	mark = func(id uint) {
+		if _, ok := toDelete[id]; ok {
+			return
+		}
+		toDelete[id] = struct{}{}
+		for _, cid := range children[id] {
+			mark(cid)
+		}
+	}
+
+	for _, r := range rows {
+		if _, ok := removedRouteKeys[r.NodeKey]; ok {
+			mark(r.ID)
+			continue
+		}
+		for _, p := range removedPrefixes {
+			if strings.HasPrefix(r.NodeKey, p) || strings.HasPrefix(r.Code, p) {
+				mark(r.ID)
+				break
+			}
+		}
+	}
+
+	if len(toDelete) == 0 {
+		return nil
+	}
+	ids := make([]uint, 0, len(toDelete))
+	for id := range toDelete {
+		ids = append(ids, id)
+	}
+
+	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		tx := repository.GetDB(txCtx, s.txManager.DB())
+		if err := tx.Where("permission_id IN ?", ids).Delete(&RolePermissionBinding{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id IN ?", ids).Delete(&Permission{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (s *Service) getPermissionCodeIDMap(ctx context.Context) (map[string]uint, error) {
 	db := repository.GetDB(ctx, s.txManager.DB())
 	var rows []Permission
@@ -1027,7 +1533,7 @@ func (s *Service) CanManageUser(currentUser *User, targetUser *User) bool {
 	if currentUser.CompanyID != targetUser.CompanyID {
 		return false
 	}
-	return currentUser.CanManageRole(targetUser.Role)
+	return s.CanManageRole(currentUser, targetUser.Role)
 }
 
 // ========== 包级函数（保持向后兼容） ==========

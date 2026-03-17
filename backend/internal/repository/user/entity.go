@@ -32,6 +32,7 @@ const (
 	RouteDashboard = "dashboard"
 	RouteProduct   = "product"
 	RouteOrder     = "order"
+	RouteReport    = "report"
 	RouteWarehouse = "warehouse"
 	RouteShipping  = "shipping"
 	RouteSystem    = "system"
@@ -53,9 +54,6 @@ const (
 	RouteShippingTemplates  = "shipping.templates"
 	RouteSystemUsers        = "system.users"
 	RouteSystemRoles        = "system.roles"
-	RouteSystemProjects     = "system.projects"
-	RouteSystemDeployments  = "system.deployments"
-	RouteSystemTemplates    = "system.templates"
 )
 
 // 兼容旧逻辑：用户管理可见权限（read）
@@ -139,22 +137,29 @@ var PermissionRouteTree = []PermissionRouteNode{
 		Children: []PermissionRouteNode{
 			{Key: RouteProductLocal, Name: "系统产品", Level: 2, Permissions: permDefs(RouteProduct, RouteProductLocal, "系统产品", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
 			{Key: RouteProductPlatform, Name: "平台产品", Level: 2, Permissions: permDefs(RouteProduct, RouteProductPlatform, "平台产品", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
-			{Key: RouteProductSummary, Name: "订单汇总", Level: 2, Permissions: permDefs(RouteProduct, RouteProductSummary, "订单汇总", PermActionRead)},
 		},
 	},
 	{
 		Key:   RouteOrder,
-		Name:  "订单管理",
+		Name:  "订单",
 		Level: 1,
 		Children: []PermissionRouteNode{
 			{Key: RouteOrderOrders, Name: "订单列表", Level: 2, Permissions: permDefs(RouteOrder, RouteOrderOrders, "订单列表", PermActionRead, PermActionUpdate)},
-			{Key: RouteOrderCashFlow, Name: "财务报告", Level: 2, Permissions: permDefs(RouteOrder, RouteOrderCashFlow, "财务报告", PermActionRead)},
-			{Key: RouteOrderSettlement, Name: "结算报告", Level: 2, Permissions: permDefs(RouteOrder, RouteOrderSettlement, "结算报告", PermActionRead)},
+			{Key: RouteProductSummary, Name: "订单汇总", Level: 2, Permissions: permDefs(RouteOrder, RouteProductSummary, "订单汇总", PermActionRead)},
+		},
+	},
+	{
+		Key:   RouteReport,
+		Name:  "报表",
+		Level: 1,
+		Children: []PermissionRouteNode{
+			{Key: RouteOrderCashFlow, Name: "财务报告", Level: 2, Permissions: permDefs(RouteReport, RouteOrderCashFlow, "财务报告", PermActionRead)},
+			{Key: RouteOrderSettlement, Name: "结算报告", Level: 2, Permissions: permDefs(RouteReport, RouteOrderSettlement, "结算报告", PermActionRead)},
 		},
 	},
 	{
 		Key:   RouteWarehouse,
-		Name:  "仓库管理",
+		Name:  "仓库",
 		Level: 1,
 		Children: []PermissionRouteNode{
 			{Key: RouteWarehouseList, Name: "仓库列表", Level: 2, Permissions: permDefs(RouteWarehouse, RouteWarehouseList, "仓库列表", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
@@ -164,7 +169,7 @@ var PermissionRouteTree = []PermissionRouteNode{
 	},
 	{
 		Key:   RouteShipping,
-		Name:  "物流管理",
+		Name:  "物流",
 		Level: 1,
 		Children: []PermissionRouteNode{
 			{Key: RouteShippingTemplates, Name: "运费模板", Level: 2, Permissions: permDefs(RouteShipping, RouteShippingTemplates, "运费模板", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
@@ -178,9 +183,6 @@ var PermissionRouteTree = []PermissionRouteNode{
 			{Key: RouteOrderAuths, Name: "平台授权", Level: 2, Permissions: permDefs(RouteSystem, RouteOrderAuths, "平台授权", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
 			{Key: RouteSystemUsers, Name: "用户管理", Level: 2, Permissions: permDefs(RouteSystem, RouteSystemUsers, "用户管理", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
 			{Key: RouteSystemRoles, Name: "角色管理", Level: 2, Permissions: permDefs(RouteSystem, RouteSystemRoles, "角色管理", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
-			{Key: RouteSystemProjects, Name: "项目管理", Level: 2, Permissions: permDefs(RouteSystem, RouteSystemProjects, "项目管理", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
-			{Key: RouteSystemDeployments, Name: "部署管理", Level: 2, Permissions: permDefs(RouteSystem, RouteSystemDeployments, "部署管理", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
-			{Key: RouteSystemTemplates, Name: "模板市场", Level: 2, Permissions: permDefs(RouteSystem, RouteSystemTemplates, "模板市场", PermActionCreate, PermActionRead, PermActionUpdate, PermActionDelete)},
 		},
 	},
 }
@@ -244,7 +246,7 @@ type User struct {
 	Username     string    `gorm:"uniqueIndex;size:50;not null" json:"username"`
 	PasswordHash string    `gorm:"size:255;not null" json:"-"`
 	Email        string    `gorm:"uniqueIndex;size:100;not null" json:"email"`
-	Role         string    `gorm:"size:20;default:user" json:"role"`
+	Role         string    `gorm:"size:50;default:user" json:"role"`
 	Status       int       `gorm:"default:1" json:"status"`
 	Permissions  string    `gorm:"type:text" json:"-"`
 	CreatedBy    *uint     `gorm:"index" json:"created_by"`
@@ -308,7 +310,7 @@ func (u *User) SetPermissions(perms []string) error {
 type RolePermission struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	CompanyID   uint      `gorm:"not null;index:idx_company_role,unique" json:"company_id"`
-	Role        string    `gorm:"size:20;not null;index:idx_company_role,unique" json:"role"`
+	Role        string    `gorm:"size:50;not null;index:idx_company_role,unique" json:"role"`
 	Permissions string    `gorm:"type:text" json:"-"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -361,7 +363,7 @@ func (Permission) TableName() string {
 type RolePermissionBinding struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	CompanyID    uint      `gorm:"not null;index:idx_company_role_permission,unique" json:"company_id"`
-	Role         string    `gorm:"size:20;not null;index:idx_company_role_permission,unique;index" json:"role"`
+	Role         string    `gorm:"size:50;not null;index:idx_company_role_permission,unique;index" json:"role"`
 	PermissionID uint      `gorm:"not null;index:idx_company_role_permission,unique;index" json:"permission_id"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -369,6 +371,23 @@ type RolePermissionBinding struct {
 
 func (RolePermissionBinding) TableName() string {
 	return "role_permission_bindings"
+}
+
+// RoleDefinition 角色定义（支持自定义角色）
+type RoleDefinition struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	CompanyID uint      `gorm:"not null;index:idx_company_role_code,unique;index:idx_company_role_name" json:"company_id"`
+	Role      string    `gorm:"size:50;not null;index:idx_company_role_code,unique" json:"role"` // 角色编码
+	RoleName  string    `gorm:"size:60;not null;index:idx_company_role_name" json:"role_name"`   // 角色名
+	Desc      string    `gorm:"size:255;default:''" json:"description"`                          // 说明
+	Enabled   int       `gorm:"default:1;index" json:"enabled"`                                  // 1 启用，0 禁用
+	IsSystem  int       `gorm:"default:0;index" json:"is_system"`                                // 1 系统角色，0 自定义角色
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (RoleDefinition) TableName() string {
+	return "role_definitions"
 }
 
 // HasPermission 检查是否有某个权限

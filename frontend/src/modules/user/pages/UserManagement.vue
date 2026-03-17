@@ -7,12 +7,14 @@ defineOptions({ name: 'UserManagement' })
 
 import { 
   getUsers, 
+  getRoles,
   createUser, 
   updateUser, 
   deleteUser, 
   type UserInfo, 
   type UpdateUserParams,
-  type CreateUserParams
+  type CreateUserParams,
+  type RoleItem
 } from '@/modules/user/api'
 import { useUserStore } from '@/modules/auth/stores'
 import { formatDateTime } from '@/utils/format'
@@ -21,6 +23,7 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const tableData = ref<UserInfo[]>([])
+const roles = ref<RoleItem[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -52,14 +55,38 @@ const editForm = ref<UpdateUserParams & { id: number; username: string }>({
 })
 const editLoading = ref(false)
 
-// 角色选项（根据当前用户动态计算）
-const roleOptions = computed(() => {
-  const options = [{ label: '普通用户', value: 'user' }]
-  // 只有超级管理员可以创建/编辑管理员
-  if (userStore.isSuperAdmin) {
-    options.unshift({ label: '管理员', value: 'admin' })
+const roleNameMap = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {
+    super_admin: '超级管理员',
+    admin: '管理员',
+    user: '普通用户'
   }
-  return options
+  for (const role of roles.value) {
+    if (!map[role.role]) map[role.role] = role.role_name || role.role
+  }
+  return map
+})
+
+const filterRoleOptions = computed(() => {
+  return roles.value.map(role => ({
+    label: roleNameMap.value[role.role] || role.role,
+    value: role.role
+  }))
+})
+
+// 角色选项（用于创建/编辑，根据当前用户动态计算）
+const roleOptions = computed(() => {
+  return roles.value
+    .filter(role => {
+      if (!role.enabled) return false
+      if (userStore.isSuperAdmin) return role.role !== 'super_admin'
+      if (userStore.isAdmin) return role.role !== 'super_admin' && role.role !== 'admin'
+      return false
+    })
+    .map(role => ({
+      label: roleNameMap.value[role.role] || role.role,
+      value: role.role
+    }))
 })
 
 // 状态选项
@@ -67,6 +94,19 @@ const statusOptions = [
   { label: '正常', value: 1 },
   { label: '禁用', value: 0 }
 ]
+
+const fetchRoles = async () => {
+  try {
+    const res = await getRoles()
+    roles.value = res.data.list || []
+  } catch (error) {
+    console.error('获取角色列表失败', error)
+    roles.value = [
+      { id: 0, role: 'admin', role_name: '管理员', description: '管理员', enabled: true, is_system: true, permission_count: 0 },
+      { id: 0, role: 'user', role_name: '普通用户', description: '普通用户', enabled: true, is_system: true, permission_count: 0 }
+    ]
+  }
+}
 
 // 获取用户列表
 const fetchUsers = async () => {
@@ -248,8 +288,8 @@ const canManageUser = (row: UserInfo): boolean => {
   if (row.role === 'super_admin') return false
   // 超级管理员可以管理所有人
   if (userStore.isSuperAdmin) return true
-  // 管理员只能管理普通用户
-  if (userStore.isAdmin && row.role === 'user') return true
+  // 管理员可管理非 admin/super_admin 的角色
+  if (userStore.isAdmin && row.role !== 'admin' && row.role !== 'super_admin') return true
   return false
 }
 
@@ -264,11 +304,7 @@ const getRoleTagType = (role: string) => {
 
 // 获取角色显示名称
 const getRoleName = (role: string) => {
-  switch (role) {
-    case 'super_admin': return '超级管理员'
-    case 'admin': return '管理员'
-    default: return '普通用户'
-  }
+  return roleNameMap.value[role] || role
 }
 
 // 获取状态标签类型
@@ -277,6 +313,7 @@ const getStatusTagType = (status: number) => {
 }
 
 onMounted(() => {
+  fetchRoles()
   fetchUsers()
 })
 </script>
@@ -298,8 +335,12 @@ onMounted(() => {
         <el-form-item label="角色">
           <el-select v-model="filterRole" placeholder="全部角色" clearable style="width: 140px">
             <el-option label="超级管理员" value="super_admin" />
-            <el-option label="管理员" value="admin" />
-            <el-option label="普通用户" value="user" />
+            <el-option
+              v-for="item in filterRoleOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item>

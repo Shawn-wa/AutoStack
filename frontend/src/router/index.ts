@@ -30,24 +30,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '控制台', requiredPermission: 'route:dashboard.home:read' }
       },
       {
-        path: 'projects',
-        name: 'Projects',
-        component: () => import('@/modules/project/pages/Projects.vue'),
-        meta: { title: '项目管理', requiredPermission: 'route:system.projects:read' }
-      },
-      {
-        path: 'deployments',
-        name: 'Deployments',
-        component: () => import('@/modules/deployment/pages/Deployments.vue'),
-        meta: { title: '部署管理', requiredPermission: 'route:system.deployments:read' }
-      },
-      {
-        path: 'templates',
-        name: 'Templates',
-        component: () => import('@/modules/template/pages/Templates.vue'),
-        meta: { title: '模板市场', requiredPermission: 'route:system.templates:read' }
-      },
-      {
         path: 'users',
         name: 'UserManagement',
         component: () => import('@/modules/user/pages/UserManagement.vue'),

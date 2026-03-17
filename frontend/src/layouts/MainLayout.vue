@@ -363,27 +363,6 @@ const handleLogout = async () => {
           </button>
         </template>
       </nav>
-      
-      <div class="sidebar-footer">
-        <div class="user-info" v-show="!sidebarCollapsed">
-          <div class="user-avatar">{{ userInitial }}</div>
-          <div class="user-details">
-            <div class="user-name">{{ userStore.username }}</div>
-            <div class="user-role">{{ userRoleDisplay }}</div>
-          </div>
-          <button class="logout-btn" @click="handleLogout" title="退出登录">
-            ⏻
-          </button>
-        </div>
-        <button 
-          v-show="sidebarCollapsed" 
-          class="logout-btn-collapsed" 
-          @click="handleLogout" 
-          title="退出登录"
-        >
-          ⏻
-        </button>
-      </div>
     </aside>
     
     <!-- 主内容区 -->
@@ -452,7 +431,16 @@ const handleLogout = async () => {
           <button class="theme-toggle" @click="themeStore.toggleTheme" :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'">
             {{ themeStore.isDark ? '☀️' : '🌙' }}
           </button>
-          <span class="user-greeting">{{ userStore.companyName ? userStore.companyName + ' - ' : '' }}{{ userStore.username }}</span>
+          <div class="header-user">
+            <div class="user-avatar">{{ userInitial }}</div>
+            <div class="user-details">
+              <div class="user-name">{{ userStore.companyName ? userStore.companyName + ' - ' : '' }}{{ userStore.username }}</div>
+              <div class="user-role">{{ userRoleDisplay }}</div>
+            </div>
+            <button class="logout-btn" @click="handleLogout" title="退出登录">
+              ⏻
+            </button>
+          </div>
         </div>
       </header>
       
@@ -542,6 +530,8 @@ const handleLogout = async () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .nav-item {
@@ -635,11 +625,6 @@ const handleLogout = async () => {
   font-weight: 500;
 }
 
-.sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
 .user-info {
   display: flex;
   align-items: center;
@@ -697,21 +682,7 @@ const handleLogout = async () => {
 }
 
 .logout-btn-collapsed {
-  width: 100%;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 18px;
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    background: rgba(255, 77, 79, 0.1);
-    color: #ff4d4f;
-  }
+  display: none;
 }
 
 .main-content {
@@ -743,6 +714,12 @@ const handleLogout = async () => {
   gap: 16px;
 }
 
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .theme-toggle {
   width: 40px;
   height: 40px;
@@ -758,11 +735,6 @@ const handleLogout = async () => {
     background: var(--bg-hover);
     transform: rotate(15deg);
   }
-}
-
-.user-greeting {
-  font-size: 14px;
-  color: var(--text-secondary);
 }
 
 .content-wrapper {

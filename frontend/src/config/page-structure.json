@@ -25,6 +25,20 @@
         "path": "/product/platform-products",
         "name": "PlatformProducts",
         "permission": "route:product.platform_products:read"
+      }
+    ]
+  },
+  {
+    "key": "order",
+    "label": "订单",
+    "icon": "📋",
+    "children": [
+      {
+        "key": "order.orders",
+        "label": "订单列表",
+        "path": "/order/orders",
+        "name": "Orders",
+        "permission": "route:order.orders:read"
       },
       {
         "key": "product.order_summary",
@@ -34,14 +48,6 @@
         "permission": "route:product.order_summary:read"
       }
     ]
-  },
-  {
-    "key": "order.orders",
-    "label": "订单列表",
-    "icon": "📋",
-    "path": "/order/orders",
-    "name": "Orders",
-    "permission": "route:order.orders:read"
   },
   {
     "key": "report",

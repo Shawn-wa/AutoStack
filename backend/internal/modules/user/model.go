@@ -27,6 +27,9 @@ type Permission = userRepo.Permission
 // RolePermissionBinding 角色权限绑定模型
 type RolePermissionBinding = userRepo.RolePermissionBinding
 
+// RoleDefinition 角色定义模型
+type RoleDefinition = userRepo.RoleDefinition
+
 // PermissionDef 权限定义
 type PermissionDef = userRepo.PermissionDef
 

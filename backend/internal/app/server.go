@@ -10,13 +10,10 @@ import (
 	"autostack/internal/commonBase/middleware"
 	"autostack/internal/config"
 	"autostack/internal/modules/auth"
-	"autostack/internal/modules/deployment"
 	"autostack/internal/modules/order"
 	_ "autostack/internal/modules/order/platforms" // 注册平台适配器
 	"autostack/internal/modules/product"
-	"autostack/internal/modules/project"
 	"autostack/internal/modules/shipping"
-	"autostack/internal/modules/template"
 	"autostack/internal/modules/user"
 	companyRepo "autostack/internal/repository/company"
 	shippingRepo "autostack/internal/repository/shipping"
@@ -47,6 +44,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		&user.Permission{},
 		&user.RolePermission{},
 		&user.RolePermissionBinding{},
+		&user.RoleDefinition{},
 		&order.PlatformAuth{},
 		&order.Order{},
 		&order.OrderItem{},
@@ -139,6 +137,10 @@ func (s *Server) setupRoutes() {
 				admin.GET("/permissions", user.GetPermissions)
 				admin.GET("/role-permissions", user.GetRolePermissions)
 				admin.PUT("/role-permissions/:role", middleware.RequirePermission("route:system.roles:update"), user.UpdateRolePermissions)
+				admin.GET("/roles", middleware.RequirePermission("route:system.roles:read"), user.ListRoles)
+				admin.POST("/roles", middleware.RequirePermission("route:system.roles:create"), user.CreateRole)
+				admin.PUT("/roles/:id", middleware.RequirePermission("route:system.roles:update"), user.UpdateRole)
+				admin.DELETE("/roles/:id", middleware.RequirePermission("route:system.roles:delete"), user.DeleteRole)
 				admin.GET("/users", user.ListUsers)
 				admin.POST("/users", middleware.RequirePermission("route:system.users:create"), user.CreateUser)
 				admin.GET("/users/:id", user.GetUser)
@@ -161,34 +163,6 @@ func (s *Server) setupRoutes() {
 				})
 				// 手动触发 company_id 迁移（幂等、可重复调用）
 				admin.POST("/migrations/company-id", user.RunCompanyIDMigration)
-			}
-
-			// 项目管理（暂无独立菜单，不做权限控制）
-			projects := authorized.Group("/projects")
-			{
-				projects.GET("", middleware.RequirePermission("route:system.projects:read"), project.ListProjects)
-				projects.POST("", middleware.RequirePermission("route:system.projects:create"), project.CreateProject)
-				projects.GET("/:id", middleware.RequirePermission("route:system.projects:read"), project.GetProject)
-				projects.PUT("/:id", middleware.RequirePermission("route:system.projects:update"), project.UpdateProject)
-				projects.DELETE("/:id", middleware.RequirePermission("route:system.projects:delete"), project.DeleteProject)
-			}
-
-			// 部署管理
-			deployments := authorized.Group("/deployments")
-			{
-				deployments.GET("", middleware.RequirePermission("route:system.deployments:read"), deployment.ListDeployments)
-				deployments.POST("", middleware.RequirePermission("route:system.deployments:create"), deployment.CreateDeployment)
-				deployments.GET("/:id", middleware.RequirePermission("route:system.deployments:read"), deployment.GetDeployment)
-				deployments.POST("/:id/start", middleware.RequirePermission("route:system.deployments:update"), deployment.StartDeployment)
-				deployments.POST("/:id/stop", middleware.RequirePermission("route:system.deployments:update"), deployment.StopDeployment)
-			}
-
-			// 模板管理
-			templates := authorized.Group("/templates")
-			{
-				templates.GET("", middleware.RequirePermission("route:system.templates:read"), template.ListTemplates)
-				templates.POST("", middleware.RequirePermission("route:system.templates:create"), template.CreateTemplate)
-				templates.GET("/:id", middleware.RequirePermission("route:system.templates:read"), template.GetTemplate)
 			}
 
 			// 订单管理模块（包含仪表盘统计、平台授权、订单、现金流）
