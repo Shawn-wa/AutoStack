@@ -163,6 +163,8 @@ func (s *Server) setupRoutes() {
 				})
 				// 手动触发 company_id 迁移（幂等、可重复调用）
 				admin.POST("/migrations/company-id", user.RunCompanyIDMigration)
+				// 手动触发权限目录初始化迁移（幂等、可重复调用）
+				admin.POST("/migrations/permissions", user.RunPermissionMigration)
 			}
 
 			// 订单管理模块（包含仪表盘统计、平台授权、订单、现金流）

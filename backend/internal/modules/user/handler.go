@@ -690,6 +690,41 @@ func RunCompanyIDMigration(c *gin.Context) {
 	})
 }
 
+// RunPermissionMigration 手动触发权限目录初始化迁移（可重复调用，幂等）
+func RunPermissionMigration(c *gin.Context) {
+	currentUser, err := getCurrentUser(c)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	if !currentUser.IsSuperAdmin() {
+		response.Error(c, http.StatusForbidden, "仅超级管理员可执行迁移")
+		return
+	}
+
+	var req PermissionMigrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		response.Error(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
+		return
+	}
+
+	result, err := userService.RunPermissionMigration(req.RebuildRoleBindings)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "迁移失败: "+err.Error())
+		return
+	}
+
+	rebuildFlag := 0
+	if result.RebuildRoleBinding {
+		rebuildFlag = 1
+	}
+	response.Success(c, http.StatusOK, "权限初始化迁移执行完成", PermissionMigrationResponse{
+		CompaniesTotal:     result.CompaniesTotal,
+		CompaniesProcessed: result.CompaniesProcessed,
+		RebuildRoleBinding: rebuildFlag,
+	})
+}
+
 // getCurrentUser 获取当前登录用户
 func getCurrentUser(c *gin.Context) (*User, error) {
 	userID, exists := c.Get("user_id")

@@ -37,6 +37,12 @@ type Service struct {
 	companyRepo companyRepo.CompanyRepository
 }
 
+type PermissionMigrationResult struct {
+	CompaniesTotal     int
+	CompaniesProcessed int
+	RebuildRoleBinding bool
+}
+
 // NewService 创建用户服务实例
 func NewService(txManager repository.TxManager, userRepo userRepo.UserRepository, companyRepo companyRepo.CompanyRepository) *Service {
 	return &Service{
@@ -409,6 +415,50 @@ func (s *Service) DeleteUser(id uint) error {
 	}
 
 	return nil
+}
+
+// RunPermissionMigration 执行权限目录初始化迁移（支持线上 API 触发，幂等）
+func (s *Service) RunPermissionMigration(rebuildRoleBindings bool) (PermissionMigrationResult, error) {
+	ctx := context.Background()
+	result := PermissionMigrationResult{
+		RebuildRoleBinding: rebuildRoleBindings,
+	}
+
+	// 先强制同步目录定义（按当前代码定义 upsert）
+	if err := s.ensurePermissionCatalog(ctx); err != nil {
+		return result, err
+	}
+	// 再做层级/名称迁移和下线节点清理
+	if err := s.migrateReportHierarchy(ctx); err != nil {
+		return result, err
+	}
+	if err := s.migratePermissionDisplayNames(ctx); err != nil {
+		return result, err
+	}
+	if err := s.pruneRemovedPermissionNodes(ctx); err != nil {
+		return result, err
+	}
+
+	companies, err := s.companyRepo.List(ctx)
+	if err != nil {
+		return result, err
+	}
+	result.CompaniesTotal = len(companies)
+
+	for _, c := range companies {
+		if rebuildRoleBindings {
+			if err := s.EnsureDefaultRolePermissions(c.ID); err != nil {
+				return result, err
+			}
+		} else {
+			if err := s.EnsureDefaultRoles(c.ID); err != nil {
+				return result, err
+			}
+		}
+		result.CompaniesProcessed++
+	}
+
+	return result, nil
 }
 
 // InitDefaultSuperAdmin 初始化默认超级管理员

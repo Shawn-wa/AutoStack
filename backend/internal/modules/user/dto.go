@@ -131,3 +131,15 @@ type UpdateRoleRequest struct {
 	Description string `json:"description" binding:"omitempty,max=255"`
 	Enabled     *int   `json:"enabled" binding:"omitempty,oneof=0 1"`
 }
+
+// PermissionMigrationRequest 权限初始化迁移请求
+type PermissionMigrationRequest struct {
+	RebuildRoleBindings bool `json:"rebuild_role_bindings"`
+}
+
+// PermissionMigrationResponse 权限初始化迁移结果
+type PermissionMigrationResponse struct {
+	CompaniesTotal     int `json:"companies_total"`
+	CompaniesProcessed int `json:"companies_processed"`
+	RebuildRoleBinding int `json:"rebuild_role_binding"` // 1=执行角色绑定补齐，0=仅目录迁移
+}
