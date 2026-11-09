@@ -84,3 +84,6 @@ autostack.tar.gz
 # =====================
 .deployed_version
 .deployed_version.previous
+/.deploy_state
+/.deploy_state.tmp.*
+/.deploy.lock/

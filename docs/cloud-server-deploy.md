@@ -93,7 +93,11 @@ sudo yum install -y git
 docker --version
 docker compose version
 git --version
+# 记录 Docker Engine 的目标架构，用于开发机打包
+docker version --format '{{.Server.Os}}/{{.Server.Arch}}'
 ```
+
+生产脚本使用支持 `pull --policy` 和 `up --wait` 的 Docker Compose V2。
 
 ## 三、部署项目
 
@@ -112,6 +116,8 @@ sudo chown -R $USER:$USER /opt/AutoStack
 ```
 
 ### 3.2 配置环境变量
+
+升级已有部署时，沿用原目录的 `.env` 和 `./data/mysql`。已有平台凭据需要原来的 `CRYPTO_SECRET_KEY` 才能解密。
 
 ```bash
 # 复制环境变量模板
@@ -144,17 +150,18 @@ openssl rand -base64 32
 openssl rand -base64 24
 ```
 
-### 3.3 启动服务
+### 3.3 部署首个版本
+
+先在开发机[发布镜像和 Git Tag](#52-版本发布流程开发端)。默认镜像名为 `ghcr.io/shawn-wa/autostack-backend` 和 `ghcr.io/shawn-wa/autostack-frontend`。使用其他仓库时，在开发机导出 `AUTOSTACK_IMAGE_PREFIX`，在服务器 `.env` 中填写同一个前缀，例如 `registry.example.com/team/autostack`。
+
+生产机访问私有 GHCR 镜像时，用有镜像读取权限的账号和 `read:packages` 令牌登录。 [GHCR 认证](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry)
 
 ```bash
-# 添加执行权限
-chmod +x deploy.sh
-
-# 启动服务
-./deploy.sh start
+docker login ghcr.io
+./deploy.sh deploy v1.2.0
 ```
 
-首次启动会构建镜像，需要几分钟时间。
+用实际已发布的 Tag 替换示例版本。首次部署还会启动 MySQL 并等待初始化完成。
 
 ### 3.4 验证部署
 
@@ -171,8 +178,8 @@ chmod +x deploy.sh
 ```
 NAME                 STATUS
 autostack-mysql      Up (healthy)
-autostack-backend    Up
-autostack-frontend   Up
+autostack-backend    Up (healthy)
+autostack-frontend   Up (healthy)
 ```
 
 ### 3.5 访问测试
@@ -275,10 +282,11 @@ server {
 }
 ```
 
-启动带 SSL 的服务：
+使用此配置时，在运维账号环境中设置 `AUTOSTACK_COMPOSE_OVERRIDE`，让后续部署也加载同一份覆盖文件。
 
 ```bash
-docker compose -f docker-compose.prod.yml -f docker-compose.ssl.yml up -d
+export AUTOSTACK_COMPOSE_OVERRIDE=docker-compose.ssl.yml
+./deploy.sh start
 ```
 
 ### 4.3 证书自动续期
@@ -293,7 +301,7 @@ echo "0 3 * * * root certbot renew --quiet && docker compose -f /opt/AutoStack/d
 
 ## 五、版本管理与更新
 
-项目使用 **Git Tag** 进行版本管理，每次发布新版本时打一个 tag（如 `v1.0.0`），服务器通过 tag 拉取指定版本进行部署。
+开发机先构建并推送前后端成品镜像，随后发布 Git Tag。服务器根据 Tag 对应的 Git 提交和 Docker Engine 架构选择镜像，在现有 Compose 项目中更新容器。
 
 ### 5.1 版本管理命令
 
@@ -303,6 +311,9 @@ echo "0 3 * * * root certbot renew --quiet && docker compose -f /opt/AutoStack/d
 
 # 查看当前部署的版本
 ./deploy.sh version
+
+# 提前下载镜像，旧容器继续运行
+./deploy.sh prepare v1.2.0
 
 # 部署指定版本
 ./deploy.sh deploy v1.2.0
@@ -318,23 +329,14 @@ echo "0 3 * * * root certbot renew --quiet && docker compose -f /opt/AutoStack/d
 
 ### 5.2 版本发布流程（开发端）
 
-在开发机器上完成功能开发后：
+在开发机提交本次发版所需的改动。根据服务器 Docker Engine 的输出设置 `AUTOSTACK_PLATFORM`，例如 `linux/amd64` 或 `linux/arm64`。使用默认 GHCR 时，开发机用具备 `write:packages` 权限的令牌登录。
 
 ```bash
-# 1. 确保代码已提交
-git add .
-git commit -m "feat: 新功能描述"
-
-# 2. 创建版本 tag
-git tag v1.2.0
-
-# 3. 推送代码和 tag 到远程
-git push origin master
-git push origin v1.2.0
-
-# 或一次性推送所有 tags
-git push origin master --tags
+docker login ghcr.io
+AUTOSTACK_PLATFORM=linux/amd64 ./release.sh v1.2.0
 ```
+
+`release.sh` 从已提交的 Git 快照构建。新 Tag 对应当前提交，已有本地 Tag 对应它原来的提交，可用于为旧版本补发镜像。两个镜像都可用后，脚本才会把新 Tag 推到 `origin`。镜像的标签由完整 Git 提交和架构组成，例如 `<commit>-amd64`。
 
 **版本号规范建议（语义化版本）：**
 
@@ -347,17 +349,28 @@ git push origin master --tags
 
 ### 5.3 服务器更新流程
 
-```bash
-# 方法一：更新到最新版本
-./deploy.sh update
+从源码构建流程迁移时，先用 `release.sh` 为线上当前 Git Tag 补发镜像。发布流程改动推送到 `origin/master` 后，在服务器的**原部署目录**更新部署文件。
 
-# 方法二：更新到指定版本
-./deploy.sh deploy v1.2.0
+```bash
+git fetch --no-tags origin master
+git restore --source=FETCH_HEAD -- .gitignore deploy.sh docker-compose.prod.yml
 ```
+
+用 `prepare <当前 Tag>` 缓存回滚镜像。缺少可信的部署记录时，先用 `deploy <当前 Tag>` 部署并验收基线版本。首次应用新版 Compose 可能因 MySQL 健康检查变更而重建数据库容器，切换时沿用原数据目录并安排在迁移窗口内。
+
+```bash
+# 上线窗口之前执行，预先下载应用镜像
+./deploy.sh prepare v1.2.0
+
+# 到上线窗口执行，复用已下载的镜像
+AUTOSTACK_OFFLINE=1 ./deploy.sh deploy v1.2.0
+```
+
+`AUTOSTACK_OFFLINE=1` 使用本地已有的 Git Tag 和镜像，适合 MySQL 已在运行的更新场景。也可以直接执行 `./deploy.sh deploy v1.2.0`，脚本会先补齐镜像，再更新容器。版本记录在健康检查通过后更新。单实例 Compose 切换时会重建应用容器，切换耗时主要取决于应用启动和数据库迁移。
 
 ### 5.4 版本回滚
 
-如果新版本有问题，可以快速回滚：
+可以用上一次成功部署的版本回滚。涉及数据库结构变更时，发版前备份数据并验证旧程序与新结构兼容。
 
 ```bash
 # 回滚到上一个版本
@@ -372,7 +385,7 @@ git push origin master --tags
 ### 6.1 服务管理
 
 ```bash
-# 启动服务
+# 启动已部署的版本
 ./deploy.sh start
 
 # 停止服务
@@ -488,7 +501,7 @@ sudo iptables -L -n
 docker logs autostack-backend --tail=100
 
 # 测试后端健康检查
-curl http://localhost:8080/api/health
+docker exec autostack-backend wget -qO- http://127.0.0.1:8080/health
 
 # 进入后端容器调试
 docker exec -it autostack-backend sh

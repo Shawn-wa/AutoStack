@@ -112,6 +112,8 @@ npm run dev
 
 ### Docker 部署
 
+生产环境使用本地构建的成品镜像，发版和预拉取步骤见[云服务器部署指南](docs/cloud-server-deploy.md)。以下命令用于本地运行。
+
 **一键启动**
 ```bash
 docker-compose up -d
