@@ -1,6 +1,7 @@
 package order
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"autostack/internal/commonBase/database"
 	"autostack/internal/modules/apiClient/platform"
 	"autostack/internal/modules/apiClient/platform/ozon"
+	orderRepo "autostack/internal/repository/order"
 )
 
 var (
@@ -302,7 +304,7 @@ func (s *Service) SyncOrders(id uint, companyID uint, since, to time.Time, skipD
 			return
 		}
 
-		// 优先使用 GetCommissionsForOrders 接口（逐个订单获取）
+		// 优先按本次同步的订单获取佣金
 		var commissions map[string]*CommissionData
 		var err error
 
@@ -319,22 +321,30 @@ func (s *Service) SyncOrders(id uint, companyID uint, since, to time.Time, skipD
 		}
 
 		nowSync := time.Now()
+		var updated int64
 		for postingNumber, commData := range commissions {
-			db.Model(&Order{}).Where("platform_order_no = ?", postingNumber).Updates(map[string]interface{}{
-				"accruals_for_sale":         commData.AccrualsForSale,
-				"sale_commission":           commData.SaleCommission,
-				"processing_and_delivery":   commData.ProcessingAndDelivery,
-				"refunds_and_cancellations": commData.RefundsAndCancellations,
-				"services_amount":           commData.ServicesAmount,
-				"compensation_amount":       commData.CompensationAmount,
-				"money_transfer":            commData.MoneyTransfer,
-				"others_amount":             commData.OthersAmount,
-				"profit_amount":             commData.ProfitAmount,
-				"commission_currency":       commData.CommissionCurrency,
-				"commission_synced_at":      &nowSync,
-			})
+			updateResult := db.Model(&Order{}).
+				Where("platform_order_no = ? AND platform_auth_id = ?", postingNumber, auth.ID).
+				Updates(map[string]interface{}{
+					"accruals_for_sale":         commData.AccrualsForSale,
+					"sale_commission":           commData.SaleCommission,
+					"processing_and_delivery":   commData.ProcessingAndDelivery,
+					"refunds_and_cancellations": commData.RefundsAndCancellations,
+					"services_amount":           commData.ServicesAmount,
+					"compensation_amount":       commData.CompensationAmount,
+					"money_transfer":            commData.MoneyTransfer,
+					"others_amount":             commData.OthersAmount,
+					"profit_amount":             commData.ProfitAmount,
+					"commission_currency":       commData.CommissionCurrency,
+					"commission_synced_at":      &nowSync,
+				})
+			if updateResult.Error != nil {
+				log.Printf("[SyncOrders] 保存订单佣金失败: %v", updateResult.Error)
+				continue
+			}
+			updated += updateResult.RowsAffected
 		}
-		log.Printf("[SyncOrders] 佣金同步完成: 更新 %d 条订单", len(commissions))
+		log.Printf("[SyncOrders] 佣金同步完成: 更新 %d 条订单", updated)
 	}()
 
 	return result, nil
@@ -368,20 +378,18 @@ func (s *Service) SyncOrderCommission(companyID, orderID uint) (*Order, error) {
 
 	var commData *CommissionData
 
-	// 使用单订单佣金接口（v3/finance/transaction/totals）
+	// 使用平台的单订单佣金接口
 	if adapterWithLog, ok := adapter.(PlatformAdapterWithLog); ok {
 		commData, err = adapterWithLog.GetSingleOrderCommission(credentials, ord.PlatformOrderNo, auth.ID)
 		if err != nil {
-			log.Printf("[SyncOrderCommission] 获取单订单佣金失败: %v", err)
-			// 失败时不回退，直接返回空
-			return &ord, nil
+			return nil, fmt.Errorf("获取单订单佣金失败: %w", err)
 		}
 	}
 
 	// 更新订单佣金数据
 	if commData != nil {
 		now := time.Now()
-		db.Model(&ord).Updates(map[string]interface{}{
+		if err := db.Model(&ord).Updates(map[string]interface{}{
 			"accruals_for_sale":         commData.AccrualsForSale,
 			"sale_commission":           commData.SaleCommission,
 			"processing_and_delivery":   commData.ProcessingAndDelivery,
@@ -393,11 +401,15 @@ func (s *Service) SyncOrderCommission(companyID, orderID uint) (*Order, error) {
 			"profit_amount":             commData.ProfitAmount,
 			"commission_currency":       commData.CommissionCurrency,
 			"commission_synced_at":      &now,
-		})
+		}).Error; err != nil {
+			return nil, fmt.Errorf("保存订单佣金失败: %w", err)
+		}
 	}
 
 	// 重新加载更新后的订单
-	db.Where("id = ?", orderID).Preload("Items").First(&ord)
+	if err := db.Where("id = ?", orderID).Preload("Items").First(&ord).Error; err != nil {
+		return nil, fmt.Errorf("读取更新后的订单失败: %w", err)
+	}
 
 	return &ord, nil
 }
@@ -482,6 +494,9 @@ func (s *Service) SyncSingleOrder(companyID, orderID uint) (*Order, error) {
 		"total_amount":    matchedOrder.TotalAmount,
 		"ship_time":       matchedOrder.ShipTime,
 		"ship_deadline":   matchedOrder.ShipDeadline,
+	}
+	if matchedOrder.RecipientPhone != "" {
+		updates["recipient_phone"] = matchedOrder.RecipientPhone
 	}
 	if err := db.Model(&ord).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("更新订单失败: %w", err)
@@ -642,7 +657,7 @@ func (s *Service) SyncCommission(companyID, authID uint, since, to time.Time) (*
 		return &SyncCommissionResponse{Total: 0, Updated: 0}, nil
 	}
 
-	// 使用新的 GetCommissionsForOrders 方法逐个获取佣金
+	// 优先按订单号获取佣金
 	var commissions map[string]*CommissionData
 	if adapterWithOrders, ok := adapter.(PlatformAdapterWithOrders); ok {
 		commissions, err = adapterWithOrders.GetCommissionsForOrders(credentials, postingNumbers, auth.ID)
@@ -680,6 +695,9 @@ func (s *Service) SyncCommission(companyID, authID uint, since, to time.Time) (*
 				"commission_currency":       commData.CommissionCurrency,
 				"commission_synced_at":      &now,
 			})
+		if updateResult.Error != nil {
+			return nil, fmt.Errorf("保存订单佣金失败: %w", updateResult.Error)
+		}
 		if updateResult.RowsAffected > 0 {
 			result.Updated++
 		}
@@ -768,8 +786,8 @@ func (s *Service) SyncCashFlowStatements(authID, companyID uint, since, to time.
 			}
 			result.Updated++
 		} else {
-		// 创建新记录
-		cf.CompanyID = companyID
+			// 创建新记录
+			cf.CompanyID = companyID
 			cf.PlatformAuthID = authID
 			cf.Platform = auth.Platform
 			cf.SyncedAt = time.Now()
@@ -874,29 +892,45 @@ func (s *Service) GetDashboardStats(companyID uint) (*DashboardStatsResponse, er
 	}
 
 	orderQuery := db.Model(&Order{}).Where("company_id = ?", companyID)
-	orderQuery.Count(&stats.TotalOrders)
+	if err := orderQuery.Count(&stats.TotalOrders).Error; err != nil {
+		return nil, err
+	}
 
-	db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusDelivered).Count(&stats.DeliveredOrders)
-	db.Model(&Order{}).Where("company_id = ? AND status IN ?", companyID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders)
-	db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusShipped).Count(&stats.ShippedOrders)
-	db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusCancelled).Count(&stats.CancelledOrders)
+	if err := db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusDelivered).Count(&stats.DeliveredOrders).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&Order{}).Where("company_id = ? AND status IN ?", companyID, []string{OrderStatusPending, OrderStatusReadyToShip}).Count(&stats.PendingOrders).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusShipped).Count(&stats.ShippedOrders).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&Order{}).Where("company_id = ? AND status = ?", companyID, OrderStatusCancelled).Count(&stats.CancelledOrders).Error; err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 	deadline := now.Add(24 * time.Hour)
-	db.Model(&Order{}).Where(
+	if err := db.Model(&Order{}).Where(
 		"company_id = ? AND status IN ? AND ship_deadline IS NOT NULL AND ship_deadline < ?",
 		companyID, []string{OrderStatusPending, OrderStatusReadyToShip}, deadline,
-	).Count(&stats.TimeoutOrders)
+	).Count(&stats.TimeoutOrders).Error; err != nil {
+		return nil, err
+	}
 
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	db.Model(&Order{}).Where("company_id = ? AND order_time >= ?", companyID, today).Count(&stats.TodayOrders)
+	if err := db.Model(&Order{}).Where("company_id = ? AND order_time >= ?", companyID, today).Count(&stats.TodayOrders).Error; err != nil {
+		return nil, err
+	}
 
 	var totalAmounts []CurrencyAmount
-	db.Model(&Order{}).
+	if err := db.Model(&Order{}).
 		Select("currency, COALESCE(SUM(total_amount), 0) as amount").
 		Where("company_id = ? AND status != ?", companyID, OrderStatusCancelled).
 		Group("currency").
-		Scan(&totalAmounts)
+		Scan(&totalAmounts).Error; err != nil {
+		return nil, err
+	}
 	stats.TotalAmounts = totalAmounts
 
 	var commissionStats struct {
@@ -904,20 +938,26 @@ func (s *Service) GetDashboardStats(companyID uint) (*DashboardStatsResponse, er
 		TotalCommission float64
 		TotalServiceFee float64
 	}
-	db.Model(&Order{}).
+	if err := db.Model(&Order{}).
 		Select(`
 			COALESCE(SUM(profit_amount), 0) as total_profit,
 			COALESCE(SUM(sale_commission), 0) as total_commission,
 			COALESCE(SUM(services_amount), 0) as total_service_fee
 		`).
 		Where("company_id = ? AND status = ?", companyID, OrderStatusDelivered).
-		Scan(&commissionStats)
+		Scan(&commissionStats).Error; err != nil {
+		return nil, err
+	}
 	stats.TotalProfit = commissionStats.TotalProfit
 	stats.TotalCommission = commissionStats.TotalCommission
 	stats.TotalServiceFee = commissionStats.TotalServiceFee
 
-	db.Model(&PlatformAuth{}).Where("company_id = ?", companyID).Count(&stats.TotalAuths)
-	db.Model(&PlatformAuth{}).Where("company_id = ? AND status = ?", companyID, AuthStatusActive).Count(&stats.ActiveAuths)
+	if err := db.Model(&PlatformAuth{}).Where("company_id = ?", companyID).Count(&stats.TotalAuths).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&PlatformAuth{}).Where("company_id = ? AND status = ?", companyID, AuthStatusActive).Count(&stats.ActiveAuths).Error; err != nil {
+		return nil, err
+	}
 
 	return stats, nil
 }
@@ -958,63 +998,56 @@ func (s *Service) GetRecentOrders(companyID uint, limit int) ([]RecentOrderRespo
 func (s *Service) InitOrderTrendStats(companyID uint, forceUpdate bool) error {
 	db := database.GetDB()
 
-	var count int64
-	db.Model(&OrderDailyStat{}).Where("company_id = ?", companyID).Count(&count)
-
-	if count > 0 && !forceUpdate {
-		return nil
-	}
-
-	if forceUpdate && count > 0 {
-		db.Where("company_id = ?", companyID).Delete(&OrderDailyStat{})
-		log.Printf("[Service] 企业 %d 强制刷新，已清除旧统计数据", companyID)
-	}
-
-	log.Printf("[Service] 企业 %d %s订单走势统计...", companyID, map[bool]string{true: "刷新", false: "首次访问，初始化"}[forceUpdate])
-
-	days := 30
-	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour)
-	startDate := endDate.AddDate(0, 0, -days)
-
-	type DailyStats struct {
-		Date     time.Time
-		Currency string
-		Count    int64
-		Amount   float64
-	}
-
-	var dailyStats []DailyStats
-	err := db.Model(&Order{}).
-		Select(`
-			DATE(order_time) as date, 
-			currency,
-			COUNT(*) as count, 
-			COALESCE(SUM(total_amount), 0) as amount
-		`).
-		Where("company_id = ? AND order_time >= ? AND order_time < ?", companyID, startDate, endDate).
-		Group("DATE(order_time), currency").
-		Order("date ASC").
-		Scan(&dailyStats).Error
-
-	if err != nil {
-		return err
-	}
-
-	log.Printf("[Service] 企业 %d 共查询到 %d 条日期统计数据", companyID, len(dailyStats))
-
-	for _, stat := range dailyStats {
-		newStat := OrderDailyStat{
-			CompanyID:   companyID,
-			StatDate:    stat.Date,
-			Currency:    stat.Currency,
-			OrderCount:  stat.Count,
-			OrderAmount: stat.Amount,
+	// 聚合、删除和写入必须一起提交，避免刷新失败后丢失旧统计。
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&OrderDailyStat{}).Where("company_id = ?", companyID).Count(&count).Error; err != nil {
+			return fmt.Errorf("读取订单统计缓存失败: %w", err)
 		}
-		db.Create(&newStat)
-	}
+		if count > 0 && !forceUpdate {
+			return nil
+		}
 
-	log.Printf("[Service] 企业 %d 订单走势统计初始化完成，共 %d 条记录", companyID, len(dailyStats))
-	return nil
+		startDate, endDate := orderTrendDateRange(time.Now(), 30)
+		dailyStats, err := orderRepo.NewOrderDailyStatRepository(tx).GetDailyStats(context.Background(), companyID, startDate, endDate)
+		if err != nil {
+			return fmt.Errorf("计算订单走势统计失败: %w", err)
+		}
+
+		if forceUpdate {
+			if err := tx.Where("company_id = ?", companyID).Delete(&OrderDailyStat{}).Error; err != nil {
+				return fmt.Errorf("清理订单统计缓存失败: %w", err)
+			}
+		}
+
+		// 显式保存日历日期和币种，避免 SQLite 日期文本格式不一致，
+		// 以及 GORM 将未知币种的空值替换为模型默认值 RUB。
+		stats := make([]map[string]interface{}, 0, len(dailyStats))
+		now := time.Now()
+		for _, stat := range dailyStats {
+			stats = append(stats, map[string]interface{}{
+				"company_id":   companyID,
+				"stat_date":    stat.Date.Format("2006-01-02"),
+				"currency":     stat.Currency,
+				"order_count":  stat.Count,
+				"order_amount": stat.Amount,
+				"created_at":   now,
+				"updated_at":   now,
+			})
+		}
+		if len(stats) > 0 {
+			if err := tx.Table("order_daily_stats").CreateInBatches(stats, 100).Error; err != nil {
+				return fmt.Errorf("保存订单走势统计失败: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+func orderTrendDateRange(now time.Time, days int) (time.Time, time.Time) {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endDate := today.AddDate(0, 0, 1)
+	return endDate.AddDate(0, 0, -days), endDate
 }
 
 // GetOrderTrend 获取订单趋势数据（优先从统计表读取，回退到实时查询）
@@ -1030,12 +1063,12 @@ func (s *Service) GetOrderTrend(companyID uint, days int, currency string) (*Ord
 	}
 
 	// 计算起始日期（当天往前推days天）
-	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour) // 明天0点
-	startDate := endDate.AddDate(0, 0, -days)                          // N天前
+	startDate, endDate := orderTrendDateRange(time.Now(), days)
 
 	// 优先从 order_daily_stats 表读取
 	var cachedStats []OrderDailyStat
-	err := db.Where("company_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", companyID, currency, startDate, endDate).
+	err := db.Where("company_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?",
+		companyID, currency, startDate.Format("2006-01-02"), endDate.Format("2006-01-02")).
 		Order("stat_date ASC").
 		Find(&cachedStats).Error
 
@@ -1054,27 +1087,18 @@ func (s *Service) GetOrderTrend(companyID uint, days int, currency string) (*Ord
 		}
 	} else {
 		// 回退到实时查询
-		type DailyStats struct {
-			Date   string
-			Count  int64
-			Amount float64
-		}
-
-		var dailyStats []DailyStats
-		err = db.Model(&Order{}).
-			Select("DATE(order_time) as date, COUNT(*) as count, COALESCE(SUM(total_amount), 0) as amount").
-			Where("company_id = ? AND currency = ? AND order_time >= ? AND order_time < ?", companyID, currency, startDate, endDate).
-			Group("DATE(order_time)").
-			Order("date ASC").
-			Scan(&dailyStats).Error
-
+		dailyStats, err := orderRepo.NewOrderDailyStatRepository(db).GetDailyStats(context.Background(), companyID, startDate, endDate)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, stat := range dailyStats {
-			statsMap[stat.Date] = OrderTrendItem{
-				Date:   stat.Date,
+			if stat.Currency != currency {
+				continue
+			}
+			date := stat.Date.Format("2006-01-02")
+			statsMap[date] = OrderTrendItem{
+				Date:   date,
 				Count:  stat.Count,
 				Amount: stat.Amount,
 			}
@@ -1134,7 +1158,7 @@ func (s *Service) GetOrderSummary(companyID uint, req *OrderSummaryRequest) ([]O
 		Joins("LEFT JOIN product_mappings pm ON pm.platform_product_id = pp.id").
 		Joins("LEFT JOIN products p ON p.id = pm.product_id").
 		Where("o.company_id = ?", companyID).
-		Group("local_sku, product_name, platform_sku, platform_name, platform_img, o.status, oi.currency")
+		Group("local_sku, product_name, oi.sku, platform_name, platform_img, o.status, oi.currency")
 
 	// 过滤条件
 	if req.Platform != "" {

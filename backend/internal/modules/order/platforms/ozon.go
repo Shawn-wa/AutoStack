@@ -1,6 +1,7 @@
 package platforms
 
 import (
+	"errors"
 	"log"
 	"strconv"
 	"time"
@@ -90,31 +91,29 @@ func (a *OzonAdapter) SyncOrdersWithLog(credentials string, since, to time.Time,
 		log.Printf("[OZON] 同步订单批次: %s ~ %s", batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"))
 
 		// 分页获取该批次的订单
-		offset := 0
-		limit := 100
+		cursor := ""
+		const limit = 100
 
 		for {
-			resp, err := orderAPI.GetOrderList(batchStart, batchEnd, offset, limit)
+			resp, err := orderAPI.GetOrderList(batchStart, batchEnd, cursor, limit)
 			if err != nil {
 				return nil, err
 			}
 
-			log.Printf("[OZON] 同步订单: offset=%d, 获取到 %d 条订单", offset, len(resp.Result.Postings))
+			log.Printf("[OZON] 同步订单: 获取到 %d 条订单, has_next=%t", len(resp.Postings), resp.HasNext)
 
-			if len(resp.Result.Postings) == 0 {
-				break
-			}
-
-			for _, posting := range resp.Result.Postings {
+			for _, posting := range resp.Postings {
 				ord := a.convertToOrder(&posting)
 				allOrders = append(allOrders, ord)
 			}
 
-			if len(resp.Result.Postings) < limit {
+			if !resp.HasNext {
 				break
 			}
-
-			offset += limit
+			if resp.Cursor == "" || resp.Cursor == cursor {
+				return nil, errors.New("Ozon 订单列表返回了无效的分页游标")
+			}
+			cursor = resp.Cursor
 		}
 
 		// 移动到下一批次
@@ -127,81 +126,37 @@ func (a *OzonAdapter) SyncOrdersWithLog(credentials string, since, to time.Time,
 
 // GetCommissionsWithLog 获取佣金信息（带日志记录）
 // 注意：此方法已废弃，保留以兼容接口定义
-// 新逻辑使用 GetCommissionsForOrders 逐个订单获取佣金
 func (a *OzonAdapter) GetCommissionsWithLog(credentials string, since, to time.Time, platformAuthID uint) (map[string]*order.CommissionData, error) {
-	// 返回空结果，实际业务已改用 GetCommissionsForOrders
 	return make(map[string]*order.CommissionData), nil
 }
 
-// GetCommissionsForOrders 获取指定订单的佣金信息（使用 transaction/totals 接口）
+// GetCommissionsForOrders 获取指定发货单的佣金信息。
 func (a *OzonAdapter) GetCommissionsForOrders(credentials string, postingNumbers []string, platformAuthID uint) (map[string]*order.CommissionData, error) {
-	creds, err := ozon.ParseCredentials(credentials)
-	if err != nil {
-		return nil, err
-	}
-
 	client, err := a.createClient(credentials, platformAuthID)
 	if err != nil {
 		return nil, err
 	}
 
-	financeAPI := ozon.NewFinanceAPI(client)
-	result := make(map[string]*order.CommissionData)
-
-	for _, postingNumber := range postingNumbers {
-		commData, err := financeAPI.GetSingleOrderCommission(postingNumber, creds.SettlementCurrency)
-		if err != nil {
-			log.Printf("[OZON] 获取订单 %s 佣金失败: %v", postingNumber, err)
-			continue
-		}
-
-		result[postingNumber] = &order.CommissionData{
-			AccrualsForSale:         commData.AccrualsForSale,
-			SaleCommission:          commData.SaleCommission,
-			ProcessingAndDelivery:   commData.ProcessingAndDelivery,
-			RefundsAndCancellations: commData.RefundsAndCancellations,
-			ServicesAmount:          commData.ServicesAmount,
-			CompensationAmount:      commData.CompensationAmount,
-			MoneyTransfer:           commData.MoneyTransfer,
-			OthersAmount:            commData.OthersAmount,
-			ProfitAmount:            commData.ProfitAmount,
-			CommissionCurrency:      commData.CommissionCurrency,
-		}
+	commissions, err := ozon.NewFinanceAPI(client).GetCommissionsForPostings(postingNumbers)
+	if err != nil {
+		return nil, err
 	}
 
+	result := make(map[string]*order.CommissionData, len(commissions))
+	for postingNumber, data := range commissions {
+		commission := order.CommissionData(data)
+		result[postingNumber] = &commission
+	}
 	return result, nil
 }
 
-// GetSingleOrderCommission 获取单个订单的佣金信息
+// GetSingleOrderCommission 获取单个发货单的佣金信息。
 func (a *OzonAdapter) GetSingleOrderCommission(credentials string, postingNumber string, platformAuthID uint) (*order.CommissionData, error) {
-	creds, err := ozon.ParseCredentials(credentials)
+	commissions, err := a.GetCommissionsForOrders(credentials, []string{postingNumber}, platformAuthID)
 	if err != nil {
 		return nil, err
 	}
-
-	client, err := a.createClient(credentials, platformAuthID)
-	if err != nil {
-		return nil, err
-	}
-
-	financeAPI := ozon.NewFinanceAPI(client)
-	commData, err := financeAPI.GetSingleOrderCommission(postingNumber, creds.SettlementCurrency)
-	if err != nil {
-		return nil, err
-	}
-
-	return &order.CommissionData{
-		AccrualsForSale:         commData.AccrualsForSale,
-		SaleCommission:          commData.SaleCommission,
-		ProcessingAndDelivery:   commData.ProcessingAndDelivery,
-		RefundsAndCancellations: commData.RefundsAndCancellations,
-		ServicesAmount:          commData.ServicesAmount,
-		CompensationAmount:      commData.CompensationAmount,
-		MoneyTransfer:           commData.MoneyTransfer,
-		OthersAmount:            commData.OthersAmount,
-		ProfitAmount:            commData.ProfitAmount,
-		CommissionCurrency:      commData.CommissionCurrency,
-	}, nil
+	return commissions[postingNumber], nil
 }
 
 // GetOrderDetail 获取单个订单详情
@@ -387,7 +342,7 @@ func (a *OzonAdapter) mapStatus(platformStatus string) string {
 func init() {
 	// 注册 Ozon 平台状态映射
 	// Ozon 订单状态映射
-	// 文档参考: https://docs.ozon.ru/api/seller/#operation/PostingAPI_GetFbsPostingListV3
+	// 文档参考: https://docs.ozon.ru/api/seller/#operation/PostingFbsList
 	order.RegisterPlatformStatusMapping(order.PlatformOzon, map[string]string{
 		"awaiting_packaging": order.OrderStatusPending,     // 等待包装
 		"awaiting_deliver":   order.OrderStatusReadyToShip, // 等待交付

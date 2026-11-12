@@ -566,10 +566,16 @@ func (s *Service) migrateExistingData(ctx context.Context, admin *User) error {
 
 		// 迁移业务数据：将 user_id 关联的数据改为 company_id
 		db := repository.GetDB(txCtx, s.txManager.DB())
-		db.Exec("UPDATE platform_auths SET company_id = ?, created_by = COALESCE(created_by, 0) WHERE company_id = 0")
-		db.Exec("UPDATE orders SET company_id = ? WHERE company_id = 0", company.ID)
-		db.Exec("UPDATE order_daily_stats SET company_id = ? WHERE company_id = 0", company.ID)
-		db.Exec("UPDATE cash_flow_statements SET company_id = ? WHERE company_id = 0", company.ID)
+		for _, statement := range []string{
+			"UPDATE platform_auths SET company_id = ?, created_by = COALESCE(created_by, 0) WHERE company_id = 0",
+			"UPDATE orders SET company_id = ? WHERE company_id = 0",
+			"UPDATE order_daily_stats SET company_id = ? WHERE company_id = 0",
+			"UPDATE cash_flow_statements SET company_id = ? WHERE company_id = 0",
+		} {
+			if err := db.Exec(statement, company.ID).Error; err != nil {
+				return fmt.Errorf("迁移企业业务数据失败: %w", err)
+			}
+		}
 
 		return nil
 	})

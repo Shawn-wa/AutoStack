@@ -19,6 +19,7 @@ type PlatformClient interface {
 type APIResponse struct {
 	StatusCode int
 	Body       []byte
+	Headers    http.Header
 	Duration   int64
 	Error      error
 }

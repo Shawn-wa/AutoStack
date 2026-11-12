@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElDatePicker } from 'element-plus'
 import { getAuths, type PlatformAuth } from '@/modules/order/api'
 import request from '@/commonBase/api/request'
@@ -11,6 +11,17 @@ const auths = ref<PlatformAuth[]>([])
 const selectedAuthId = ref<number | undefined>(undefined)
 const selectedMonth = ref<string | null>(null)
 const settlementData = ref<any>(null)
+const balanceDetails = computed(() => settlementData.value?.create_response?.result?.details)
+const downloadLink = computed(() => {
+  const report = settlementData.value?.report_info?.result
+  if (report?.status !== 'success' || typeof report.file !== 'string') return ''
+
+  try {
+    return new URL(report.file).protocol === 'https:' ? report.file : ''
+  } catch {
+    return ''
+  }
+})
 
 // 获取授权列表
 const fetchAuths = async () => {
@@ -45,7 +56,9 @@ const fetchSettlement = async () => {
       params.to = lastDayOfMonth.toISOString()
     }
 
-    const res = await request.post(`/order/auths/${selectedAuthId.value}/mutual-settlement`, params)
+    const res = await request.post(`/order/auths/${selectedAuthId.value}/mutual-settlement`, params, {
+      timeout: 60000
+    })
     settlementData.value = res.data
     ElMessage.success('获取成功')
   } catch (error: any) {
@@ -119,6 +132,11 @@ onMounted(() => {
       <!-- 结算数据展示 -->
       <div class="settlement-content" v-loading="loading">
         <template v-if="settlementData">
+          <div v-if="downloadLink" class="data-section">
+            <el-button tag="a" type="primary" :href="downloadLink" target="_blank" rel="noopener noreferrer">
+              下载结算报告（XLSX）
+            </el-button>
+          </div>
           <!-- 原始响应 -->
           <div class="data-section">
             <h3>API 响应数据</h3>
@@ -126,10 +144,10 @@ onMounted(() => {
           </div>
 
           <!-- 如果有 details 字段，展示余额卡片 -->
-          <template v-if="settlementData.result?.details?.length > 0">
+          <template v-if="balanceDetails?.length > 0">
             <div class="balance-cards">
               <div 
-                v-for="(detail, index) in settlementData.result.details" 
+                v-for="(detail, index) in balanceDetails"
                 :key="index"
                 class="balance-card"
               >

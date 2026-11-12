@@ -106,7 +106,7 @@ func (s *Service) CreateProduct(companyID uint, req CreateProductRequest) (*Prod
 func (s *Service) UpdateProduct(companyID, id uint, req UpdateProductRequest) (*Product, error) {
 	ctx := repository.WithCompanyID(context.Background(), companyID)
 
-	product, err := s.productRepo.FindByID(ctx, id)
+	_, err := s.productRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("产品不存在")
@@ -128,8 +128,7 @@ func (s *Service) UpdateProduct(companyID, id uint, req UpdateProductRequest) (*
 	}
 
 	// 重新加载产品
-	product, _ = s.productRepo.FindByID(ctx, id)
-	return product, nil
+	return s.productRepo.FindByID(ctx, id)
 }
 
 // DeleteProduct 删除本地产品
@@ -1112,10 +1111,13 @@ func (s *Service) ListProductsWithSupplier(companyID uint, page, pageSize int, k
 
 	// 获取仓库映射
 	warehouseMap := make(map[uint]string)
-	warehouses, _ := s.warehouseRepo.List(ctx, &inventoryRepo.WarehouseQuery{
+	warehouses, err := s.warehouseRepo.List(ctx, &inventoryRepo.WarehouseQuery{
 		CompanyID: companyID,
 		Status:    WarehouseStatusActive,
 	})
+	if err != nil {
+		return nil, 0, err
+	}
 	for _, w := range warehouses {
 		warehouseMap[w.ID] = w.Name
 	}
@@ -1127,7 +1129,10 @@ func (s *Service) ListProductsWithSupplier(companyID uint, page, pageSize int, k
 	}
 
 	// 批量获取默认供应商
-	defaultSuppliers, _ := s.supplierRepo.FindDefaultByProductIDs(ctx, productIDs)
+	defaultSuppliers, err := s.supplierRepo.FindDefaultByProductIDs(ctx, productIDs)
+	if err != nil {
+		return nil, 0, err
+	}
 	supplierMap := make(map[uint]*ProductSupplier)
 	for i := range defaultSuppliers {
 		supplierMap[defaultSuppliers[i].ProductID] = &defaultSuppliers[i]

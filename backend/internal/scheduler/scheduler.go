@@ -156,81 +156,15 @@ func calculateOrderTrendStats() {
 
 	log.Printf("[Scheduler] 找到 %d 个企业需要统计订单走势", len(companies))
 
-	days := 30
-	endDate := time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour)
-	startDate := endDate.AddDate(0, 0, -days)
-
-	totalSaved := 0
-	totalUpdated := 0
-
+	service := order.NewService()
 	for _, company := range companies {
-		type DailyStats struct {
-			Date     time.Time
-			Currency string
-			Count    int64
-			Amount   float64
-		}
-
-		var dailyStats []DailyStats
-		err := db.Table("orders").
-			Select(`
-				DATE(order_time) as date, 
-				currency,
-				COUNT(*) as count, 
-				COALESCE(SUM(total_amount), 0) as amount
-			`).
-			Where("company_id = ? AND order_time >= ? AND order_time < ?", company.ID, startDate, endDate).
-			Group("DATE(order_time), currency").
-			Order("date ASC").
-			Scan(&dailyStats).Error
-
-		if err != nil {
+		if err := service.InitOrderTrendStats(company.ID, true); err != nil {
 			log.Printf("[Scheduler] 企业 %d 订单走势统计失败: %v", company.ID, err)
 			continue
 		}
-
-		log.Printf("[Scheduler] 企业 %d 共有 %d 条日期统计数据", company.ID, len(dailyStats))
-
-		for _, stat := range dailyStats {
-			statDate := stat.Date
-
-			var existing order.OrderDailyStat
-			result := db.Where("company_id = ? AND stat_date = ? AND currency = ?", company.ID, statDate, stat.Currency).First(&existing)
-
-			if result.Error != nil {
-				newStat := order.OrderDailyStat{
-					CompanyID:   company.ID,
-					StatDate:    statDate,
-					Currency:    stat.Currency,
-					OrderCount:  stat.Count,
-					OrderAmount: stat.Amount,
-				}
-				if err := db.Create(&newStat).Error; err != nil {
-					log.Printf("[Scheduler] 创建统计记录失败: %v", err)
-					continue
-				}
-				totalSaved++
-			} else {
-				db.Model(&existing).Updates(map[string]interface{}{
-					"order_count":  stat.Count,
-					"order_amount": stat.Amount,
-				})
-				totalUpdated++
-			}
-		}
-
-		var totalOrders int64
-		var totalAmount float64
-		for _, stat := range dailyStats {
-			totalOrders += stat.Count
-			totalAmount += stat.Amount
-		}
-
-		log.Printf("[Scheduler] 企业 %d 订单走势统计完成: 近%d天订单=%d, 总金额=%.2f",
-			company.ID, days, totalOrders, totalAmount)
+		log.Printf("[Scheduler] 企业 %d 订单走势统计完成", company.ID)
 	}
-
-	log.Printf("[Scheduler] 订单走势统计任务完成: 新增=%d, 更新=%d", totalSaved, totalUpdated)
+	log.Println("[Scheduler] 订单走势统计任务完成")
 }
 
 // syncCommissionForDeliveredOrders 只同步已签收订单的佣金

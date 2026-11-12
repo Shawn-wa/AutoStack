@@ -78,7 +78,11 @@ func ListProducts(c *gin.Context) {
 
 	// 获取仓库ID列表并批量查询仓库名称
 	warehouseMap := make(map[uint]string)
-	warehouses, _ := service.ListWarehouses(companyID)
+	warehouses, err := service.ListWarehouses(companyID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "获取仓库列表失败")
+		return
+	}
 	for _, w := range warehouses {
 		warehouseMap[w.ID] = w.Name
 	}

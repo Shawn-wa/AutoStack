@@ -19,6 +19,7 @@ type CryptoConfig struct {
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
+	Host string `mapstructure:"host"` // 空值监听所有接口
 	Port string `mapstructure:"port"`
 	Mode string `mapstructure:"mode"` // debug, release, test
 }
@@ -43,6 +44,7 @@ func Load() (*Config, error) {
 	viper.AddConfigPath("./config")
 
 	// 设置默认值
+	viper.SetDefault("server.host", "")
 	viper.SetDefault("server.port", "8080")
 	viper.SetDefault("server.mode", "debug")
 	viper.SetDefault("database.driver", "sqlite")
@@ -52,6 +54,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("crypto.secret_key", "autostack-crypto-secret-key32!")
 
 	// 绑定环境变量
+	viper.BindEnv("server.host", "SERVER_HOST")
 	viper.BindEnv("server.port", "SERVER_PORT")
 	viper.BindEnv("server.mode", "SERVER_MODE")
 	viper.BindEnv("database.driver", "DATABASE_DRIVER")

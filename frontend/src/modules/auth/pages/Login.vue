@@ -2,6 +2,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Hide, View } from '@element-plus/icons-vue'
 import { useUserStore } from '@/modules/auth/stores'
 
 const router = useRouter()
@@ -9,6 +10,7 @@ const userStore = useUserStore()
 
 const isLogin = ref(true)
 const loading = ref(false)
+const isPasswordVisible = ref(false)
 
 const loginForm = reactive({
   username: '',
@@ -92,6 +94,7 @@ const handleSubmit = () => {
 }
 
 const toggleMode = () => {
+  isPasswordVisible.value = false
   isLogin.value = !isLogin.value
 }
 </script>
@@ -124,14 +127,30 @@ const toggleMode = () => {
           </div>
           
           <div class="form-group">
-            <label class="form-label">密码</label>
-            <input 
-              v-model="loginForm.password"
-              type="password" 
-              class="input" 
-              placeholder="请输入密码"
-              :disabled="loading"
-            />
+            <label class="form-label" for="login-password">密码</label>
+            <div class="password-field">
+              <input
+                id="login-password"
+                v-model="loginForm.password"
+                :type="isPasswordVisible ? 'text' : 'password'"
+                class="input"
+                placeholder="请输入密码"
+                autocomplete="current-password"
+                :disabled="loading"
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="isPasswordVisible ? '隐藏密码' : '显示密码'"
+                :disabled="loading"
+                @mousedown.prevent
+                @click="isPasswordVisible = !isPasswordVisible"
+              >
+                <el-icon :size="18" aria-hidden="true">
+                  <component :is="isPasswordVisible ? Hide : View" />
+                </el-icon>
+              </button>
+            </div>
           </div>
         </template>
 
@@ -334,6 +353,45 @@ const toggleMode = () => {
   font-weight: 500;
   margin-bottom: 8px;
   color: var(--text-secondary);
+}
+
+.password-field {
+  position: relative;
+
+  .input {
+    padding-inline-end: 48px;
+
+    &::-ms-reveal {
+      display: none;
+    }
+  }
+}
+
+.password-toggle {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-end: 1px;
+  width: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+
+  &:hover:not(:disabled) {
+    color: var(--color-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 
 .submit-btn {

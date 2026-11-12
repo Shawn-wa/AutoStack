@@ -24,7 +24,7 @@ func (c *Client) GetProductList(limit int, lastID string) (*ProductListResponse,
 	}
 
 	// API: POST /v3/product/list
-	// 文档: https://docs.ozon.com/api/seller/en/#operation/ProductAPI_GetProductListV3
+	// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductList
 	resp, err := c.DoRequest(http.MethodPost, "/v3/product/list", reqBody, platform.RequestTypeProductList)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func (c *Client) GetProductList(limit int, lastID string) (*ProductListResponse,
 
 // GetProductInfo 获取商品详细信息（批量）
 // API: POST /v3/product/info/list
-// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductInfoListV3
+// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductInfoList
 func (c *Client) GetProductInfo(offerIds []string) (*ProductInfoResponse, error) {
 	reqBody := ProductInfoRequest{
 		OfferID: offerIds,

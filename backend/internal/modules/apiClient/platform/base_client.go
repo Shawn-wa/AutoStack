@@ -108,6 +108,7 @@ func (c *BaseClient) DoRequest(client PlatformClient, method, path string, body 
 		return &APIResponse{
 			StatusCode: resp.StatusCode,
 			Body:       respBody,
+			Headers:    resp.Header.Clone(),
 			Duration:   duration,
 		}, fmt.Errorf("API请求失败: %d - %s", resp.StatusCode, string(respBody))
 	}
@@ -118,6 +119,7 @@ func (c *BaseClient) DoRequest(client PlatformClient, method, path string, body 
 	return &APIResponse{
 		StatusCode: resp.StatusCode,
 		Body:       respBody,
+		Headers:    resp.Header.Clone(),
 		Duration:   duration,
 	}, nil
 }

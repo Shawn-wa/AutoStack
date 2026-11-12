@@ -279,7 +279,7 @@ func (r *gormOrderDailyStatRepository) getDB(ctx context.Context) *gorm.DB {
 
 func (r *gormOrderDailyStatRepository) FindByCompanyDateCurrency(ctx context.Context, companyID uint, date time.Time, currency string) (*OrderDailyStat, error) {
 	var stat OrderDailyStat
-	if err := r.getDB(ctx).Where("company_id = ? AND stat_date = ? AND currency = ?", companyID, date, currency).First(&stat).Error; err != nil {
+	if err := r.getDB(ctx).Where("company_id = ? AND stat_date >= ? AND stat_date < ? AND currency = ?", companyID, date.Format("2006-01-02"), date.AddDate(0, 0, 1).Format("2006-01-02"), currency).First(&stat).Error; err != nil {
 		return nil, err
 	}
 	return &stat, nil
@@ -299,7 +299,7 @@ func (r *gormOrderDailyStatRepository) UpdateFields(ctx context.Context, id uint
 
 func (r *gormOrderDailyStatRepository) ListByCompanyAndDateRange(ctx context.Context, companyID uint, start, end time.Time, currency string) ([]OrderDailyStat, error) {
 	var stats []OrderDailyStat
-	if err := r.getDB(ctx).Where("company_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", companyID, currency, start, end).
+	if err := r.getDB(ctx).Where("company_id = ? AND currency = ? AND stat_date >= ? AND stat_date < ?", companyID, currency, start.Format("2006-01-02"), end.Format("2006-01-02")).
 		Order("stat_date ASC").
 		Find(&stats).Error; err != nil {
 		return nil, err
@@ -311,22 +311,66 @@ func (r *gormOrderDailyStatRepository) DeleteByCompanyID(ctx context.Context, co
 	return r.getDB(ctx).Where("company_id = ?", companyID).Delete(&OrderDailyStat{}).Error
 }
 
+// GetDailyStats groups by the stored calendar date, as MySQL DATETIME does.
+// A SQL DATE expression is returned as text by SQLite and can be time.Time
+// with MySQL parseTime=true; do not scan it directly into DailyStat.Date.
 func (r *gormOrderDailyStatRepository) GetDailyStats(ctx context.Context, companyID uint, startDate, endDate time.Time) ([]DailyStat, error) {
-	var stats []DailyStat
-	if err := r.getDB(ctx).Table("orders").
-		Select(`
-			DATE(order_time) as date, 
-			currency,
-			COUNT(*) as count, 
-			COALESCE(SUM(total_amount), 0) as amount
-		`).
-		Where("company_id = ? AND order_time >= ? AND order_time < ?", companyID, startDate, endDate).
-		Group("DATE(order_time), currency").
-		Order("date ASC").
-		Scan(&stats).Error; err != nil {
+	db := r.getDB(ctx)
+	dateExpr := "DATE(order_time)"
+	if db.Dialector.Name() == "sqlite" {
+		// SQLite DATE otherwise converts offset-bearing timestamps to UTC,
+		// unlike MySQL DATETIME. Preserve the stored calendar date.
+		dateExpr = "DATE(SUBSTR(order_time, 1, 10))"
+	}
+	rows, err := db.Table("orders").
+		Select(dateExpr+" as date, COALESCE(currency, '') as currency, COUNT(*) as count, COALESCE(SUM(total_amount), 0) as amount").
+		Where("company_id = ? AND order_time >= ? AND order_time < ?", companyID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02")).
+		Group(dateExpr + ", COALESCE(currency, '')").
+		Order("date ASC").Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make([]DailyStat, 0)
+	for rows.Next() {
+		var value interface{}
+		var stat DailyStat
+		if err := rows.Scan(&value, &stat.Currency, &stat.Count, &stat.Amount); err != nil {
+			return nil, err
+		}
+		stat.Date, err = parseDailyStatDate(value, startDate.Location())
+		if err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return stats, nil
+}
+
+func parseDailyStatDate(value interface{}, location *time.Location) (time.Time, error) {
+	var date string
+	switch v := value.(type) {
+	case time.Time:
+		if v.IsZero() {
+			return time.Time{}, errors.New("invalid zero daily statistics date")
+		}
+		date = v.Format("2006-01-02")
+	case string:
+		date = v
+	case []byte:
+		date = string(v)
+	default:
+		return time.Time{}, fmt.Errorf("invalid daily statistics date type %T", value)
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", date, location)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid daily statistics date %q: %w", date, err)
+	}
+	return parsed, nil
 }
 
 // ========== 错误定义 ==========

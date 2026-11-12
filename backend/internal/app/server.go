@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/gin-gonic/gin"
 
@@ -175,6 +176,7 @@ func (s *Server) setupRoutes() {
 				"route:order.orders:read",
 				"route:order.cashflow:read",
 				"route:order.settlement:read",
+				"route:product.order_summary:read",
 			))
 			{
 				// 仪表盘统计
@@ -315,8 +317,8 @@ func (s *Server) Run() error {
 	// 启动定时任务调度器
 	scheduler.Start()
 
-	addr := fmt.Sprintf(":%s", s.config.Server.Port)
-	fmt.Printf("🚀 AutoStack 服务启动于 http://localhost%s\n", addr)
+	addr := net.JoinHostPort(s.config.Server.Host, s.config.Server.Port)
+	fmt.Printf("🚀 AutoStack 服务监听于 %s\n", addr)
 	return s.router.Run(addr)
 }
 

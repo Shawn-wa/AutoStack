@@ -200,12 +200,16 @@ export interface SyncCommissionResult {
 
 // 同步佣金
 export function syncCommission(id: number, data?: SyncCommissionParams) {
-  return request.post<any, { data: SyncCommissionResult }>(`/order/auths/${id}/sync-commission`, data || {})
+  return request.post<any, { data: SyncCommissionResult }>(`/order/auths/${id}/sync-commission`, data || {}, {
+    timeout: 300000
+  })
 }
 
 // 同步单个订单的佣金
 export function syncOrderCommission(orderId: number) {
-  return request.post<any, { data: Order }>(`/order/orders/${orderId}/sync-commission`)
+  return request.post<any, { data: Order }>(`/order/orders/${orderId}/sync-commission`, undefined, {
+    timeout: 60000
+  })
 }
 
 // 同步单个订单信息（从平台获取最新状态）

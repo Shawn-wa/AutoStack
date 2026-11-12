@@ -1,5 +1,7 @@
 package ozon
 
+import "encoding/json"
+
 // Credentials OZON凭证
 type Credentials struct {
 	ClientID           string `json:"client_id"`
@@ -11,18 +13,17 @@ type Credentials struct {
 
 // OrderListRequest 订单列表请求
 type OrderListRequest struct {
-	Dir    string          `json:"dir"`
-	Filter OrderListFilter `json:"filter"`
-	Limit  int             `json:"limit"`
-	Offset int             `json:"offset"`
-	With   OrderListWith   `json:"with"`
+	SortDir string          `json:"sort_dir"`
+	Filter  OrderListFilter `json:"filter"`
+	Limit   int             `json:"limit"`
+	Cursor  string          `json:"cursor,omitempty"`
+	With    OrderListWith   `json:"with"`
 }
 
 // OrderListFilter 订单过滤条件
 type OrderListFilter struct {
-	Since  string `json:"since"`
-	To     string `json:"to"`
-	Status string `json:"status,omitempty"`
+	Since string `json:"since"`
+	To    string `json:"to"`
 }
 
 // OrderListWith 订单附加数据
@@ -33,9 +34,9 @@ type OrderListWith struct {
 
 // OrderListResponse 订单列表响应
 type OrderListResponse struct {
-	Result struct {
-		Postings []Posting `json:"postings"`
-	} `json:"result"`
+	Postings []Posting `json:"postings"`
+	HasNext  bool      `json:"has_next"`
+	Cursor   string    `json:"cursor"`
 }
 
 // OrderDetailRequest 订单详情请求
@@ -77,6 +78,36 @@ type Product struct {
 	CurrencyCode string `json:"currency_code"`
 }
 
+// UnmarshalJSON 兼容 v3 订单详情的字符串价格和 v4 订单列表的价格对象。
+func (p *Product) UnmarshalJSON(data []byte) error {
+	type plainProduct Product
+	var wire struct {
+		*plainProduct
+		Price json.RawMessage `json:"price"`
+	}
+	wire.plainProduct = (*plainProduct)(p)
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	if len(wire.Price) == 0 {
+		return nil
+	}
+	if wire.Price[0] != '{' {
+		return json.Unmarshal(wire.Price, &p.Price)
+	}
+
+	var price struct {
+		Amount   string `json:"amount"`
+		Currency string `json:"currency"`
+	}
+	if err := json.Unmarshal(wire.Price, &price); err != nil {
+		return err
+	}
+	p.Price = price.Amount
+	p.CurrencyCode = price.Currency
+	return nil
+}
+
 // Customer 客户
 type Customer struct {
 	Name    string  `json:"name"`
@@ -114,81 +145,10 @@ type FinancialProduct struct {
 	CurrencyCode string  `json:"currency_code"`
 }
 
-// ========== 财务相关 ==========
-
-// FinanceListRequest 财务列表请求
-type FinanceListRequest struct {
-	Filter   FinanceFilter `json:"filter"`
-	Page     int           `json:"page"`
-	PageSize int           `json:"page_size"`
-}
-
-// FinanceFilter 财务过滤条件
-type FinanceFilter struct {
-	Date            DateRange `json:"date"`
-	TransactionType string    `json:"transaction_type"`
-}
-
 // DateRange 日期范围
 type DateRange struct {
 	From string `json:"from"`
 	To   string `json:"to"`
-}
-
-// FinanceListResponse 财务列表响应
-type FinanceListResponse struct {
-	Result struct {
-		Operations []FinanceOperation `json:"operations"`
-		PageCount  int                `json:"page_count"`
-		RowCount   int                `json:"row_count"`
-	} `json:"result"`
-}
-
-// FinanceOperation 财务操作
-type FinanceOperation struct {
-	OperationID          int64          `json:"operation_id"`
-	OperationType        string         `json:"operation_type"`
-	OperationTypeName    string         `json:"operation_type_name"`
-	OperationDate        string         `json:"operation_date"`
-	Amount               float64        `json:"amount"`
-	SaleCommission       float64        `json:"sale_commission"`
-	AccrualsForSale      float64        `json:"accruals_for_sale"`
-	DeliveryCharge       float64        `json:"delivery_charge"`
-	ReturnDeliveryCharge float64        `json:"return_delivery_charge"`
-	Posting              FinancePosting `json:"posting"`
-}
-
-// FinancePosting 财务关联的发货单
-type FinancePosting struct {
-	PostingNumber  string `json:"posting_number"`
-	DeliverySchema string `json:"delivery_schema"`
-	OrderDate      string `json:"order_date"`
-	WarehouseID    int64  `json:"warehouse_id"`
-}
-
-// FinanceTotalsRequest 财务汇总请求
-// API: POST /v3/finance/transaction/totals
-type FinanceTotalsRequest struct {
-	PostingNumber string `json:"posting_number"` // 发货单号
-}
-
-// FinanceTotalsResponse 财务汇总响应
-type FinanceTotalsResponse struct {
-	Result FinanceTotalsItem `json:"result"`
-}
-
-// FinanceTotalsItem 财务汇总项 - 单个订单的财务汇总数据
-// API: POST /v3/finance/transaction/totals
-// 文档: https://docs.ozon.ru/api/seller/#operation/FinanceAPI_FinanceTransactionTotalV3
-type FinanceTotalsItem struct {
-	AccrualsForSale         float64 `json:"accruals_for_sale"`         // 销售收入：卖家因销售商品获得的收入金额（正数，如 1500.00）
-	SaleCommission          float64 `json:"sale_commission"`           // 销售佣金：Ozon平台从销售中收取的佣金费用（负数，如 -225.00）
-	ProcessingAndDelivery   float64 `json:"processing_and_delivery"`   // 物流费用：商品处理、包装和配送的费用（负数，如 -150.00）
-	RefundsAndCancellations float64 `json:"refunds_and_cancellations"` // 退款退货：退款及取消订单产生的费用扣减（通常为负数或0）
-	ServicesAmount          float64 `json:"services_amount"`           // 平台服务费：Ozon提供的增值服务费用（负数，如广告费、仓储费）
-	CompensationAmount      float64 `json:"compensation_amount"`       // 补偿金额：平台对卖家的补偿款项（正数，如物流损坏赔偿）
-	MoneyTransfer           float64 `json:"money_transfer"`            // 资金划转：账户间资金转移记录（可正可负）
-	OthersAmount            float64 `json:"others_amount"`             // 其他费用：未归类的其他杂项费用
 }
 
 // ========== 现金流报表相关 ==========
@@ -267,12 +227,13 @@ type ReportInfoResponse struct {
 
 // ReportInfoResult 报告信息结果
 type ReportInfoResult struct {
-	Code       string `json:"code"`        // 报告唯一标识符
-	Status     string `json:"status"`      // 报告状态：waiting, processing, success, failed
-	Error      string `json:"error"`       // 错误信息
-	File       string `json:"file"`        // 报告文件下载链接
-	ReportType string `json:"report_type"` // 报告类型
-	CreatedAt  string `json:"created_at"`  // 创建时间
+	Code       string `json:"code"`                 // 报告唯一标识符
+	Status     string `json:"status"`               // 报告状态：waiting, processing, success, failed
+	Error      string `json:"error"`                // 错误信息
+	File       string `json:"file"`                 // XLSX 报告文件下载链接
+	ReportType string `json:"report_type"`          // 报告类型
+	CreatedAt  string `json:"created_at"`           // 创建时间
+	ExpiresAt  string `json:"expires_at,omitempty"` // 下载链接过期时间
 }
 
 // MutualSettlementFullResponse 结算报告完整响应（包含创建响应和报告信息）
@@ -297,7 +258,7 @@ type MutualSettlementDetail struct {
 
 // ProductListRequest 商品列表请求
 // API: POST /v3/product/list
-// 文档: https://docs.ozon.com/api/seller/en/#operation/ProductAPI_GetProductListV3
+// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductList
 type ProductListRequest struct {
 	Filter ProductListFilter `json:"filter"`
 	LastID string            `json:"last_id,omitempty"`
@@ -307,7 +268,8 @@ type ProductListRequest struct {
 // ProductListFilter 商品列表过滤条件
 type ProductListFilter struct {
 	OfferID    []string `json:"offer_id,omitempty"`
-	ProductID  []int64  `json:"product_id,omitempty"`
+	ProductID  []string `json:"product_id,omitempty"`
+	SKUs       []string `json:"skus,omitempty"`
 	Visibility string   `json:"visibility,omitempty"` // ALL, VISIBLE, INVISIBLE, EMPTY_STOCK, NOT_MODERATED, MODERATED, DISABLED, STATE_FAILED, READY_TO_SUPPLY, VALIDATION_STATE_PENDING, VALIDATION_STATE_FAIL, VALIDATION_STATE_SUCCESS, TO_SUPPLY, IN_SALE, REMOVED_FROM_SALE, BANNED, OVERPRICED, CRITICALLY_OVERPRICED, EMPTY_BARCODE, BARCODE_EXIST, QUARANTINE, ARCHIVED, OVERPRICED_WITH_STOCK, PARTIAL_APPROVED, IMAGE_ABSENT, MODERATION_BLOCK
 }
 
@@ -320,22 +282,42 @@ type ProductListResponse struct {
 type ProductListResult struct {
 	Items  []ProductItem `json:"items"`
 	LastID string        `json:"last_id"`
-	Total  int           `json:"total"`
+	Total  int64         `json:"total_items"`
+}
+
+// UnmarshalJSON 优先读取 total_items，兼容仍返回 total 的响应。
+func (r *ProductListResult) UnmarshalJSON(data []byte) error {
+	type resultFields ProductListResult
+	wire := struct {
+		*resultFields
+		TotalItems  *int64 `json:"total_items"`
+		LegacyTotal *int64 `json:"total"`
+	}{resultFields: (*resultFields)(r)}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	if wire.TotalItems != nil {
+		r.Total = *wire.TotalItems
+	} else if wire.LegacyTotal != nil {
+		r.Total = *wire.LegacyTotal
+	}
+	return nil
 }
 
 // ProductItem 商品项
 type ProductItem struct {
 	ProductID int64  `json:"product_id"`
 	OfferID   string `json:"offer_id"`
+	SKU       int64  `json:"sku"`
 }
 
 // ProductInfoRequest 商品详情请求
 // API: POST /v3/product/info/list
-// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductInfoListV3
+// 文档: https://docs.ozon.ru/api/seller/#operation/ProductAPI_GetProductInfoList
 type ProductInfoRequest struct {
 	OfferID   []string `json:"offer_id,omitempty"`
-	ProductID []int64  `json:"product_id,omitempty"`
-	SKU       []int64  `json:"sku,omitempty"`
+	ProductID []string `json:"product_id,omitempty"`
+	SKU       []string `json:"sku,omitempty"`
 }
 
 // ProductInfoResponse 商品详情响应 (v3 API 直接返回 items，无 result 包装)
@@ -346,10 +328,12 @@ type ProductInfoResponse struct {
 // ProductInfoItem 商品详情项
 type ProductInfoItem struct {
 	ID                    int64                    `json:"id"`
+	SKU                   int64                    `json:"sku"`
 	Name                  string                   `json:"name"`
 	OfferID               string                   `json:"offer_id"`
 	Barcodes              []string                 `json:"barcodes"`
 	Price                 string                   `json:"price"`
+	DeclaredPrice         *ProductDeclaredPrice    `json:"declared_price,omitempty"`
 	OldPrice              string                   `json:"old_price"`
 	MinPrice              string                   `json:"min_price"`
 	MarketingPrice        string                   `json:"marketing_price"`
@@ -372,6 +356,12 @@ type ProductInfoItem struct {
 	UpdatedAt             string                   `json:"updated_at"`
 	Images                []string                 `json:"images"`
 	PrimaryImage          interface{}              `json:"primary_image"` // 主图URL (可能是字符串或数组)
+}
+
+// ProductDeclaredPrice 商品申报价值。
+type ProductDeclaredPrice struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
 }
 
 // GetPrimaryImageURL 获取主图URL
@@ -404,6 +394,8 @@ type ProductStockItem struct {
 	Type     string `json:"type"`     // fbo, fbs 等
 	Present  int    `json:"present"`  // 当前库存
 	Reserved int    `json:"reserved"` // 预留库存
+	SKU      int64  `json:"sku"`
+	Source   string `json:"source"`
 }
 
 // ProductError 商品错误信息

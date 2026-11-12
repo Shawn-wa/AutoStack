@@ -1,6 +1,7 @@
 package order
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -807,6 +808,7 @@ func GetDashboardStats(c *gin.Context) {
 
 	stats, err := orderService.GetDashboardStats(companyID)
 	if err != nil {
+		log.Printf("[Dashboard] 企业 %d 获取统计数据失败: %v", companyID, err)
 		response.Error(c, http.StatusInternalServerError, "获取统计数据失败")
 		return
 	}
@@ -868,7 +870,9 @@ func InitDashboardStats(c *gin.Context) {
 	}
 
 	go func() {
-		_ = orderService.InitOrderTrendStats(companyID, false)
+		if err := orderService.InitOrderTrendStats(companyID, false); err != nil {
+			log.Printf("[Dashboard] 企业 %d 初始化统计数据失败: %v", companyID, err)
+		}
 	}()
 
 	response.Success(c, http.StatusOK, "初始化任务已启动", nil)
@@ -884,6 +888,7 @@ func RefreshDashboardStats(c *gin.Context) {
 
 	err := orderService.InitOrderTrendStats(companyID, true)
 	if err != nil {
+		log.Printf("[Dashboard] 企业 %d 刷新统计数据失败: %v", companyID, err)
 		response.Error(c, http.StatusInternalServerError, "刷新统计数据失败")
 		return
 	}
